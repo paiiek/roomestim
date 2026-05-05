@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.1.1"
+version = "0.2.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -42,6 +42,8 @@ roomestim = ["proto/*.json"]
 [tool.pytest.ini_options]
 markers = [
     "lab: requires lab_real.usdz fixture; skipped in default CI",
+    "e2e: end-to-end pipeline against external GT dataset (env-var gated)",
+    "network: marker reserved for tests that may fetch over network (currently no test invokes it; gate is local-dir env var)",
 ]
 testpaths = ["tests"]
 

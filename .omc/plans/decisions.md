@@ -172,3 +172,29 @@ The sidecar fixture and metadata file are committed before P4 starts as a P4-tas
 
 **Reverse if**: spatial_engine v0.2 builds either harness binary AND publishes its CLI contract — at that point re-enable the consumer-side A2/A15 tests in roomestim v0.2 (no code change required beyond removing the SKIP).
 
+---
+
+## D11 — Distribution-model decision: DEFERRED at v0.2 with re-evaluation criteria
+
+**Question**: Which option does ADR 0007 choose — (a) standalone git repo, (b) git submodule under `spatial_engine/third_party/roomestim/`, or (c) PyPI publish?
+
+**Decision**: DEFER. v0.2 ships as standalone (option (a)), unchanged from v0.1. ADR 0007 (`docs/adr/0007-distribution-model.md`) records the deferral with explicit re-evaluation criteria.
+
+**Why**: The decision space is evidence-limited at v0.2. Key signals:
+- Time since v0.1.1: ~1 day. No reverse-criterion signal possible.
+- Cross-repo PR rounds since v0.1.1: 0 (schema PR drafted but not opened).
+- Real-world room.yaml count produced: 0 (A10 lab capture is post-autopilot).
+- CI maintenance hours since v0.1.1: ~0 (no incidents).
+- Sibling-repo precedent: vid2spatial, claude_text2traj are both standalone.
+
+Forcing a choice without evidence would fabricate rationale or lock a structure that usage may invalidate within 30 days. Mirrors v0.1.1 Critic M1 honesty principle.
+
+**Reverse if**:
+- Engine team explicitly requests vendoring → flip to (b).
+- CI maintenance cost > 1 day/month over a 30-day window → flip to (b).
+- ≥1 external consumer requests `pip install roomestim` → consider (c), only after (b) is evaluated and rejected.
+
+**Re-evaluate at**: v0.3 ship or after first cross-repo PR exchange, whichever comes first.
+
+**Cross-ref**: ADR 0007 (`docs/adr/0007-distribution-model.md`), D1, spec.md §2 (workstream c).
+
