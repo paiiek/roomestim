@@ -198,3 +198,25 @@ Forcing a choice without evidence would fabricate rationale or lock a structure 
 
 **Cross-ref**: ADR 0007 (`docs/adr/0007-distribution-model.md`), D1, spec.md §2 (workstream c).
 
+---
+
+## D12 — Octave-band absorption schema extension at v0.3
+
+**Question**: Should v0.3 add per-octave-band absorption coefficients to the schema and material table, and if so, how many bands?
+
+**Decision**: YES — add 6 bands (125, 250, 500, 1000, 2000, 4000 Hz) as an OPTIONAL `absorption` block per surface. `absorption_500hz` remains REQUIRED. Emit block only when `Surface.absorption_bands is not None` (opt-in via `--octave-band` CLI flag). Default behaviour unchanged (A12 byte-equality preserved).
+
+**Why**:
+- E2E RT60 validation against ACE Challenge requires per-band predictions → per-band Sabine RT60.
+- Schema extension cost is near-zero (optional block, backwards-compatible, both schema files updated).
+- Alternative (wait for engine request, then breaking v0.4 schema change) is more costly.
+- 8 kHz excluded: Vorländer 2020 Appx A typical room-acoustics tables stop at 4 kHz; no measured per-octave ACE data at 8 kHz in the pre-tabulated corpus files.
+
+**Honesty note**: `MaterialAbsorptionBands` values are representative Vorländer-class coefficients, NOT verbatim Appx A rows. Each row carries an inline honesty marker in `roomestim/model.py`. UNKNOWN row is flat at 0.10 (synthetic broadband fallback). Enforced by `test_band_a500_matches_legacy_scalar`: `MaterialAbsorptionBands[m][2] == MaterialAbsorption[m]` for all m.
+
+**Reverse if**:
+- Engine team requests a different band set (e.g., 7 bands to 8 kHz) → v0.4 ADR authors extension.
+- Per-band Sabine predictions consistently > 50% error across multiple rooms in E2E validation → revisit material coefficient table before v0.4.
+
+**Cross-ref**: ADR 0008 (`docs/adr/0008-octave-band-absorption.md`), D7, spec.md §3 (workstream d).
+

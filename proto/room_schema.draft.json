@@ -56,6 +56,20 @@
             "type": "array",
             "minItems": 3,
             "items": { "$ref": "#/$defs/point3" }
+          },
+          "absorption": {
+            "type": "object",
+            "description": "Optional octave-band absorption coefficients per Vorländer 2020 Appx A. If absent, callers SHOULD fall back to absorption_500hz.",
+            "required": ["a125", "a250", "a500", "a1000", "a2000", "a4000"],
+            "additionalProperties": false,
+            "properties": {
+              "a125":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a250":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a500":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a1000": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a2000": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a4000": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+            }
           }
         }
       }

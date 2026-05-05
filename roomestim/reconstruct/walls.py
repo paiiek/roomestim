@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from roomestim.model import (
     MaterialAbsorption,
+    MaterialAbsorptionBands,
     MaterialLabel,
     Point2,
     Point3,
@@ -26,6 +27,7 @@ def walls_from_floor_polygon(
     ceiling_height_m: float,
     *,
     default_material: MaterialLabel = MaterialLabel.WALL_PAINTED,
+    octave_band: bool = False,
 ) -> list[Surface]:
     """Return one :class:`Surface` per CCW edge of ``floor_polygon``.
 
@@ -60,6 +62,7 @@ def walls_from_floor_polygon(
                 polygon=polygon,
                 material=default_material,
                 absorption_500hz=absorption,
+                absorption_bands=MaterialAbsorptionBands[default_material] if octave_band else None,
             )
         )
     return walls

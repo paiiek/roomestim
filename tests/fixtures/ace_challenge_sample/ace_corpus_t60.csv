@@ -1,0 +1,13 @@
+room_id,band_hz,t60_s
+Office_1,125,0.45
+Office_1,250,0.44
+Office_1,500,0.42
+Office_1,1000,0.40
+Office_1,2000,0.37
+Office_1,4000,0.32
+Meeting_1,125,0.68
+Meeting_1,250,0.65
+Meeting_1,500,0.61
+Meeting_1,1000,0.57
+Meeting_1,2000,0.51
+Meeting_1,4000,0.43

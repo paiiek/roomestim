@@ -30,6 +30,7 @@ from roomestim.adapters.base import ScaleAnchor
 from roomestim.adapters.roomplan import RoomPlanAdapter
 from roomestim.model import (
     MaterialAbsorption,
+    MaterialAbsorptionBands,
     MaterialLabel,
     Point2,
     Point3,
@@ -54,15 +55,16 @@ class PolycamAdapter:
         path: Path | str,
         *,
         scale_anchor: ScaleAnchor | None = None,
+        octave_band: bool = False,
     ) -> RoomModel:
         del scale_anchor  # Polycam is metric-native; anchor unused
         path_obj = Path(path)
         suffix = path_obj.suffix.lower()
         if suffix == ".json":
             # RoomPlan-format sidecar — same parametric primitives.
-            return RoomPlanAdapter().parse(path_obj)
+            return RoomPlanAdapter().parse(path_obj, octave_band=octave_band)
         if suffix == ".obj":
-            return self._room_model_from_obj(path_obj)
+            return self._room_model_from_obj(path_obj, octave_band=octave_band)
         if suffix == ".usdz":
             raise NotImplementedError(
                 "Polycam USDZ requires [usd] extra; use .obj for default CI"
@@ -72,7 +74,7 @@ class PolycamAdapter:
             "expected .obj (mesh), .json (RoomPlan-format sidecar), or .usdz."
         )
 
-    def _room_model_from_obj(self, path: Path) -> RoomModel:
+    def _room_model_from_obj(self, path: Path, *, octave_band: bool = False) -> RoomModel:
         loaded = trimesh.load(path, force="mesh")
         # ``force='mesh'`` coerces a Scene into a single Trimesh; vertices is
         # always an ndarray of shape (N, 3) at that point.
@@ -122,6 +124,7 @@ class PolycamAdapter:
             polygon=[Point3(p.x, y_min, p.z) for p in floor_polygon_2d],
             material=floor_material,
             absorption_500hz=MaterialAbsorption[floor_material],
+            absorption_bands=MaterialAbsorptionBands[floor_material] if octave_band else None,
         )
         ceiling_material = MaterialLabel.CEILING_DRYWALL
         ceiling_surface = Surface(
@@ -131,12 +134,14 @@ class PolycamAdapter:
             ],
             material=ceiling_material,
             absorption_500hz=MaterialAbsorption[ceiling_material],
+            absorption_bands=MaterialAbsorptionBands[ceiling_material] if octave_band else None,
         )
 
         walls = walls_from_floor_polygon(
             floor_polygon_2d,
             ceiling_height_m,
             default_material=MaterialLabel.WALL_PAINTED,
+            octave_band=octave_band,
         )
 
         surfaces: list[Surface] = [floor_surface, ceiling_surface, *walls]

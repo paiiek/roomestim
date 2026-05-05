@@ -68,12 +68,23 @@ def _point3_to_dict(p: Point3) -> dict[str, float]:
 
 
 def _surface_to_dict(s: Surface) -> dict[str, Any]:
-    return {
+    d: dict[str, Any] = {
         "kind": s.kind,
         "material": s.material.value,
         "absorption_500hz": s.absorption_500hz,
         "polygon": [_point3_to_dict(v) for v in s.polygon],
     }
+    if s.absorption_bands is not None:
+        ab = s.absorption_bands
+        d["absorption"] = {
+            "a125": ab[0],
+            "a250": ab[1],
+            "a500": ab[2],
+            "a1000": ab[3],
+            "a2000": ab[4],
+            "a4000": ab[5],
+        }
+    return d
 
 
 def room_model_to_dict(room: RoomModel, *, schema_version: str = "0.1-draft") -> dict[str, Any]:

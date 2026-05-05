@@ -61,6 +61,36 @@ MaterialAbsorption: dict[MaterialLabel, float] = {
     MaterialLabel.UNKNOWN: 0.10,
 }
 
+OCTAVE_BANDS_HZ: tuple[int, ...] = (125, 250, 500, 1000, 2000, 4000)
+
+# Octave-band absorption coefficients per material.
+# Band order: (125, 250, 500, 1000, 2000, 4000) Hz.
+#
+# Citation policy (OD-4): rows below are representative typical room-acoustics
+# coefficients consistent with Vorländer 2020 *Auralization* Appendix A and
+# similar textbook tables; they are NOT verbatim Appx A rows. Each row's band
+# index 2 (a500) MUST equal MaterialAbsorption[m] (legacy scalar) — enforced
+# by tests/test_room_acoustics_octave.py::test_band_a500_matches_legacy_scalar.
+# UNKNOWN row is flat at 0.10 (synthetic broadband; D3 fallback).
+MaterialAbsorptionBands: dict[MaterialLabel, tuple[float, float, float, float, float, float]] = {
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.WALL_PAINTED:           (0.10, 0.07, 0.05, 0.06, 0.07, 0.09),
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.WALL_CONCRETE:          (0.01, 0.01, 0.02, 0.02, 0.02, 0.03),
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.WOOD_FLOOR:             (0.15, 0.11, 0.10, 0.07, 0.06, 0.07),
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.CARPET:                 (0.05, 0.10, 0.30, 0.40, 0.50, 0.60),
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.GLASS:                  (0.18, 0.06, 0.04, 0.03, 0.02, 0.02),
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.CEILING_ACOUSTIC_TILE:  (0.30, 0.45, 0.55, 0.70, 0.75, 0.80),
+    # representative typical room-acoustics row from Vorländer-class textbook tables; not a verbatim Appx A row
+    MaterialLabel.CEILING_DRYWALL:        (0.29, 0.10, 0.10, 0.04, 0.07, 0.09),
+    # broadband fallback (synthetic; no Appx A row) — UNKNOWN stays flat at 0.10 across all bands
+    MaterialLabel.UNKNOWN:                (0.10, 0.10, 0.10, 0.10, 0.10, 0.10),
+}
+
 
 # --------------------------------------------------------------------------- #
 # Geometry primitives
@@ -104,6 +134,7 @@ class Surface:
     polygon: list[Point3]
     material: MaterialLabel
     absorption_500hz: float
+    absorption_bands: tuple[float, float, float, float, float, float] | None = None
 
 
 @dataclass(frozen=True)

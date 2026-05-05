@@ -29,7 +29,7 @@ python -m roomestim run \
     --algorithm vbap --n-speakers 8 --layout-radius 2.0 \
     --out-dir /tmp/roomestim_out
 
-pytest -m "not lab" -v
+pytest -m "not lab and not e2e" -v
 ```
 
 ## Repo layout

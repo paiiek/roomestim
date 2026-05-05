@@ -62,3 +62,8 @@ pre_edit_source_sha256: e331659c9dba4c91782d489bbeaa976615aa561f5ea1c183d1320428
 #
 # (To regenerate the pre_edit_source_sha256: paste the function body above
 # WITHOUT the `# ` prefixes into a file as raw text, then `sha256sum` it.)
+
+sabine_legacy_rt60_500hz.txt — v0.3 pre-edit reference
+  computed_at: 2026-05-06 (orchestrator-driven Phase 2A)
+  formula: sabine_rt60(56.0, {WALL_PAINTED:50.4, WOOD_FLOOR:20.0, CEILING_ACOUSTIC_TILE:20.0}) at v0.1.1 HEAD
+  sha256: d270be345ef07db59d87381ba0b170a3ddc50ba467d4b96183e00fa52e4590d8

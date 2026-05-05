@@ -41,6 +41,7 @@ import numpy as np
 from roomestim.adapters.base import ScaleAnchor
 from roomestim.model import (
     MaterialAbsorption,
+    MaterialAbsorptionBands,
     MaterialLabel,
     Point2,
     Point3,
@@ -137,6 +138,7 @@ class RoomPlanAdapter:
         path: Path | str,
         *,
         scale_anchor: ScaleAnchor | None = None,
+        octave_band: bool = False,
     ) -> RoomModel:
         del scale_anchor  # RoomPlan is metric-native; anchor unused
         path_obj = Path(path)
@@ -154,9 +156,9 @@ class RoomPlanAdapter:
             )
         with path_obj.open("r", encoding="utf-8") as fh:
             data: dict[str, Any] = json.load(fh)
-        return self._room_model_from_sidecar(data)
+        return self._room_model_from_sidecar(data, octave_band=octave_band)
 
-    def _room_model_from_sidecar(self, data: dict[str, Any]) -> RoomModel:
+    def _room_model_from_sidecar(self, data: dict[str, Any], *, octave_band: bool = False) -> RoomModel:
         name = str(data.get("label", "roomplan_room"))
         dimensions = data.get("dimensions", {})
         ceiling_height_m = float(dimensions.get("height", 0.0))
@@ -192,6 +194,7 @@ class RoomPlanAdapter:
                     polygon=polygon,
                     material=material,
                     absorption_500hz=MaterialAbsorption[material],
+                    absorption_bands=MaterialAbsorptionBands[material] if octave_band else None,
                 )
             )
 
@@ -206,6 +209,7 @@ class RoomPlanAdapter:
             polygon=_polygon_3d(floor_polygon_xyz),
             material=floor_material,
             absorption_500hz=MaterialAbsorption[floor_material],
+            absorption_bands=MaterialAbsorptionBands[floor_material] if octave_band else None,
         )
 
         floor_polygon_2d = canonicalize_ccw(
@@ -225,6 +229,7 @@ class RoomPlanAdapter:
                     polygon=_polygon_3d(poly_xyz),
                     material=ceiling_material,
                     absorption_500hz=MaterialAbsorption[ceiling_material],
+                    absorption_bands=MaterialAbsorptionBands[ceiling_material] if octave_band else None,
                 )
             )
 

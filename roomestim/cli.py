@@ -37,6 +37,12 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         metavar="DIR",
         help="Output directory (default: cwd).",
     )
+    p.add_argument(
+        "--octave-band",
+        action="store_true",
+        default=False,
+        help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
+    )
 
 
 def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -124,6 +130,12 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=".",
         metavar="DIR",
         help="Output directory (default: cwd).",
+    )
+    p.add_argument(
+        "--octave-band",
+        action="store_true",
+        default=False,
+        help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
 
 
@@ -230,9 +242,10 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    octave_band: bool = getattr(args, "octave_band", False)
     adapter = _get_adapter(args.backend)
     parse = getattr(adapter, "parse")
-    room = parse(args.input, scale_anchor=None)
+    room = parse(args.input, scale_anchor=None, octave_band=octave_band)
     assert isinstance(room, RoomModel)
 
     out_path = out_dir / "room.yaml"
@@ -290,9 +303,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    octave_band: bool = getattr(args, "octave_band", False)
     adapter = _get_adapter(args.backend)
     parse = getattr(adapter, "parse")
-    room = parse(args.input, scale_anchor=None)
+    room = parse(args.input, scale_anchor=None, octave_band=octave_band)
     assert isinstance(room, RoomModel)
 
     result = _run_placement(room, args.algorithm, args.n_speakers, args.layout_radius, args.el_deg)

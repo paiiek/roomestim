@@ -7,6 +7,7 @@ emits — no extra keys required.
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -56,13 +57,36 @@ def _surface(d: dict[str, Any]) -> Surface:
     if kind not in ("wall", "floor", "ceiling"):
         raise ValueError(f"unknown surface kind: {kind!r}")
     material = MaterialLabel(d["material"])
-    absorption = float(d.get("absorption_500hz", MaterialAbsorption[material]))
+    absorption_500hz = float(d.get("absorption_500hz", MaterialAbsorption[material]))
     polygon = [_point3(v) for v in d["polygon"]]
+
+    absorption_bands: tuple[float, float, float, float, float, float] | None = None
+    ab_raw = d.get("absorption")
+    if ab_raw is not None:
+        absorption_bands = (
+            float(ab_raw["a125"]),
+            float(ab_raw["a250"]),
+            float(ab_raw["a500"]),
+            float(ab_raw["a1000"]),
+            float(ab_raw["a2000"]),
+            float(ab_raw["a4000"]),
+        )
+        a500_from_block = absorption_bands[2]
+        if abs(a500_from_block - absorption_500hz) >= 1e-6:
+            warnings.warn(
+                f"Surface absorption.a500 ({a500_from_block}) differs from "
+                f"absorption_500hz ({absorption_500hz}) by >= 1e-6; "
+                "using absorption.a500 as the more specific value.",
+                stacklevel=2,
+            )
+            absorption_500hz = a500_from_block
+
     return Surface(
         kind=kind,  # type: ignore[arg-type]
         polygon=polygon,
         material=material,
-        absorption_500hz=absorption,
+        absorption_500hz=absorption_500hz,
+        absorption_bands=absorption_bands,
     )
 
 
