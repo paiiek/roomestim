@@ -35,7 +35,10 @@ from roomestim.model import OCTAVE_BANDS_HZ
 from roomestim.reconstruct.materials import sabine_rt60, sabine_rt60_per_band
 
 E2E_DIR_ENV = "ROOMESTIM_E2E_DATASET_DIR"
-REPORT_PATH = Path("docs/perf_verification_e2e_2026-05-06.md")
+# Pin report path to repo root so the test is hermetic regardless of pytest CWD.
+REPORT_PATH = (
+    Path(__file__).resolve().parents[1] / "docs" / "perf_verification_e2e_2026-05-06.md"
+)
 
 
 # --------------------------------------------------------------------------- #

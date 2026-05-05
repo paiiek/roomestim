@@ -43,8 +43,17 @@ from roomestim.model import (
 
 # --------------------------------------------------------------------------- #
 # Published ACE room geometry table
-# Source: ACE Challenge corpus documentation / corpus paper Table 1
-# (Imperial College London EEE building, 7 rooms)
+# Source: ACE Challenge corpus README / room descriptions distributed with the
+# Zenodo archive (https://zenodo.org/records/6257551). Imperial College London
+# EEE building, 7 rooms.
+#
+# Honesty caveat (Critic M1 precedent): values below were transcribed from the
+# corpus documentation but have NOT yet been cross-checked byte-for-byte
+# against the canonical README in the Zenodo archive. Treat as best-effort
+# representative shoebox dimensions; revise if the user's actual ACE
+# distribution disagrees with any row. The runtime adapter does not validate
+# these against the user's dataset_dir contents — only the per-band T60 values
+# are read from the user's CSVs (which raise FileNotFoundError if absent).
 # --------------------------------------------------------------------------- #
 
 ACE_ROOM_GEOMETRY: dict[str, dict[str, object]] = {
@@ -305,12 +314,23 @@ def _load_t60_per_band(dataset_dir: Path) -> dict[str, dict[int, float]]:
             "(https://zenodo.org/records/6257551) and place it in your ROOMESTIM_E2E_DATASET_DIR."
         )
     result: dict[str, dict[int, float]] = {}
+    expected_fields = {"room_id", "band_hz", "t60_s"}
     with csv_path.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
+        if reader.fieldnames is None or not expected_fields.issubset(reader.fieldnames):
+            raise ValueError(
+                f"{csv_path}: header must include {sorted(expected_fields)}, "
+                f"got {reader.fieldnames}"
+            )
         for row in reader:
             room_id = row["room_id"].strip()
             band_hz = int(row["band_hz"].strip())
             t60_s = float(row["t60_s"].strip())
+            if band_hz <= 0 or not (0.0 < t60_s < 60.0):
+                raise ValueError(
+                    f"{csv_path}: implausible row room_id={room_id!r} "
+                    f"band_hz={band_hz} t60_s={t60_s}"
+                )
             result.setdefault(room_id, {})[band_hz] = t60_s
     return result
 
@@ -334,11 +354,21 @@ def _load_t60_500hz(dataset_dir: Path) -> dict[str, float]:
             "(https://zenodo.org/records/6257551) and place it in your ROOMESTIM_E2E_DATASET_DIR."
         )
     result: dict[str, float] = {}
+    expected_fields = {"room_id", "t60_500hz_s"}
     with csv_path.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
+        if reader.fieldnames is None or not expected_fields.issubset(reader.fieldnames):
+            raise ValueError(
+                f"{csv_path}: header must include {sorted(expected_fields)}, "
+                f"got {reader.fieldnames}"
+            )
         for row in reader:
             room_id = row["room_id"].strip()
             t60_s = float(row["t60_500hz_s"].strip())
+            if not (0.0 < t60_s < 60.0):
+                raise ValueError(
+                    f"{csv_path}: implausible row room_id={room_id!r} t60_s={t60_s}"
+                )
             result[room_id] = t60_s
     return result
 
@@ -408,7 +438,8 @@ def load_room(dataset_dir: Path, room_id: str) -> E2ERoomCase:
         notes=(
             f"ACE Challenge corpus — {room_id}. "
             "T60 values from user-supplied CSV (not hardcoded). "
-            "Geometry from published ACE corpus documentation (Table 1)."
+            "Geometry from ACE corpus README; not yet byte-cross-checked "
+            "against the canonical Zenodo archive."
         ),
     )
 
@@ -449,12 +480,14 @@ def _surface_areas_by_material(room: RoomModel) -> dict[MaterialLabel, float]:
 def _room_volume(room: RoomModel) -> float:
     """Compute volume as floor_area × ceiling_height_m.
 
-    For the rectangular shoebox rooms in this adapter, floor polygon is a
-    rectangle. Area = L × W.
+    Uses :class:`shapely.geometry.Polygon` for the floor area so the result
+    is correct for arbitrary 2D floor polygons (not just axis-aligned
+    shoeboxes). The ACE adapter only emits shoeboxes today, but exposing a
+    bounding-box-only helper would silently lie if a future caller passes an
+    L-shape or convex non-rectangle.
     """
-    pts = room.floor_polygon
-    # Shoebox: use first two distinct x and z extents
-    xs = [p.x for p in pts]
-    zs = [p.z for p in pts]
-    floor_area = (max(xs) - min(xs)) * (max(zs) - min(zs))
+    from shapely.geometry import Polygon as ShapelyPolygon
+
+    coords = [(p.x, p.z) for p in room.floor_polygon]
+    floor_area = ShapelyPolygon(coords).area
     return floor_area * room.ceiling_height_m

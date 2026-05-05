@@ -71,7 +71,7 @@ and roomestim's Python emitter validate against a single source of truth.
           },
           "absorption": {
             "type": "object",
-            "description": "Optional octave-band absorption coefficients per Vorländer 2020 Appx A. If absent, callers SHOULD fall back to absorption_500hz.",
+            "description": "Optional octave-band absorption coefficients (representative typical room-acoustics values; see roomestim/model.py:MaterialAbsorptionBands for citation policy). If absent, callers SHOULD fall back to absorption_500hz.",
             "required": ["a125", "a250", "a500", "a1000", "a2000", "a4000"],
             "additionalProperties": false,
             "properties": {
@@ -130,7 +130,7 @@ and roomestim's Python emitter validate against a single source of truth.
 }
 ```
 
-SHA256: `a0d45fd1290cd3a48648954266228a595f9a873b5f2d471a18dbe85188570024`
+SHA256: `057b534e816c70992c7237a4c8d54c9f4186ae436b38a6e310e714d4591f1085`
 
 (Computed at roomestim v0.3 HEAD via `sha256sum proto/room_schema.json`.)
 
