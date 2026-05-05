@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.claude/
+.env
+dist/
+build/
+*.egg-info/
+
+# Real-room scan fixtures (large; manual download)
+tests/fixtures/lab_real.usdz
+tests/fixtures/lab_real_*.json
+tests/fixtures/lab_real_*.yaml
+
+# OMC ephemeral session/replay state. Plans/specs/decisions under .omc/ are kept;
+# per-session runtime files are not.
+.omc/state/
+.omc/logs/
+.omc/research/
+.omc/sessions/
+.omc/notepad.md
+.omc/project-memory.json

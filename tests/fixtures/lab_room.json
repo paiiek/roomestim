@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "category": "room",
+  "label": "lab_room_synthetic",
+  "dimensions": {"width": 5.0, "depth": 4.0, "height": 2.85},
+  "walls": [
+    {
+      "label": "wall_0",
+      "category": "wall",
+      "transform": [[1, 0, 0, 0.0], [0, 1, 0, 1.425], [0, 0, 1, -2.0], [0, 0, 0, 1]],
+      "dimensions": [5.0, 2.85, 0.0],
+      "material_hint": "painted"
+    },
+    {
+      "label": "wall_1",
+      "category": "wall",
+      "transform": [[0, 0, 1, 2.5], [0, 1, 0, 1.425], [-1, 0, 0, 0.0], [0, 0, 0, 1]],
+      "dimensions": [4.0, 2.85, 0.0],
+      "material_hint": "painted"
+    },
+    {
+      "label": "wall_2",
+      "category": "wall",
+      "transform": [[-1, 0, 0, 0.0], [0, 1, 0, 1.425], [0, 0, -1, 2.0], [0, 0, 0, 1]],
+      "dimensions": [5.0, 2.85, 0.0],
+      "material_hint": "painted"
+    },
+    {
+      "label": "wall_3",
+      "category": "wall",
+      "transform": [[0, 0, -1, -2.5], [0, 1, 0, 1.425], [1, 0, 0, 0.0], [0, 0, 0, 1]],
+      "dimensions": [4.0, 2.85, 0.0],
+      "material_hint": "painted"
+    }
+  ],
+  "floors": [
+    {
+      "label": "floor_0",
+      "category": "floor",
+      "polygon": [
+        [-2.5, 0.0, -2.0],
+        [2.5, 0.0, -2.0],
+        [2.5, 0.0, 2.0],
+        [-2.5, 0.0, 2.0]
+      ],
+      "material_hint": "wood"
+    }
+  ],
+  "ceilings": [
+    {
+      "label": "ceiling_0",
+      "category": "ceiling",
+      "polygon": [
+        [-2.5, 2.85, -2.0],
+        [2.5, 2.85, -2.0],
+        [2.5, 2.85, 2.0],
+        [-2.5, 2.85, 2.0]
+      ],
+      "material_hint": "acoustic_tile"
+    }
+  ]
+}

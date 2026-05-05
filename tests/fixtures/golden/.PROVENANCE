@@ -1,0 +1,64 @@
+# Provenance for tests/fixtures/golden/place_vbap_ring_n8_default.yaml
+#
+# This fixture is the byte-frozen v0.1 output of:
+#
+#   from roomestim.place.vbap import place_vbap_ring
+#   from roomestim.export.layout_yaml import write_layout_yaml
+#   write_layout_yaml(place_vbap_ring(n=8, radius_m=2.0, el_deg=0.0), out)
+#
+# Generated 2026-05-05, before the v0.1.1 phase_offset_deg parameter was
+# added to vbap.py (Step 0 of .omc/plans/v0.1.1-closeout.md).
+#
+# Plan §5 R5 (commit-ordering proof of pre-edit-ness) could not be honoured
+# via git history because roomestim was not under version control at the
+# time of the closeout. R5 is therefore DOWNGRADED to a hash-based proof,
+# anchored by the two SHA256 values below. Anyone can verify that the
+# committed golden file matches the pre-edit code path:
+#
+#   1. Replace the body of `_equal_angle_ring` in roomestim/place/vbap.py
+#      with the verbatim pre-edit text whose SHA256 is recorded under
+#      pre_edit_source_sha256 below (or revert that function via git blame
+#      to the v0.1.1 boundary commit).
+#   2. Re-run the snippet at the top of this file.
+#   3. The output YAML's SHA256 must equal golden_sha256 below.
+#
+# A drift between the test path and the recorded pre-edit code is
+# detectable as a hash mismatch in step 3.
+#
+# golden_sha256:           file = place_vbap_ring_n8_default.yaml (this dir)
+# pre_edit_source_sha256:  file = pre-edit `_equal_angle_ring` function body,
+#                          UTF-8 encoded, copied verbatim from v0.1 HEAD
+#                          (function signature line through `return speakers`).
+
+golden_sha256: 2caea92b7b50730fe6dae5377b35971d768e7de0f9993b8551ca31b2d66b7486
+pre_edit_source_sha256: e331659c9dba4c91782d489bbeaa976615aa561f5ea1c183d132042870244269
+
+# The pre-edit source text (for offline verification — the same bytes whose
+# SHA256 is recorded above):
+# ---8<--- BEGIN PRE-EDIT _equal_angle_ring ---8<---
+# def _equal_angle_ring(
+#     n: int, *, radius_m: float, el_deg: float, channel_offset: int
+# ) -> list[PlacedSpeaker]:
+#     """Build ``n`` speakers on an equal-angle ring at elevation ``el_deg``.
+#
+#     Channels are ``channel_offset+1 .. channel_offset+n`` monotonically.
+#     Az angles are ``i * 360°/n`` for ``i in range(n)``.
+#     """
+#     speakers: list[PlacedSpeaker] = []
+#     for i in range(n):
+#         az_deg = (i * 360.0) / n
+#         x, y, z = yaml_speaker_to_cartesian(az_deg, el_deg, radius_m)
+#         position = Point3(x=x, y=y, z=z)
+#         aim = _unit_aim_to_listener(position)
+#         speakers.append(
+#             PlacedSpeaker(
+#                 channel=channel_offset + i + 1,
+#                 position=position,
+#                 aim_direction=aim,
+#             )
+#         )
+#     return speakers
+# ---8<--- END PRE-EDIT _equal_angle_ring ---8<---
+#
+# (To regenerate the pre_edit_source_sha256: paste the function body above
+# WITHOUT the `# ` prefixes into a file as raw text, then `sha256sum` it.)

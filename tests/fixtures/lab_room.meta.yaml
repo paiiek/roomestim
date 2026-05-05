@@ -1,0 +1,7 @@
+name: lab_room_synthetic
+ceiling_height_m: 2.85          # +/- 10 cm tolerance
+floor_area_m2: 20.0             # 5x4 = 20 +/- 5%
+wall_count: 4                   # >= 4
+listener_centroid:              # +/- 10 cm tolerance when present
+  x: 0.0
+  z: 0.0

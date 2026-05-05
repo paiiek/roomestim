@@ -1,0 +1,63 @@
+# Template for tests/fixtures/lab_real_groundtruth.yaml — A10 acceptance gate.
+#
+# After the manual lab capture session (decisions.md D8/D9):
+#   1. Drop tests/fixtures/lab_real.usdz from the iPad RoomPlan/Polycam scan.
+#   2. Tape-measure each speaker's az/el/dist relative to the listener centroid
+#      and each room corner's (x, z) in the same listener-frame.
+#   3. Copy this file to lab_real_groundtruth.yaml (drop the .template suffix).
+#   4. Replace every TODO value with the measured value.
+#   5. Run `pytest -m lab tests/test_acceptance_lab_room.py`.
+#
+# Field set consumed by tests/test_acceptance_lab_room.py — keep keys/types as-is:
+#   speakers[i].channel  (int, 1..N monotonic)
+#   speakers[i].az_deg   (float, degrees, listener-frame)
+#   speakers[i].el_deg   (float, degrees, listener-frame; +up)
+#   speakers[i].dist_m   (float, metres, listener-frame radial)
+#   room.corner_positions[i].x  (float, metres, listener-frame)
+#   room.corner_positions[i].z  (float, metres, listener-frame)
+#
+# Tolerances enforced by the acceptance test (decisions.md D8):
+#   * az_deg:    ±5° per speaker
+#   * dist_m:    ±0.10 m per speaker
+#   * corner:    <0.10 m per corner (Euclidean in xz)
+
+speakers:
+  - channel: 1
+    az_deg: 0.0    # TODO: replace with tape-measured value
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 2
+    az_deg: 45.0   # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 3
+    az_deg: 90.0   # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 4
+    az_deg: 135.0  # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 5
+    az_deg: 180.0  # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 6
+    az_deg: -135.0 # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 7
+    az_deg: -90.0  # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+  - channel: 8
+    az_deg: -45.0  # TODO
+    el_deg: 0.0    # TODO
+    dist_m: 2.0    # TODO
+
+room:
+  corner_positions:
+    - {x: -2.5, z: -2.0}  # TODO: tape-measured corner 0 (xz, listener-frame)
+    - {x:  2.5, z: -2.0}  # TODO: corner 1
+    - {x:  2.5, z:  2.0}  # TODO: corner 2
+    - {x: -2.5, z:  2.0}  # TODO: corner 3

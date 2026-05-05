@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://roomestim/proto/room_schema.json",
+  "title": "RoomModel (Stage 2 LOCKED, strict)",
+  "type": "object",
+  "required": ["version", "name", "ceiling_height_m", "floor_polygon", "listener_area", "surfaces"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string", "const": "0.1" },
+    "name": { "type": "string", "minLength": 1 },
+    "schema": { "type": "string", "format": "uri" },
+    "ceiling_height_m": { "type": "number", "exclusiveMinimum": 0, "maximum": 30.0 },
+    "floor_polygon": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/point2" }
+    },
+    "listener_area": {
+      "type": "object",
+      "required": ["centroid", "polygon", "height_m"],
+      "additionalProperties": false,
+      "properties": {
+        "centroid": { "$ref": "#/$defs/point2" },
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/point2" }
+        },
+        "height_m": { "type": "number", "exclusiveMinimum": 0, "maximum": 3.0 }
+      }
+    },
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "material", "absorption_500hz", "polygon"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["wall", "floor", "ceiling"] },
+          "material": {
+            "type": "string",
+            "enum": [
+              "wall_painted",
+              "wall_concrete",
+              "wood_floor",
+              "carpet",
+              "glass",
+              "ceiling_acoustic_tile",
+              "ceiling_drywall",
+              "unknown"
+            ]
+          },
+          "absorption_500hz": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "polygon": {
+            "type": "array",
+            "minItems": 3,
+            "items": { "$ref": "#/$defs/point3" }
+          }
+        }
+      }
+    },
+    "mount_surfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["surface_index"],
+        "additionalProperties": false,
+        "properties": {
+          "surface_index": { "type": "integer", "minimum": 0 },
+          "inset_m": { "type": "number", "minimum": 0.0, "default": 0.10 }
+        }
+      }
+    },
+    "wfs_baseline_edge": {
+      "type": "object",
+      "required": ["surface_index", "t0", "t1"],
+      "additionalProperties": false,
+      "properties": {
+        "surface_index": { "type": "integer", "minimum": 0 },
+        "t0": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "t1": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      }
+    }
+  },
+  "$defs": {
+    "point2": {
+      "type": "object",
+      "required": ["x", "z"],
+      "additionalProperties": false,
+      "properties": { "x": { "type": "number" }, "z": { "type": "number" } }
+    },
+    "point3": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    }
+  }
+}
