@@ -256,3 +256,70 @@ Forcing a choice without evidence would fabricate rationale or lock a structure 
 
 **Cross-ref**: D7, D12, ADR 0008, `docs/perf_verification_e2e_2026-05-06.md`.
 
+---
+
+## D14 — Eyring shipped as parallel predictor; ACE_ROOM_GEOMETRY byte-audit deferred
+
+**Date**: 2026-05-06
+
+**Question**: D13 scheduled three v0.4 audit/work items: (a) audit `ACE_ROOM_GEOMETRY`
+material assignments per the ACE corpus instructions PDF, (b) consider Eyring or
+Millington-Sette correction for high-absorption rooms, (c) revisit the
+`MaterialAbsorptionBands` coefficients if (a) showed assignments are correct yet errors
+persist. Which of these ship at v0.4.0?
+
+**Decision**:
+- **(b) ships** — `eyring_rt60` and `eyring_rt60_per_band` are added to
+  `roomestim/reconstruct/materials.py` as parallel predictors. Sabine remains the default.
+  Per-band Sabine and per-band Eyring are now both reported by the gated E2E test, with
+  the `eyring ≤ sabine + 1e-9` invariant enforced at runtime per Vorländer 2020 §4.2.
+- **(a) DEFERRED** — the local ACE corpus distribution at `/tmp/ace_corpus/` has no
+  machine-readable room metadata. The canonical room-by-room geometry + material
+  assignment table is **Eaton 2016 TASLP Table I** (Eaton, J., Gaubitch, N. D., Moore,
+  A. H., & Naylor, P. A., "Estimation of room acoustic parameters: The ACE Challenge",
+  IEEE/ACM TASLP 24(10), 1681–1693). That paper is not in the local corpus; the local
+  distribution only carries codename → friendly-name mapping in
+  `software/Software/private/getACECorpusData.m`. Byte-cross-check is therefore deferred
+  until the paper or its Table I extract is available.
+- **(c) DEFERRED** — without (a) confirmed, revisiting `MaterialAbsorptionBands` would
+  swap one source of uncertainty for another. Deferred to v0.5.
+
+**Empirical findings from v0.4 E2E run** (Sabine and Eyring at 500 Hz, abs error in s):
+- Eyring shifts every room toward Sabine at low ᾱ (Taylor limit holds; ratios ≈ 1) and
+  meaningfully reduces error only on heavily-absorbed rooms.
+- For the 7 ACE rooms, the largest Sabine→Eyring 500 Hz delta is ≤ 0.08 s. The dominant
+  error source is therefore **NOT** the predictor choice; it is some combination of
+  material assignment (D13 hypothesis) and the bare-walls model missing
+  soft-furnishings/occupants absorption budget. Specific empirical numbers are recorded
+  in the auto-regenerated `docs/perf_verification_e2e_2026-05-06.md` and analysed in
+  `.omc/plans/v0.4-audit-findings.md`.
+
+**Hypothesis (NOT confirmed)**: Lecture_2 under-prediction is consistent with
+`ceiling_acoustic_tile` being the wrong assignment — flat painted ceiling
+(`ceiling_drywall`, lower absorption) would push Sabine/Eyring upward toward the
+measured 1.343 s. Cannot be confirmed without Eaton 2016 Table I; see audit-findings
+Finding 3.
+
+**Hypothesis (NOT confirmed)**: Building_Lobby/Lecture_1/Office_1/Office_2 over-prediction
+is consistent with the bare-walls model missing absorption from soft furnishings, chairs,
+desks, books, and (during measurement) any seated occupants. Two follow-ups are deferred
+to a v0.5 ADR: (i) coefficient revision for `wall_painted` / `wood_floor` /
+`ceiling_drywall`, (ii) optional `MISC_SOFT` MaterialLabel enum extension for
+furnishings. See audit-findings Finding 4.
+
+**Why no rollback of v0.3 material table**: v0.4 ships an additive predictor without
+disturbing existing coefficients or schema. v0.3.1 byte-equality (74 default-lane tests)
+holds. Rolling back coefficients now would (1) churn the schema clients reading
+`absorption_bands` and (2) substitute a guess for a guess until (a) is confirmed.
+
+**Reverse if**:
+- Eaton 2016 Table I becomes available and disagrees with `ACE_ROOM_GEOMETRY` —
+  patch table in v0.4.x and re-run E2E.
+- An external roomestim consumer reports Eyring breaking their workflow — v0.4.x patch.
+- After (a) confirms assignments are correct, errors >50% persist on >2 rooms with
+  Eyring — that would falsify both the predictor hypothesis and the assignment
+  hypothesis; revisit `MaterialAbsorptionBands` at v0.5 with explicit ADR.
+
+**Cross-ref**: D7, D12, D13, ADR 0008, ADR 0009, `.omc/plans/v0.4-audit-findings.md`,
+`docs/perf_verification_e2e_2026-05-06.md`, `roomestim/reconstruct/materials.py`.
+

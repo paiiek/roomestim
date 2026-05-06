@@ -7,6 +7,13 @@ work in the reconstruction layer.
 The synthetic-shoebox reference RT60 (D8 / ralplan-iter1-resolutions.md fix 3)
 is computed analytically below as the v0.1 acceptance source-of-truth so that
 A11 does not depend on a real lab capture.
+
+v0.4 also exposes Eyring as a parallel RT60 predictor (Eyring 1930 JASA;
+Vorlaender 2020 §4.2). Eyring corrects Sabine's overestimate in heavily-absorbed
+rooms by replacing the linear ``alpha_total`` denominator with
+``-S_total * ln(1 - alpha_bar)``, where ``alpha_bar`` is the surface-area-weighted
+mean absorption. Sabine remains the default predictor in CLI and adapter
+codepaths; Eyring is callable-level only at v0.4.
 """
 
 from __future__ import annotations
@@ -18,6 +25,8 @@ __all__ = [
     "MaterialLabel",
     "SABINE_REFERENCE_SHOEBOX_RT60_S",
     "SABINE_REFERENCE_SHOEBOX_RT60_PER_BAND_S",
+    "eyring_rt60",
+    "eyring_rt60_per_band",
     "sabine_rt60",
     "sabine_rt60_per_band",
 ]
@@ -126,4 +135,102 @@ def sabine_rt60_per_band(
                 "cannot compute finite RT60"
             )
         out[band_hz] = 0.161 * volume_m3 / total_absorption
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Eyring RT60 (Eyring 1930 JASA; Vorlaender 2020 §4.2) — parallel predictor
+# --------------------------------------------------------------------------- #
+
+
+def eyring_rt60(
+    volume_m3: float,
+    surface_areas: dict[MaterialLabel, float],
+) -> float:
+    """Eyring RT60 estimate at 500 Hz (parallel predictor; Sabine remains default).
+
+    Formula (Eyring 1930 JASA; Vorlaender 2020 §4.2):
+
+        RT60 = 0.161 * V / (-S_total * ln(1 - alpha_bar))
+
+    where ``S_total = sum(surface_areas.values())`` and
+    ``alpha_bar = sum_i(S_i * a_i) / S_total`` is the surface-area-weighted
+    mean absorption at 500 Hz (from
+    :data:`roomestim.model.MaterialAbsorption`). In the low-absorption limit
+    ``-ln(1-x) -> x`` so Eyring converges to Sabine; in the high-absorption
+    limit Eyring is strictly smaller, undoing Sabine's overestimate in
+    heavily-absorbed rooms.
+
+    Raises
+    ------
+    ValueError
+        If ``surface_areas`` is empty or ``S_total <= 0`` (no surfaces),
+        if total absorption is zero (all-reflective room), or if the
+        weighted mean absorption ``alpha_bar >= 1.0`` (Eyring undefined).
+    """
+    import math
+
+    s_total: float = sum(surface_areas.values())
+    if s_total <= 0.0:
+        raise ValueError(
+            "eyring_rt60: surface_areas is empty / S_total is zero"
+        )
+    weighted_alpha_sum: float = 0.0
+    for material, area in surface_areas.items():
+        coefficient = MaterialAbsorption[material]
+        weighted_alpha_sum += area * coefficient
+    if weighted_alpha_sum <= 0.0:
+        raise ValueError(
+            "eyring_rt60: total absorption is zero; cannot compute finite RT60"
+        )
+    alpha_bar: float = weighted_alpha_sum / s_total
+    if alpha_bar >= 1.0:
+        raise ValueError(
+            f"eyring_rt60: alpha_bar={alpha_bar:.4f} >= 1.0; "
+            "Eyring undefined for fully-absorptive alpha_bar"
+        )
+    return 0.161 * volume_m3 / (-s_total * math.log(1.0 - alpha_bar))
+
+
+def eyring_rt60_per_band(
+    volume_m3: float,
+    surface_areas: dict[MaterialLabel, float],
+) -> dict[int, float]:
+    """Per-octave-band Eyring RT60 estimate (parallel predictor).
+
+    Returns ``{band_hz: rt60_seconds}`` for each band in
+    :data:`roomestim.model.OCTAVE_BANDS_HZ`. Uses
+    :data:`roomestim.model.MaterialAbsorptionBands`.
+
+    Raises :class:`ValueError` per band if surfaces are empty/zero,
+    if the per-band absorption is zero, or if the per-band ``alpha_bar >= 1``.
+    """
+    import math
+
+    from roomestim.model import MaterialAbsorptionBands, OCTAVE_BANDS_HZ
+
+    s_total: float = sum(surface_areas.values())
+    if s_total <= 0.0:
+        raise ValueError(
+            "eyring_rt60_per_band: surface_areas is empty / S_total is zero"
+        )
+
+    out: dict[int, float] = {}
+    for band_idx, band_hz in enumerate(OCTAVE_BANDS_HZ):
+        weighted_alpha_sum: float = 0.0
+        for material, area in surface_areas.items():
+            coefficient = MaterialAbsorptionBands[material][band_idx]
+            weighted_alpha_sum += area * coefficient
+        if weighted_alpha_sum <= 0.0:
+            raise ValueError(
+                f"eyring_rt60_per_band: total absorption is zero in band {band_hz} Hz; "
+                "cannot compute finite RT60"
+            )
+        alpha_bar: float = weighted_alpha_sum / s_total
+        if alpha_bar >= 1.0:
+            raise ValueError(
+                f"eyring_rt60_per_band: alpha_bar={alpha_bar:.4f} >= 1.0 in band {band_hz} Hz; "
+                "Eyring undefined for fully-absorptive alpha_bar"
+            )
+        out[band_hz] = 0.161 * volume_m3 / (-s_total * math.log(1.0 - alpha_bar))
     return out

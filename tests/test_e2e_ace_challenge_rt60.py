@@ -32,7 +32,12 @@ from roomestim.adapters.ace_challenge import (
     load_room,
 )
 from roomestim.model import OCTAVE_BANDS_HZ
-from roomestim.reconstruct.materials import sabine_rt60, sabine_rt60_per_band
+from roomestim.reconstruct.materials import (
+    eyring_rt60,
+    eyring_rt60_per_band,
+    sabine_rt60,
+    sabine_rt60_per_band,
+)
 
 E2E_DIR_ENV = "ROOMESTIM_E2E_DATASET_DIR"
 # Pin report path to repo root so the test is hermetic regardless of pytest CWD.
@@ -71,8 +76,9 @@ def test_e2e_rt60_characterisation(capsys):
     if not room_ids:
         pytest.skip(f"{dataset_dir} contains zero usable rooms.")
 
-    rows_500hz: list[tuple[str, float, float, float]] = []  # (room_id, predicted, measured, err)
-    rows_per_band: dict[int, list[tuple[str, float, float, float]]] = {
+    # Row tuples: (room_id, sabine, eyring, measured, err_sabine, err_eyring)
+    rows_500hz: list[tuple[str, float, float, float, float, float]] = []
+    rows_per_band: dict[int, list[tuple[str, float, float, float, float, float]]] = {
         b: [] for b in OCTAVE_BANDS_HZ
     }
 
@@ -81,24 +87,52 @@ def test_e2e_rt60_characterisation(capsys):
         areas = _surface_areas_by_material(case.room)
         volume = _room_volume(case.room)
 
-        predicted_500hz = sabine_rt60(volume, areas)
-        predicted_per_band = sabine_rt60_per_band(volume, areas)
+        sabine_500hz = sabine_rt60(volume, areas)
+        eyring_500hz = eyring_rt60(volume, areas)
+        sabine_per_band = sabine_rt60_per_band(volume, areas)
+        eyring_per_band = eyring_rt60_per_band(volume, areas)
 
-        e500 = predicted_500hz - case.measured_rt60_500hz_s
-        rows_500hz.append((room_id, predicted_500hz, case.measured_rt60_500hz_s, e500))
+        # Vorländer 2020 §4.2 monotonicity: Eyring ≤ Sabine per room and per band.
+        assert eyring_500hz <= sabine_500hz + 1e-9, (
+            f"{room_id}: Eyring {eyring_500hz:.6f} > Sabine {sabine_500hz:.6f} "
+            "violates Vorländer 2020 §4.2 monotonicity invariant"
+        )
+        for band in OCTAVE_BANDS_HZ:
+            sb = sabine_per_band[band]
+            eb = eyring_per_band[band]
+            assert eb <= sb + 1e-9, (
+                f"{room_id} @ {band} Hz: Eyring {eb:.6f} > Sabine {sb:.6f} "
+                "violates Vorländer 2020 §4.2 monotonicity invariant"
+            )
 
-        for band, predicted in predicted_per_band.items():
+        err_sab_500 = sabine_500hz - case.measured_rt60_500hz_s
+        err_eyr_500 = eyring_500hz - case.measured_rt60_500hz_s
+        rows_500hz.append(
+            (
+                room_id,
+                sabine_500hz,
+                eyring_500hz,
+                case.measured_rt60_500hz_s,
+                err_sab_500,
+                err_eyr_500,
+            )
+        )
+
+        for band in OCTAVE_BANDS_HZ:
             measured = case.measured_rt60_per_band_s.get(band)
             if measured is not None:
+                sb = sabine_per_band[band]
+                eb = eyring_per_band[band]
                 rows_per_band[band].append(
-                    (room_id, predicted, measured, predicted - measured)
+                    (room_id, sb, eb, measured, sb - measured, eb - measured)
                 )
 
         print(
             f"[{room_id}] V={volume:.1f}m³ "
-            f"500Hz: pred={predicted_500hz:.3f}s "
+            f"500Hz: sabine={sabine_500hz:.3f}s eyring={eyring_500hz:.3f}s "
             f"meas={case.measured_rt60_500hz_s:.3f}s "
-            f"err={e500:+.3f}s"
+            f"err_sab={err_sab_500:+.3f}s "
+            f"err_eyr={err_eyr_500:+.3f}s"
         )
 
     # Write characterisation report to docs/
@@ -106,41 +140,49 @@ def test_e2e_rt60_characterisation(capsys):
 
     # Invariants only — NO magnitude threshold
     assert len(rows_500hz) >= 1, "expected ≥1 room evaluated when env var is set"
-    for room_id, pred, meas, _err in rows_500hz:
-        assert pred > 0.0, f"{room_id}: predicted RT60 must be positive"
+    for room_id, sab, eyr, meas, _es, _ee in rows_500hz:
+        assert sab > 0.0, f"{room_id}: Sabine RT60 must be positive"
+        assert eyr > 0.0, f"{room_id}: Eyring RT60 must be positive"
         assert meas > 0.0, f"{room_id}: measured RT60 must be positive"
 
 
 def _write_report(
     path: Path,
     ds_name: str,
-    rows_500hz: list[tuple[str, float, float, float]],
-    rows_per_band: dict[int, list[tuple[str, float, float, float]]],
+    rows_500hz: list[tuple[str, float, float, float, float, float]],
+    rows_per_band: dict[int, list[tuple[str, float, float, float, float, float]]],
 ) -> None:
     """Emit a markdown characterisation report. NO accuracy threshold."""
     lines = [
         f"# E2E RT60 verification — {ds_name}",
         "",
         "- Generated: 2026-05-06 by `tests/test_e2e_ace_challenge_rt60.py`",
-        "- Predictor: roomestim v0.3 Sabine RT60 (mid-band 500 Hz) + sabine_rt60_per_band (octave bands)",
+        "- Predictor: roomestim v0.4 Sabine + Eyring RT60 (mid-band 500 Hz + octave bands)",
         "- Reference: ACE Challenge corpus tabulated T60 (per dataset_dir CSV)",
         "- Framing: characterisation, NOT a pass/fail gate. Per-room error in seconds.",
         "",
         "## Per-room 500 Hz error",
         "",
-        "| Room | Predicted (s) | Measured (s) | Error (s) |",
-        "| --- | ---: | ---: | ---: |",
+        "| Room | Sabine (s) | Eyring (s) | Measured (s) | Err Sabine (s) | Err Eyring (s) |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
-    for r, p, m, e in rows_500hz:
-        lines.append(f"| {r} | {p:.3f} | {m:.3f} | {e:+.3f} |")
+    for r, sab, eyr, m, es, ee in rows_500hz:
+        lines.append(
+            f"| {r} | {sab:.3f} | {eyr:.3f} | {m:.3f} | {es:+.3f} | {ee:+.3f} |"
+        )
 
     if rows_500hz:
-        errs = [e for _, _, _, e in rows_500hz]
-        mean_err = statistics.mean(errs)
-        max_err = max(errs, key=abs)
+        errs_sab = [es for _, _, _, _, es, _ in rows_500hz]
+        errs_eyr = [ee for _, _, _, _, _, ee in rows_500hz]
+        mean_err_sab = statistics.mean(errs_sab)
+        max_err_sab = max(errs_sab, key=abs)
+        mean_err_eyr = statistics.mean(errs_eyr)
+        max_err_eyr = max(errs_eyr, key=abs)
         lines.append("")
-        lines.append(f"- mean error: {mean_err:+.3f} s")
-        lines.append(f"- max abs error: {max_err:+.3f} s")
+        lines.append(f"- mean error Sabine: {mean_err_sab:+.3f} s")
+        lines.append(f"- max abs error Sabine: {max_err_sab:+.3f} s")
+        lines.append(f"- mean error Eyring: {mean_err_eyr:+.3f} s")
+        lines.append(f"- max abs error Eyring: {max_err_eyr:+.3f} s")
 
     lines.append("")
     lines.append("## Per-band errors")
@@ -151,14 +193,21 @@ def _write_report(
             continue
         lines.append(f"### {band} Hz")
         lines.append("")
-        lines.append("| Room | Predicted (s) | Measured (s) | Error (s) |")
-        lines.append("| --- | ---: | ---: | ---: |")
-        for r, p, m, e in rows:
-            lines.append(f"| {r} | {p:.3f} | {m:.3f} | {e:+.3f} |")
-        errs = [e for _, _, _, e in rows]
+        lines.append(
+            "| Room | Sabine (s) | Eyring (s) | Measured (s) | Err Sabine (s) | Err Eyring (s) |"
+        )
+        lines.append("| --- | ---: | ---: | ---: | ---: | ---: |")
+        for r, sab, eyr, m, es, ee in rows:
+            lines.append(
+                f"| {r} | {sab:.3f} | {eyr:.3f} | {m:.3f} | {es:+.3f} | {ee:+.3f} |"
+            )
+        errs_sab = [es for _, _, _, _, es, _ in rows]
+        errs_eyr = [ee for _, _, _, _, _, ee in rows]
         lines.append("")
-        lines.append(f"- mean error: {statistics.mean(errs):+.3f} s")
-        lines.append(f"- max abs error: {max(errs, key=abs):+.3f} s")
+        lines.append(f"- mean error Sabine: {statistics.mean(errs_sab):+.3f} s")
+        lines.append(f"- max abs error Sabine: {max(errs_sab, key=abs):+.3f} s")
+        lines.append(f"- mean error Eyring: {statistics.mean(errs_eyr):+.3f} s")
+        lines.append(f"- max abs error Eyring: {max(errs_eyr, key=abs):+.3f} s")
         lines.append("")
 
     lines.append("## Caveats")
@@ -168,7 +217,9 @@ def _write_report(
         "Sabine assumes a diffuse field; real rooms violate this at low frequencies "
         "and in heavily-absorbed spaces (Vorländer 2020 §4). Material labels are "
         "inferred from ACE corpus informal descriptions (carpet/hard floor); mapping "
-        "to roomestim's closed MaterialLabel enum involves judgment calls."
+        "to roomestim's closed MaterialLabel enum involves judgment calls. "
+        "Per-room and per-band `eyring ≤ sabine + 1e-9` is asserted at runtime "
+        "(Vorländer 2020 §4.2)."
     )
 
     path.parent.mkdir(parents=True, exist_ok=True)
