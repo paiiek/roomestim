@@ -220,3 +220,39 @@ Forcing a choice without evidence would fabricate rationale or lock a structure 
 
 **Cross-ref**: ADR 0008 (`docs/adr/0008-octave-band-absorption.md`), D7, spec.md §3 (workstream d).
 
+---
+
+## D13 — D12 reverse-trigger fired empirically; v0.4 material-table revisit scheduled (no immediate rollback)
+
+**Date**: 2026-05-06
+
+**Question**: The 7-room ACE Challenge characterisation run (`docs/perf_verification_e2e_2026-05-06.md`, generated against `/tmp/ace_corpus`) shows 500 Hz absolute errors above 50% of measured for 5 of 7 rooms. D12 lists this as a "reverse if" trigger. Do we roll back the v0.3 octave-band table now?
+
+**Decision**: NO — keep v0.3 shipped material table. Schedule a v0.4 material-table revisit and a per-room material-assignment audit. The characterisation test stays a characterisation (no magnitude assert), as designed.
+
+**Empirical findings (500 Hz)**:
+- Building_Lobby: +239% (predicted 2.022 s vs measured 0.597 s)
+- Lecture_1: +214% (predicted 1.762 s vs measured 0.561 s)
+- Office_1: +129% (predicted 0.864 s vs measured 0.377 s)
+- Office_2: +96% (predicted 0.887 s vs measured 0.452 s)
+- Lecture_2: −50% (predicted 0.673 s vs measured 1.343 s)
+- Meeting_1: +17%, Meeting_2: +15% — within typical Sabine bounds.
+
+**Why no rollback**:
+1. Two of the five large errors (Lecture_2 under-prediction; Building_Lobby/Lecture_1 over-prediction in lightly-damped large rooms) point at material-assignment guesses in `ACE_ROOM_GEOMETRY`, not at the material-coefficient table. The audit must come first; rolling back the table without it would be churn.
+2. Sabine's diffuse-field assumption is known to fail in (a) lightly-damped rooms (Office_1/2 with mostly hard wall_painted surfaces give very small total absorption A, blowing up RT60 = 0.161 V/A) and (b) very large volumes (Lecture_2). This is a physics limitation, not a coefficient error.
+3. The honesty-marker policy (D12, M1) was explicitly designed to admit these values are representative not verbatim. The doc records the actual error envelope; downstream consumers can decide.
+4. v0.3 shipped opt-in via `--octave-band`; A12 byte-equality is preserved by default. No production code path is degraded.
+
+**v0.4 work scheduled**:
+- Audit `ACE_ROOM_GEOMETRY` material assignments per ACE corpus instructions PDF (`/tmp/ace_corpus/ACE_Corpus_instructions_v01.pdf`); flag wrong-material rows.
+- Consider Eyring or Millington-Sette correction for high-absorption rooms (Vorländer 2020 §4.2).
+- If audit shows assignments are correct yet errors persist → revisit `MaterialAbsorptionBands` coefficients for `wall_painted`, `wood_floor`, `ceiling_drywall` first.
+- Re-run E2E; the report file will regenerate deterministically.
+
+**Reverse if**:
+- v0.4 audit shows the assignments ARE correct AND a coefficient revision still leaves >2 rooms with >50% error → reconsider whether Sabine is the right predictor at all (move to ray-tracing / image-source for v0.5).
+- An external consumer of the v0.3 schema reports that the optional `absorption` block, as shipped, leads them astray → emergency v0.3.x patch.
+
+**Cross-ref**: D7, D12, ADR 0008, `docs/perf_verification_e2e_2026-05-06.md`.
+
