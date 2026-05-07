@@ -6,6 +6,11 @@ canonicalization is enforced via :func:`canonicalize_ccw`.
 Material absorption table at 500 Hz mid-band per Vorländer 2020 *Auralization*
 Appx A. The same table is consumed by P4 reconstruction (`reconstruct/materials.py`)
 and the Sabine RT60 reference computation in `reconstruct/`.
+
+The `MISC_SOFT` row is a representative-not-verbatim schema slot reserved for
+adapter-emitted furnishings/occupants absorption budget (curtains, fabric panels,
+books, light upholstery). It is NOT a verbatim Vorländer Appx A row and NOT a
+per-furnishing-item physics model. See ADR 0011.
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ class MaterialLabel(str, Enum):
     CEILING_ACOUSTIC_TILE = "ceiling_acoustic_tile"
     CEILING_DRYWALL = "ceiling_drywall"
     UNKNOWN = "unknown"
+    MISC_SOFT = "misc_soft"
 
 
 # Mid-band 500 Hz absorption coefficients per Vorländer 2020,
@@ -59,6 +65,7 @@ MaterialAbsorption: dict[MaterialLabel, float] = {
     MaterialLabel.CEILING_ACOUSTIC_TILE: 0.55,
     MaterialLabel.CEILING_DRYWALL: 0.10,
     MaterialLabel.UNKNOWN: 0.10,
+    MaterialLabel.MISC_SOFT: 0.40,
 }
 
 OCTAVE_BANDS_HZ: tuple[int, ...] = (125, 250, 500, 1000, 2000, 4000)
@@ -89,6 +96,8 @@ MaterialAbsorptionBands: dict[MaterialLabel, tuple[float, float, float, float, f
     MaterialLabel.CEILING_DRYWALL:        (0.29, 0.10, 0.10, 0.04, 0.07, 0.09),
     # broadband fallback (synthetic; no Appx A row) — UNKNOWN stays flat at 0.10 across all bands
     MaterialLabel.UNKNOWN:                (0.10, 0.10, 0.10, 0.10, 0.10, 0.10),
+    # representative mid-band profile for mixed soft furnishings (curtains, fabric panels, books, light upholstery); not a verbatim Vorländer Appx A row. Schema slot reserved for adapter-emitted furnishings/occupants absorption budget — NOT a per-furnishing-item physics model. Reverse if ≥1 adapter starts emitting MISC_SOFT and downstream consumer reports magnitude wrong.
+    MaterialLabel.MISC_SOFT:              (0.20, 0.30, 0.40, 0.50, 0.60, 0.65),
 }
 
 

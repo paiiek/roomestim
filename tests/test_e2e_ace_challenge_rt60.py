@@ -42,7 +42,7 @@ from roomestim.reconstruct.materials import (
 E2E_DIR_ENV = "ROOMESTIM_E2E_DATASET_DIR"
 # Pin report path to repo root so the test is hermetic regardless of pytest CWD.
 REPORT_PATH = (
-    Path(__file__).resolve().parents[1] / "docs" / "perf_verification_e2e_2026-05-06.md"
+    Path(__file__).resolve().parents[1] / "docs" / "perf_verification_e2e_2026-05-07.md"
 )
 
 
@@ -156,8 +156,8 @@ def _write_report(
     lines = [
         f"# E2E RT60 verification — {ds_name}",
         "",
-        "- Generated: 2026-05-06 by `tests/test_e2e_ace_challenge_rt60.py`",
-        "- Predictor: roomestim v0.4 Sabine + Eyring RT60 (mid-band 500 Hz + octave bands)",
+        "- Generated: 2026-05-07 by `tests/test_e2e_ace_challenge_rt60.py`",
+        "- Predictor: roomestim v0.5 Sabine + Eyring RT60 (mid-band 500 Hz + octave bands)",
         "- Reference: ACE Challenge corpus tabulated T60 (per dataset_dir CSV)",
         "- Framing: characterisation, NOT a pass/fail gate. Per-room error in seconds.",
         "",

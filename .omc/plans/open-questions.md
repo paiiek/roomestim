@@ -13,3 +13,15 @@
 - [x] **(D7)** Should `room.yaml` include octave-band absorption coefficients for v0.1, or is single mid-band 500 Hz sufficient given ±20% RT60 acceptance tolerance? — **Decision: single mid-band 500 Hz only; octave-band defers to v0.3.** Reverse if engine reverb integration requires octave-band data.
 
 All v0.1 implementation decisions are now locked. New questions raised during P0–P7 should be appended to a new section dated when raised.
+
+---
+
+## v0.5-design — 2026-05-06
+
+> **Status update 2026-05-07**: All 5 questions RESOLVED via locked scope (partial-A + B). Resolutions recorded inline below; full rationale in `.omc/plans/v0.5-design.md` §0a. New decision (D15) will be appended to `decisions.md` at v0.5.0 commit.
+
+- [x] **(OQ-1)** Eaton 2016 TASLP Table I — does the parallel `cwm:websearchwithme` research at `.omc/research/ace-table-i-acquisition.md` surface a viable acquisition path? — **Resolution: PARTIAL — dimensions (L×W×H) acquired from arXiv:1606.03365 Table 1 (TASLP supporting material, open access); materials remain TASLP-locked (paywalled). Scope locked to partial-A (dims-only) + B.** Reverse if TASLP material assignments later become available and disagree with current `ACE_ROOM_GEOMETRY` material strings.
+- [x] **(OQ-2)** F4b enum coefficients — is `MaterialAbsorption[MISC_SOFT] = 0.40` and the `(0.20, 0.30, 0.40, 0.50, 0.60, 0.65)` band profile acceptable as representative-not-verbatim under the v0.3 honesty-marker policy? — **Resolution: APPROVED — representative-not-verbatim with honesty marker matches v0.3 `MaterialAbsorptionBands` precedent; `MISC_SOFT` row required to preserve `band-2 == legacy scalar` invariant.** Reverse if ≥1 adapter starts emitting `MISC_SOFT` and downstream consumer reports magnitude wrong.
+- [x] **(OQ-3)** D14 reverse-trigger semantics — under Scenario A 5b, do we co-ship coefficient revision (a) or split (b)? — **Resolution: N/A under partial-A — D14 5b cannot evaluate "assignments correct" without F1 materials, so trigger does not fire. F4a stays DEFERRED.** Reverse if F1 materials acquired in v0.6+ window and 5b conditions then evaluate true.
+- [x] **(OQ-4)** Stage-2 schema flip (D8) — keep Stage-1 at v0.5? — **Resolution: KEEP STAGE-1 — D8 binds Stage-2 to A10 lab-capture which has not happened; non-negotiable, not just a default.** Reverse if A10 ships in v0.5 (it is not in scope).
+- [x] **(OQ-5)** ADR 0010+ numbering — confirm ordering. — **Resolution: ADR 0010 = ACE-geometry-verified (dims-only); ADR 0011 = MISC_SOFT-enum. Inverted from initial draft to put F1-partial headline first.** Reverse only if ADRs reordered before commit.

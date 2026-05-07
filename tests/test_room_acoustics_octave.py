@@ -184,3 +184,51 @@ def test_eyring_per_band_500hz_matches_scalar() -> None:
     per_band = eyring_rt60_per_band(56.0, sa)
     scalar = eyring_rt60(56.0, sa)
     assert per_band[500] == pytest.approx(scalar, rel=1e-12)
+
+
+# --------------------------------------------------------------------------- #
+# v0.5 MISC_SOFT enum extension (Finding 4b; ADR 0011)
+# --------------------------------------------------------------------------- #
+
+
+def test_misc_soft_in_material_label_enum() -> None:
+    """MaterialLabel.MISC_SOFT is a member with string value 'misc_soft'."""
+    assert MaterialLabel.MISC_SOFT.value == "misc_soft"
+    assert MaterialLabel.MISC_SOFT in set(MaterialLabel)
+
+
+def test_misc_soft_absorption_500hz_present_and_finite() -> None:
+    """MaterialAbsorption[MISC_SOFT] == 0.40 and is finite."""
+    import math
+
+    value = MaterialAbsorption[MaterialLabel.MISC_SOFT]
+    assert value == 0.40
+    assert math.isfinite(value)
+
+
+def test_misc_soft_band500_matches_legacy_scalar() -> None:
+    """MaterialAbsorptionBands[MISC_SOFT][2] == MaterialAbsorption[MISC_SOFT].
+
+    Reinforces the global band-2 ↔ legacy-scalar invariant
+    (test_band_a500_matches_legacy_scalar) for the new MISC_SOFT row.
+    """
+    band = MaterialAbsorptionBands[MaterialLabel.MISC_SOFT]
+    assert band[2] == MaterialAbsorption[MaterialLabel.MISC_SOFT]
+
+
+def test_misc_soft_in_sabine_rt60_smoke() -> None:
+    """Synthetic shoebox with one 10 m² MISC_SOFT surface returns finite positive RT60.
+
+    Other surfaces are CARPET / WALL_PAINTED so total absorption is non-zero
+    (sabine_rt60 raises on zero total absorption).
+    """
+    import math
+
+    sa = {
+        MaterialLabel.MISC_SOFT: 10.0,
+        MaterialLabel.WALL_PAINTED: 50.4,
+        MaterialLabel.WOOD_FLOOR: 20.0,
+    }
+    rt60 = sabine_rt60(56.0, sa)
+    assert math.isfinite(rt60)
+    assert rt60 > 0.0

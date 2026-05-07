@@ -9,7 +9,11 @@ Dataset citation
 Eaton, J., Gaubitch, N. D., Moore, A. H., & Naylor, P. A. (2016).
 Estimation of room acoustic parameters: The ACE Challenge.
 IEEE/ACM Transactions on Audio, Speech, and Language Processing, 24(10), 1681–1693.
-https://dl.acm.org/doi/10.1109/TASLP.2016.2577502
+https://dl.acm.org/doi/10.1109/TASLP.2016.2577502 (paywalled)
+
+Open-access supporting material: arXiv:1606.03365 (Table 1 used as the
+dimensional source-of-truth at v0.5; see in-module caveats below). Material
+assignments live only in the paywalled TASLP final and remain unverified.
 
 Corpus Zenodo mirror: https://zenodo.org/records/6257551 (CC-BY-ND 4.0)
 
@@ -43,17 +47,28 @@ from roomestim.model import (
 
 # --------------------------------------------------------------------------- #
 # Published ACE room geometry table
-# Source: ACE Challenge corpus README / room descriptions distributed with the
-# Zenodo archive (https://zenodo.org/records/6257551). Imperial College London
-# EEE building, 7 rooms.
+# Source: ACE Challenge corpus, Imperial College London EEE building, 7 rooms.
 #
-# Honesty caveat (Critic M1 precedent): values below were transcribed from the
-# corpus documentation but have NOT yet been cross-checked byte-for-byte
-# against the canonical README in the Zenodo archive. Treat as best-effort
-# representative shoebox dimensions; revise if the user's actual ACE
-# distribution disagrees with any row. The runtime adapter does not validate
-# these against the user's dataset_dir contents — only the per-band T60 values
-# are read from the user's CSVs (which raise FileNotFoundError if absent).
+# Honesty caveats (Critic M1 precedent):
+# - Dimensions (L, W, H): VERIFIED byte-for-byte against arXiv:1606.03365
+#   Table 1 (TASLP supporting material; open access; transcribed 2026-05-06).
+#   See `tests/fixtures/ace_eaton_2016_table_i_arxiv.csv` and the gated audit
+#   `tests/test_ace_geometry_audit.py`. Office_2 was patched at v0.5.0
+#   (W 3.50 → 3.22, H 3.00 → 2.94) — the only numerical correction in v0.5.0.
+# - Material assignments (`floor`, `walls`, `ceiling`): NOT yet cross-checked.
+#   The Eaton 2016 TASLP final paper is paywalled and the open arXiv preprint
+#   does not reproduce the materials. Material verification is DEFERRED to
+#   v0.6+ pending TASLP access. Treat the strings below as best-effort
+#   transcription from corpus README documentation.
+# - L/W convention: roomestim keeps "longer dimension as L" for adapter
+#   consistency. arXiv 1606.03365 Table 1 lists Office_1 / Office_2 /
+#   Building_Lobby with the shorter dimension first; products and V_m³ are
+#   identical to the arXiv ordering. Only Office_2 dimensional drift
+#   (W=3.50 → W=3.22, H=3.00 → H=2.94) was a real numerical bug; the L/W
+#   swap on Office_1 / Building_Lobby is product-equivalent and not patched.
+# - The runtime adapter does not validate these against the user's
+#   dataset_dir contents — only the per-band T60 values are read from the
+#   user's CSVs (which raise FileNotFoundError if absent).
 # --------------------------------------------------------------------------- #
 
 ACE_ROOM_GEOMETRY: dict[str, dict[str, object]] = {
@@ -67,8 +82,8 @@ ACE_ROOM_GEOMETRY: dict[str, dict[str, object]] = {
     },
     "Office_2": {
         "L": 5.10,
-        "W": 3.50,
-        "H": 3.00,
+        "W": 3.22,
+        "H": 2.94,
         "floor": "carpet",
         "walls": "wall_painted",
         "ceiling": "ceiling_drywall",
@@ -438,8 +453,8 @@ def load_room(dataset_dir: Path, room_id: str) -> E2ERoomCase:
         notes=(
             f"ACE Challenge corpus — {room_id}. "
             "T60 values from user-supplied CSV (not hardcoded). "
-            "Geometry from ACE corpus README; not yet byte-cross-checked "
-            "against the canonical Zenodo archive."
+            "Geometry dimensions VERIFIED vs arXiv:1606.03365 Table 1 (v0.5 audit); "
+            "materials NOT yet cross-checked (TASLP final paywalled — DEFERRED to v0.6+)."
         ),
     )
 

@@ -1,0 +1,13 @@
+# arXiv:1606.03365, Table 1, transcribed 2026-05-06; TASLP final not cross-checked
+# Columns: room_id (roomestim canonical key), L_m, W_m, H_m
+# Source values are arXiv ordering (shorter dim first for Office_1, Office_2, Building_Lobby);
+# the audit test in tests/test_ace_geometry_audit.py compares unordered {L,W} sets to allow
+# the L/W swap convention.
+room_id,L_m,W_m,H_m
+Office_1,3.32,4.83,2.95
+Office_2,3.22,5.10,2.94
+Meeting_1,6.61,5.11,2.95
+Meeting_2,10.30,9.07,2.63
+Lecture_1,6.93,9.73,3.00
+Lecture_2,13.60,9.29,2.94
+Building_Lobby,4.47,5.13,3.18

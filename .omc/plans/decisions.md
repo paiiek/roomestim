@@ -323,3 +323,80 @@ holds. Rolling back coefficients now would (1) churn the schema clients reading
 **Cross-ref**: D7, D12, D13, ADR 0008, ADR 0009, `.omc/plans/v0.4-audit-findings.md`,
 `docs/perf_verification_e2e_2026-05-06.md`, `roomestim/reconstruct/materials.py`.
 
+---
+
+## D15 — v0.5.0 ships partial-A (ACE geometry dims verified vs arXiv:1606.03365) + B (MISC_SOFT enum); materials, F3, F4a DEFERRED
+
+**Date**: 2026-05-07
+
+**Question**: D14 deferred four findings to v0.5: (1) `ACE_ROOM_GEOMETRY` byte-audit
+vs Eaton 2016 Table I, (3) Lecture_2 ceiling-material reassignment hypothesis,
+(4a) `MaterialAbsorptionBands` coefficient revision, (4b) `MISC_SOFT` enum extension.
+Which of these ship at v0.5.0?
+
+**Decision**:
+- **Finding 1 dims half — SHIP**. arXiv:1606.03365 Table 1 (TASLP supporting material;
+  open access; transcribed 2026-05-06) is adopted as the canonical dimensional source.
+  All 7 rooms in `ACE_ROOM_GEOMETRY` are verified within ±0.01 m by the new gated
+  audit at `tests/test_ace_geometry_audit.py` against the committed fixture
+  `tests/fixtures/ace_eaton_2016_table_i_arxiv.csv`. `Office_2` is patched
+  (W 3.50 → 3.22, H 3.00 → 2.94 — the only numerical correction). roomestim's
+  "longer dimension as L" convention is kept; the L/W swap on `Office_1`,
+  `Office_2`, and `Building_Lobby` between roomestim and arXiv is product-equivalent
+  and only `Office_2`'s dimensional drift was a real numerical bug. ADR 0010
+  records the decision and the L/W convention.
+- **Finding 1 materials half — DEFERRED**. Materials are not in any open-access
+  source; only in TASLP final paper (paywalled). Pushed to v0.6+ pending TASLP
+  access.
+- **Finding 3 — DEFERRED**. The Lecture_2 ceiling-material reassignment hypothesis
+  cannot be confirmed without Finding 1 materials half.
+- **Finding 4a — DEFERRED**. D14's 5b reverse-trigger requires "assignments correct
+  AND errors persist on >2 rooms with Eyring"; the first pre-condition is
+  indeterminable without Finding 1 materials half. F4a stays DEFERRED with this
+  explicit rationale (NOT a coefficient guess swapped for another guess).
+- **Finding 4b — SHIP**. `MaterialLabel.MISC_SOFT = "misc_soft"` is added to the
+  closed enum (D3) with `MaterialAbsorption[MISC_SOFT] = 0.40` and
+  `MaterialAbsorptionBands[MISC_SOFT] = (0.20, 0.30, 0.40, 0.50, 0.60, 0.65)`
+  as a representative-not-verbatim row mirroring the v0.3 `MaterialAbsorptionBands`
+  honesty-marker policy. Schema slot reserved for adapter-emitted furnishings /
+  occupants absorption budget; adapter wiring follows consumer demand (D5
+  precedent). ADR 0011 records the decision.
+
+**v0.5.0 deliverables**:
+- ACE adapter dimensional patch (Office_2) + honesty-caveat rewrite.
+- Committed arXiv Table 1 fixture + gated audit test (`@pytest.mark.e2e`).
+- Auto-regenerated `docs/ace_geometry_audit_2026-05-07.md`.
+- `MISC_SOFT` enum extension + 4 new unit tests.
+- ADR 0010 (ACE geometry verified vs arXiv, dims only).
+- ADR 0011 (MISC_SOFT enum extension).
+- `.omc/plans/v0.5-audit-findings.md` (Finding 1 split DONE/DEFERRED, F3 DEFERRED,
+  F4a DEFERRED, F4b DONE).
+- Regenerated `docs/perf_verification_e2e_2026-05-07.md` from the gated E2E
+  (Office_2 V_m³ shrinks 53.55 → 48.28; Sabine RT60 at 500 Hz drops ~10%);
+  v0.4 perf doc at `docs/perf_verification_e2e_2026-05-06.md` preserved for diff.
+- Default-lane test count: 80 → 84 (+4 MISC_SOFT). ruff clean. `__schema_version__`
+  stays `"0.1-draft"` (Stage-1; D8 binds Stage-2 to A10 lab capture).
+
+**Why this scope and not the alternatives**:
+- "Wait for TASLP" was rejected — the Office_2 dimensional drift is a real numerical
+  bug; sitting on a known bug while waiting on a paywalled paper for the unrelated
+  materials half is worse than shipping the dimensional fix today. Materials and
+  the dependent findings (3, 4a) stay DEFERRED with explicit rationale.
+- "Ship Scenario C (Millington-Sette)" was rejected — arXiv:1606.03365 supplied a
+  real bug fix; that is the higher-value v0.5 headline. Millington-Sette stays a
+  v0.6+ candidate (ADR 0009 alternative-considered).
+- "Defer F4b to v0.6" was rejected — F4b is structurally independent of F1 and
+  ships cleanly under SHORT-mode regardless of TASLP access.
+
+**Reverse if**:
+- Eaton 2016 TASLP final paper becomes available and its Table I numbers differ
+  from arXiv:1606.03365 Table 1 → patch `ACE_ROOM_GEOMETRY` and re-run audit.
+- The materials cross-check (when TASLP access lands) disagrees with the current
+  `floor` / `walls` / `ceiling` strings → patch and re-run gated E2E.
+- ≥1 adapter starts emitting `MISC_SOFT` AND a downstream consumer reports the
+  `0.40` / band-tuple magnitude is wrong for their use case → revisit coefficients.
+
+**Cross-ref**: D13, D14, ADR 0010, ADR 0011, `.omc/plans/v0.5-design.md` §0a,
+`.omc/plans/v0.5-audit-findings.md`, `.omc/research/ace-table-i-acquisition.md`,
+`docs/perf_verification_e2e_2026-05-07.md`, `docs/ace_geometry_audit_2026-05-07.md`.
+
