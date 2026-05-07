@@ -400,3 +400,65 @@ Which of these ship at v0.5.0?
 `.omc/plans/v0.5-audit-findings.md`, `.omc/research/ace-table-i-acquisition.md`,
 `docs/perf_verification_e2e_2026-05-07.md`, `docs/ace_geometry_audit_2026-05-07.md`.
 
+---
+
+## D16 — v0.5.1 audit framing correction: Eaton 2016 TASLP final reviewed; per-surface materials NOT in paper
+
+**Date**: 2026-05-07 (post-v0.5.0)
+
+**Question**: D14 / D15 framing assumed the Eaton 2016 TASLP final paper
+(DOI 10.1109/TASLP.2016.2577502) contained the canonical per-surface material
+assignment table for the 7 ACE Challenge rooms. After v0.5.0 shipped, the
+paper became accessible via SNU IEEE Xplore and was reviewed cover-to-cover.
+Does the framing hold?
+
+**Answer**: No. The TASLP final does **not** contain a per-surface material
+assignment table.
+
+**Decision**:
+- Treat all D14 / D15 references to "TASLP-blocked materials" as
+  INDETERMINATE-NOT-BLOCKED. The canonical published source for walls and
+  ceiling assignments does not exist; future audit cycles must not propose
+  "wait for TASLP" as the resolution path for walls / ceiling.
+- Floors are partially confirmed: TASLP §II-C "Rooms" describes 4/7 rooms as
+  "carpeted" (Office_1, Office_2, Meeting_1, Meeting_2 → BYTE-CONFIRMED
+  `carpet`) and 3/7 as "hard-floored" (Lecture_1, Lecture_2, Building_Lobby →
+  HARD-FLOOR-COMPATIBLE; specific subtype not in paper).
+- Building_Lobby gains a structural caveat: TASLP §II-C describes it as
+  "large irregular-shaped hard-floored room with coupled spaces" with
+  measurements taken in the corner area only. `ACE_ROOM_GEOMETRY` shoebox is
+  the recording corner, not the room. v0.4's +1.425 s err Sabine on
+  Building_Lobby is consistent with a modelling-assumption violation, not
+  (only) coefficient/material gap.
+- v0.5.0's Office_2 dimensional patch (W 3.50 → 3.22, H 3.00 → 2.94) and
+  ADR 0010's "verified vs arXiv:1606.03365 Table 1" framing are
+  **vindicated**: TASLP Table I = arXiv 1606.03365 Table 1 byte-identical.
+  No code change needed.
+- v0.5.0's MISC_SOFT enum slot (ADR 0011) is **retroactively strengthened**
+  by TASLP §II-C explicit furniture counts (Office_2 "6 chairs + bookcase";
+  Lecture_2 "~100 chairs + ~35 tables"; etc.). Per-room MISC_SOFT surface
+  area is now derivable from canonical counts via Beranek 2004 / Vorländer
+  2020 per-piece equivalent absorption — out-of-scope for v0.5.x;
+  available for v0.6+.
+
+**Drivers**:
+- Avoid future audit cycles that wait on a non-existent canonical source.
+- Strengthen the audit ledger so the v0.4 → v0.5 → v0.5.1 chain reflects
+  what was actually established at each step.
+- Keep the adapter's honesty caveat truthful: shipping with "TASLP-blocked"
+  comments after the paper is in hand and confirmed silent on materials
+  would be a known-false marker.
+
+**Reverse-if**:
+- Author-provided supplementary material (e.g., Imperial College SAP
+  internal report; lab visit photos; author email response) surfaces a
+  real material assignment table → revisit in v0.6+ ADR.
+- A re-read of TASLP finds material assignments hidden somewhere (re-check
+  appendices / figures / online supplementary) → revert D16.
+- ACE Challenge consortium publishes a follow-up paper with materials.
+
+**Cross-ref**: D13, D14, D15, ADR 0010, ADR 0011, ADR 0012,
+`.omc/plans/v0.4-audit-findings.md` "Status update 2026-05-07",
+`.omc/plans/v0.5-audit-findings.md` "Status update 2026-05-07 (v0.5.1)",
+`roomestim/adapters/ace_challenge.py` honesty caveats (v0.5.1).
+

@@ -13,7 +13,10 @@ https://dl.acm.org/doi/10.1109/TASLP.2016.2577502 (paywalled)
 
 Open-access supporting material: arXiv:1606.03365 (Table 1 used as the
 dimensional source-of-truth at v0.5; see in-module caveats below). Material
-assignments live only in the paywalled TASLP final and remain unverified.
+assignments are NOT in any open or paywalled source — Eaton 2016 TASLP final
+was reviewed at v0.5.1 (cover-to-cover, accessed via institutional IEEE
+Xplore subscription); §II-C "Rooms" gives only floor-type + furniture counts,
+not walls or ceiling. See ADR 0012 for the audit closure.
 
 Corpus Zenodo mirror: https://zenodo.org/records/6257551 (CC-BY-ND 4.0)
 
@@ -55,17 +58,32 @@ from roomestim.model import (
 #   See `tests/fixtures/ace_eaton_2016_table_i_arxiv.csv` and the gated audit
 #   `tests/test_ace_geometry_audit.py`. Office_2 was patched at v0.5.0
 #   (W 3.50 → 3.22, H 3.00 → 2.94) — the only numerical correction in v0.5.0.
-# - Material assignments (`floor`, `walls`, `ceiling`): NOT yet cross-checked.
-#   The Eaton 2016 TASLP final paper is paywalled and the open arXiv preprint
-#   does not reproduce the materials. Material verification is DEFERRED to
-#   v0.6+ pending TASLP access. Treat the strings below as best-effort
-#   transcription from corpus README documentation.
+# - Material assignments (`floor`, `walls`, `ceiling`): partial cross-check at
+#   v0.5.1. Eaton 2016 TASLP final was reviewed cover-to-cover via SNU IEEE
+#   Xplore on 2026-05-07; §II-C "Rooms" (p.1683) gives only floor-type
+#   ("carpeted" / "hard-floored") + furniture counts. Walls and ceiling
+#   assignments are NOT in the canonical paper — `wall_painted`,
+#   `wall_concrete`, `ceiling_drywall`, `ceiling_acoustic_tile` strings below
+#   are best-guess and remain INDETERMINATE (not "TASLP-blocked"). 4/7 floors
+#   are BYTE-CONFIRMED at TASLP §II-C: Office_1, Office_2, Meeting_1,
+#   Meeting_2 → `carpet`. The other 3 are "hard-floored" (compatible with
+#   `wood_floor` but subtype unspecified). See ADR 0012 for the audit closure.
 # - L/W convention: roomestim keeps "longer dimension as L" for adapter
 #   consistency. arXiv 1606.03365 Table 1 lists Office_1 / Office_2 /
 #   Building_Lobby with the shorter dimension first; products and V_m³ are
 #   identical to the arXiv ordering. Only Office_2 dimensional drift
 #   (W=3.50 → W=3.22, H=3.00 → H=2.94) was a real numerical bug; the L/W
 #   swap on Office_1 / Building_Lobby is product-equivalent and not patched.
+# - Building_Lobby modelling caveat (TASLP §II-C, v0.5.1): the lobby is
+#   "large irregular-shaped hard-floored room with coupled spaces including
+#   a café, stairwell and staircase. Measurements in Table I correspond to
+#   the corner area where the recordings were made whereas the total volume
+#   of the lobby is many times larger." `ACE_ROOM_GEOMETRY["Building_Lobby"]`
+#   shoebox of 72.9 m³ describes the recording corner, not the room. Sabine
+#   RT60 prediction on a non-shoebox coupled space is not expected to match
+#   measurement; the v0.4 perf doc's +1.425 s err Sabine on Building_Lobby
+#   is consistent with a modelling-assumption violation, not (only) a
+#   coefficient/material gap.
 # - The runtime adapter does not validate these against the user's
 #   dataset_dir contents — only the per-band T60 values are read from the
 #   user's CSVs (which raise FileNotFoundError if absent).
@@ -454,7 +472,8 @@ def load_room(dataset_dir: Path, room_id: str) -> E2ERoomCase:
             f"ACE Challenge corpus — {room_id}. "
             "T60 values from user-supplied CSV (not hardcoded). "
             "Geometry dimensions VERIFIED vs arXiv:1606.03365 Table 1 (v0.5 audit); "
-            "materials NOT yet cross-checked (TASLP final paywalled — DEFERRED to v0.6+)."
+            "floor 4/7 BYTE-CONFIRMED at TASLP §II-C (carpet rooms only); "
+            "walls/ceiling INDETERMINATE — not in canonical paper (v0.5.1; ADR 0012)."
         ),
     )
 
