@@ -9,14 +9,16 @@ Dataset citation
 Eaton, J., Gaubitch, N. D., Moore, A. H., & Naylor, P. A. (2016).
 Estimation of room acoustic parameters: The ACE Challenge.
 IEEE/ACM Transactions on Audio, Speech, and Language Processing, 24(10), 1681–1693.
-https://dl.acm.org/doi/10.1109/TASLP.2016.2577502 (paywalled)
+https://dl.acm.org/doi/10.1109/TASLP.2016.2577502 (institutional access)
 
 Open-access supporting material: arXiv:1606.03365 (Table 1 used as the
 dimensional source-of-truth at v0.5; see in-module caveats below). Material
-assignments are NOT in any open or paywalled source — Eaton 2016 TASLP final
-was reviewed at v0.5.1 (cover-to-cover, accessed via institutional IEEE
-Xplore subscription); §II-C "Rooms" gives only floor-type + furniture counts,
-not walls or ceiling. See ADR 0012 for the audit closure.
+assignments (walls / ceiling) are not in the canonical published paper —
+Eaton 2016 TASLP final was reviewed at v0.5.1 (cover-to-cover; institutional
+access); §II-C "Rooms" gives only floor-type + furniture counts, not walls
+or ceiling. TASLP §II-C furniture counts are now wired through to a synthetic
+MISC_SOFT surface per room (v0.6; see ADR 0013). See ADR 0012 for the
+walls/ceiling audit closure.
 
 Corpus Zenodo mirror: https://zenodo.org/records/6257551 (CC-BY-ND 4.0)
 
@@ -34,6 +36,7 @@ Usage
 from __future__ import annotations
 
 import csv
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,15 +62,20 @@ from roomestim.model import (
 #   `tests/test_ace_geometry_audit.py`. Office_2 was patched at v0.5.0
 #   (W 3.50 → 3.22, H 3.00 → 2.94) — the only numerical correction in v0.5.0.
 # - Material assignments (`floor`, `walls`, `ceiling`): partial cross-check at
-#   v0.5.1. Eaton 2016 TASLP final was reviewed cover-to-cover via SNU IEEE
-#   Xplore on 2026-05-07; §II-C "Rooms" (p.1683) gives only floor-type
+#   v0.5.1. Eaton 2016 TASLP final was reviewed cover-to-cover (institutional
+#   access) on 2026-05-07; §II-C "Rooms" (p.1683) gives only floor-type
 #   ("carpeted" / "hard-floored") + furniture counts. Walls and ceiling
-#   assignments are NOT in the canonical paper — `wall_painted`,
+#   assignments are not in the canonical published paper — `wall_painted`,
 #   `wall_concrete`, `ceiling_drywall`, `ceiling_acoustic_tile` strings below
 #   are best-guess and remain INDETERMINATE (not "TASLP-blocked"). 4/7 floors
 #   are BYTE-CONFIRMED at TASLP §II-C: Office_1, Office_2, Meeting_1,
 #   Meeting_2 → `carpet`. The other 3 are "hard-floored" (compatible with
 #   `wood_floor` but subtype unspecified). See ADR 0012 for the audit closure.
+# - TASLP §II-C furniture counts are wired into a synthesised MISC_SOFT
+#   surface per furniture-tracked room at v0.6 (see ADR 0013 +
+#   `_FURNITURE_BY_ROOM` / `_misc_soft_surface_from_furniture` below).
+#   Building_Lobby is intentionally excluded from this surface budget per
+#   ADR 0013 §3 OQ-9 (coupled-space caveat below).
 # - L/W convention: roomestim keeps "longer dimension as L" for adapter
 #   consistency. arXiv 1606.03365 Table 1 lists Office_1 / Office_2 /
 #   Building_Lobby with the shorter dimension first; products and V_m³ are
@@ -157,6 +165,227 @@ _MATERIAL_MAP: dict[str, MaterialLabel] = {
     "ceiling_drywall": MaterialLabel.CEILING_DRYWALL,
     "ceiling_acoustic_tile": MaterialLabel.CEILING_ACOUSTIC_TILE,
 }
+
+
+# --------------------------------------------------------------------------- #
+# Per-piece equivalent absorption (TASLP §II-C-derived MISC_SOFT budget; v0.6)
+# --------------------------------------------------------------------------- #
+#
+# Per-piece equivalent absorption A_i (m² Sabines per item) at 500 Hz mid-band
+# and per octave band. Cited from textbook tables (fair-use; ADR 0012 IP
+# guidance):
+#   - "office_chair": empty upholstered office chair
+#       (Vorländer 2020 *Auralization* §11 Appx A "upholstered seating, empty"
+#       row; cross-checked Beranek 2004 *Concert Halls and Opera Houses*
+#       Ch.3 Table 3.1 "unoccupied upholstered concert seats" row)
+#       → A_500 ≈ 0.50 m² Sabines/chair
+#   - "stacking_chair": wood/plastic stacking chair
+#       (Vorländer 2020 §11 Appx A "wooden chair" row; representative for
+#       hard-shell stacking seats)
+#       → A_500 ≈ 0.15 m² Sabines/chair
+#   - "lecture_seat": theatre/lecture seat, empty (upholstered base + back)
+#       (Beranek 2004 Ch.3 Table 3.1 "unoccupied theatre/lecture seats" row;
+#       cross-checked Vorländer 2020 §11 Appx A theatre-seating row)
+#       → A_500 ≈ 0.45 m² Sabines/chair
+#   - "table": large flat table (per piece, conservative; tables usually
+#       contribute negligibly above 250 Hz — included for ledger
+#       completeness)
+#       (Vorländer 2020 §11 Appx A "large hard table" representative)
+#       → A_500 ≈ 0.10 m² Sabines/table
+#   - "bookcase": filled bookcase
+#       (Vorländer 2020 §11 Appx A "books on shelf" / Beranek 2004
+#       Ch.3 row equivalent)
+#       → A_500 ≈ 0.30 m² Sabines/bookcase
+#
+# Per-band profile: each row mirrors the MISC_SOFT band-tuple shape
+# (rising mid-to-high) scaled to the row's 500 Hz value.
+#
+# Honesty marker (M1 / D12 precedent): values are representative-not-verbatim.
+# Specific table rows / page numbers are recorded in
+# .omc/plans/v0.6-design.md §3 OQ-6 (locked) and ADR 0013 §References.
+# Reverse-trigger: a textbook re-read or author lookup surfaces a value that
+# differs by > 30% on any band → re-read this dict and ADR 0013.
+
+_PIECE_EQUIVALENT_ABSORPTION_500HZ_M2: dict[str, float] = {
+    "office_chair":   0.50,
+    "stacking_chair": 0.15,
+    "lecture_seat":   0.45,
+    "table":          0.10,
+    "bookcase":       0.30,
+}
+
+_PIECE_EQUIVALENT_ABSORPTION_BANDS_M2: dict[
+    str, tuple[float, float, float, float, float, float]
+] = {
+    # Bands: (125, 250, 500, 1000, 2000, 4000) Hz. Profile mirrors MISC_SOFT
+    # rising-mid-to-high shape, scaled to per-piece 500 Hz value.
+    "office_chair":   (0.25, 0.375, 0.50, 0.625, 0.75, 0.8125),
+    "stacking_chair": (0.075, 0.1125, 0.15, 0.1875, 0.225, 0.24375),
+    "lecture_seat":   (0.225, 0.3375, 0.45, 0.5625, 0.675, 0.73125),
+    "table":          (0.05, 0.075, 0.10, 0.125, 0.15, 0.1625),
+    "bookcase":       (0.15, 0.225, 0.30, 0.375, 0.45, 0.4875),
+}
+
+
+# --------------------------------------------------------------------------- #
+# Per-room TASLP §II-C furniture counts (factual data; not copyrightable)
+# --------------------------------------------------------------------------- #
+#
+# Source: Eaton 2016 TASLP §II-C "Rooms" (p.1683), reviewed cover-to-cover
+# at v0.5.1; recorded durably in project memory `project_taslp_2016_content.md`.
+#
+# Building_Lobby is intentionally excluded — TASLP §II-C describes it as
+# "irregular shape with coupled spaces"; ACE_ROOM_GEOMETRY shoebox is the
+# recording corner only. Adding a furniture-budget MISC_SOFT surface to a
+# non-shoebox room compounds modelling error. See §3 OQ-9 + ADR 0012
+# Building_Lobby caveat.
+#
+# Mapping rationale (lecture-seat ↔ office-chair distinction):
+#   - Office_1 / Office_2: typical workplace office chairs → "office_chair"
+#   - Meeting_1 / Meeting_2: typical meeting-room chairs (mixed upholstered)
+#     → "office_chair" as the closer fit (Vorländer 2020 §11 has no separate
+#     "meeting chair" row; Beranek 2004 reserves "lecture seat" for
+#     fixed-back theatre seating)
+#   - Lecture_1 / Lecture_2: fixed theatre-style lecture seating
+#     → "lecture_seat" (Beranek 2004 Ch.3 Table 3.1)
+#
+# Furniture mapping is a planner-locked decision; reverse-trigger via §3 OQ-7.
+
+_FURNITURE_BY_ROOM: dict[str, dict[str, int]] = {
+    "Office_1":   {"office_chair":   4},
+    "Office_2":   {"office_chair":   6, "bookcase": 1},
+    "Meeting_1":  {"office_chair":  14},
+    "Meeting_2":  {"office_chair":  30, "table": 6},
+    "Lecture_1":  {"lecture_seat":  60, "table": 20},
+    "Lecture_2":  {"lecture_seat": 100, "table": 35},
+    # Building_Lobby intentionally absent — see ADR 0012 + §3 OQ-9.
+}
+
+
+def _furniture_to_misc_soft_area(furniture: dict[str, int]) -> float:
+    """Return synthetic MISC_SOFT surface area (m²) for a furniture inventory.
+
+    The adapter does NOT model individual chairs as separate Surface objects.
+    Instead it emits one synthetic MISC_SOFT surface whose AREA is chosen so
+    that the Sabine integrand `area * MaterialAbsorption[MISC_SOFT]` equals
+    the sum of per-piece equivalent absorption (Σ count_i * A_i).
+
+    Formula (preserves Sabine integrand at 500 Hz):
+        area_misc_soft = Σ_pieces count_i * A_500_i / a_misc_soft_500
+
+    With ``MaterialAbsorption[MISC_SOFT] == 0.40`` (v0.5.0 row), this scales
+    the per-piece sum to a notional surface area at the 500 Hz reference
+    band. Per-band Sabine and Eyring then operate per the MISC_SOFT band
+    tuple (which itself is representative-not-verbatim; see model.py).
+    The per-band integrand is exactly preserved (by construction; per-piece
+    bands mirror the MISC_SOFT band-tuple shape scaled to the per-piece
+    500 Hz reference, so Σ count·piece_band[i] = area · MISC_SOFT_band[i]
+    is an algebraic identity).
+
+    Parameters
+    ----------
+    furniture:
+        Mapping ``piece_name -> count``. Piece names must be keys of
+        ``_PIECE_EQUIVALENT_ABSORPTION_500HZ_M2``.
+
+    Returns
+    -------
+    float
+        Synthetic MISC_SOFT surface area in m² (≥ 0).
+
+    Raises
+    ------
+    KeyError
+        If any piece in ``furniture`` is not in
+        ``_PIECE_EQUIVALENT_ABSORPTION_500HZ_M2``.
+    ValueError
+        If ``MaterialAbsorption[MISC_SOFT]`` is non-positive (defensive).
+    """
+    a_misc_soft = MaterialAbsorption[MaterialLabel.MISC_SOFT]
+    if a_misc_soft <= 0.0:
+        raise ValueError("MaterialAbsorption[MISC_SOFT] must be > 0")
+    total_eq_abs = 0.0
+    for piece, count in furniture.items():
+        a_i = _PIECE_EQUIVALENT_ABSORPTION_500HZ_M2[piece]
+        total_eq_abs += count * a_i
+    return total_eq_abs / a_misc_soft
+
+
+def _misc_soft_surface_from_furniture(
+    room_id: str,
+    room_dimensions: tuple[float, float, float],
+) -> Surface | None:
+    """Build a synthetic MISC_SOFT Surface for ``room_id``, or None if absent.
+
+    The synthetic surface has a square or thin-strip polygon laid out in the
+    floor plane (y=0). The polygon coordinates are NOT geometrically
+    meaningful — only the polygon area is consumed by
+    ``_surface_areas_by_material(...)`` for Sabine / Eyring.
+
+    Returns ``None`` when ``room_id`` is not in ``_FURNITURE_BY_ROOM``
+    (e.g. ``Building_Lobby`` per §3 OQ-9, or any unknown room ID). The
+    caller (``_build_room_model``) skips appending a None.
+
+    Strip-clip path (R-3): when the requested square side √area exceeds
+    ``min(L, W)``, the surface is laid out as a strip along the longer floor
+    edge so the integrand is preserved while keeping the polygon inside
+    ``L × W``.
+
+    Parameters
+    ----------
+    room_id:
+        ACE Challenge room identifier.
+    room_dimensions:
+        ``(L, W, H)`` in metres; only ``L`` and ``W`` are used.
+
+    Returns
+    -------
+    Surface | None
+        A ``Surface(material=MaterialLabel.MISC_SOFT, kind="floor", ...)``
+        with Newell-area equal to ``_furniture_to_misc_soft_area(...)``,
+        or ``None`` if the room has no furniture entry.
+    """
+    if room_id not in _FURNITURE_BY_ROOM:
+        return None
+    furniture = _FURNITURE_BY_ROOM[room_id]
+    area = _furniture_to_misc_soft_area(furniture)
+    if area <= 0.0:
+        return None
+
+    L, W, _H = room_dimensions
+    side = math.sqrt(area)
+    if side <= min(L, W):
+        # Square inside floor, near origin corner
+        x0, x1 = 0.0, side
+        z0, z1 = 0.0, side
+    else:
+        # Strip along longer edge; clip to fit inside L × W
+        long_side = max(L, W)
+        short_side = min(L, W)
+        # If even the full strip is too long, cap the long side; the polygon
+        # is still axis-aligned with Newell-area = strip_long * other.
+        strip_long = min(area / short_side, long_side)
+        other = area / strip_long
+        if L >= W:
+            x0, x1 = 0.0, strip_long
+            z0, z1 = 0.0, other
+        else:
+            x0, x1 = 0.0, other
+            z0, z1 = 0.0, strip_long
+
+    band_tuple = MaterialAbsorptionBands[MaterialLabel.MISC_SOFT]
+    return Surface(
+        kind="floor",  # adapter convention — surface lies in floor plane
+        polygon=[
+            Point3(x0, 0.0, z0),
+            Point3(x1, 0.0, z0),
+            Point3(x1, 0.0, z1),
+            Point3(x0, 0.0, z1),
+        ],
+        material=MaterialLabel.MISC_SOFT,
+        absorption_500hz=MaterialAbsorption[MaterialLabel.MISC_SOFT],
+        absorption_bands=band_tuple,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -313,11 +542,16 @@ def _build_room_model(room_id: str, geom: dict[str, object]) -> RoomModel:
         height_m=1.20,
     )
 
+    surfaces = [floor_surf, ceiling_surf, wall1, wall2, wall3, wall4]
+    misc_soft_surf = _misc_soft_surface_from_furniture(room_id, (L, W, H))
+    if misc_soft_surf is not None:
+        surfaces.append(misc_soft_surf)
+
     return RoomModel(
         name=room_id,
         floor_polygon=floor_pts_2d,
         ceiling_height_m=H,
-        surfaces=[floor_surf, ceiling_surf, wall1, wall2, wall3, wall4],
+        surfaces=surfaces,
         listener_area=listener_area,
     )
 
@@ -473,7 +707,14 @@ def load_room(dataset_dir: Path, room_id: str) -> E2ERoomCase:
             "T60 values from user-supplied CSV (not hardcoded). "
             "Geometry dimensions VERIFIED vs arXiv:1606.03365 Table 1 (v0.5 audit); "
             "floor 4/7 BYTE-CONFIRMED at TASLP §II-C (carpet rooms only); "
-            "walls/ceiling INDETERMINATE — not in canonical paper (v0.5.1; ADR 0012)."
+            "walls/ceiling INDETERMINATE — not in canonical paper (v0.5.1; ADR 0012). "
+            + (
+                "MISC_SOFT surface synthesised from TASLP §II-C furniture counts "
+                "× textbook per-piece α (v0.6; ADR 0013)."
+                if room_id in _FURNITURE_BY_ROOM
+                else "MISC_SOFT surface intentionally NOT synthesised "
+                "(Building_Lobby coupled-space caveat; v0.6; ADR 0013)."
+            )
         ),
     )
 
@@ -491,7 +732,6 @@ def _surface_areas_by_material(room: RoomModel) -> dict[MaterialLabel, float]:
     Uses a simple planar polygon area formula (cross product magnitude).
     """
     from collections import defaultdict
-    import math
 
     areas: dict[MaterialLabel, float] = defaultdict(float)
     for surf in room.surfaces:

@@ -462,3 +462,131 @@ assignment table.
 `.omc/plans/v0.5-audit-findings.md` "Status update 2026-05-07 (v0.5.1)",
 `roomestim/adapters/ace_challenge.py` honesty caveats (v0.5.1).
 
+---
+
+## D17 — v0.6.0 ships TASLP-derived MISC_SOFT surface budget per room (B-L excluded) + 2 LOW retro fixes
+
+**Date**: 2026-05-08
+
+**Question**: D16 §"v0.6 v0.6+ work item set updated" listed three
+v0.6+ items: (a) per-room MISC_SOFT surface area derived from TASLP
+§II-C furniture counts, (b) Building_Lobby coupled-space modelling
+ADR, (c) hard-floor subtype confirmation. Plus two LOW retros from
+v0.5.1 (code-reviewer LOW-RETRO-1 — "are NOT in any open or paywalled
+source" framing; security-reviewer LOW-RETRO-2 — "via SNU IEEE Xplore"
+institutional naming). Which of these ship at v0.6.0?
+
+**Decision**:
+- **(a) TASLP-MISC ships** — six of the seven ACE rooms gain one
+  synthesised `Surface(material=MaterialLabel.MISC_SOFT, kind="floor")`
+  whose Newell-area is integrand-preserving:
+  `area_misc_soft = Σ_pieces count_i * A_500_i / a_misc_soft_500` with
+  `a_misc_soft_500 = 0.40` (v0.5.0 row). Per-piece α₅₀₀ values cited
+  from Vorländer 2020 *Auralization* §11 / Appendix A (primary) with
+  Beranek 2004 *Concert Halls and Opera Houses* Ch.3 Table 3.1 cross-
+  check for the lecture-seat row (planner-locked OQ-6 default).
+  Building_Lobby is **excluded by default** (planner-locked OQ-9
+  default = (a) exclude); the helper returns `None` for B-L.
+  Surface count goes 6 → 7 for the 6 furniture-tracked rooms.
+- **(b) Building_Lobby coupled-space ADR DEFERRED** — separate ADR on
+  its own terms (geometry kind annotation, multi-room volume) at v0.7+.
+  v0.6 default = exclude per OQ-9.
+- **(c) Hard-floor subtype DEFERRED** — needs non-canonical evidence
+  (lab visit / author email / Imperial SAP report). Unchanged from
+  v0.5.1.
+- **LOW-RETRO-1 ships** — module docstring "are NOT in any open or
+  paywalled source" → "are not in the canonical published paper"
+  (consistent with ADR 0012 reverse-if path).
+- **LOW-RETRO-2 ships** — "via SNU IEEE Xplore" → "(institutional
+  access)" or "via institutional IEEE Xplore subscription" in module
+  docstring + in-module honesty caveat + ADR 0012 References. Audit-
+  findings narrative blocks (`.omc/plans/v0.4-audit-findings.md`,
+  `v0.5-audit-findings.md`) intentionally preserved as historical
+  record (D16 precedent — append-only).
+- **No new `MaterialLabel.FLOOR_HARD` enum entry** (planner-locked
+  OQ-10 default = no). Existing v0.5.1 honesty caveat block in
+  `ace_challenge.py` is sufficient.
+- **No `__schema_version__` flip** (OQ-4 unchanged; D8 binds Stage-2
+  to A10 lab capture, which has not shipped).
+- **No `MaterialAbsorptionBands` coefficient revision** (D14 5b
+  pre-condition unchanged).
+
+**v0.6.0 deliverables**:
+- ACE adapter `_PIECE_EQUIVALENT_ABSORPTION_*` per-piece α tables (5
+  rows × scalar + 5 rows × 6-band tuples); `_FURNITURE_BY_ROOM` per-room
+  counts (6 rooms; Building_Lobby intentionally absent).
+- ACE adapter helpers `_furniture_to_misc_soft_area` and
+  `_misc_soft_surface_from_furniture` (private; unit-testable).
+- `_build_room_model` wires the helper iff it returns non-None.
+  `load_room` `notes` string declares MISC_SOFT presence/absence per
+  room.
+- `tests/test_misc_soft_furniture_budget.py` (+14 default-lane tests).
+- ADR 0013 — TASLP-derived MISC_SOFT surface budget per room.
+- ADR 0012 References — v0.6 cross-ref appended; LOW-RETRO-2 softening
+  in DOI line. ADR 0012 body byte-identical to v0.5.1.
+- `.omc/plans/v0.6-audit-findings.md`.
+- OQ-6..OQ-10 marked `[x]` in `.omc/plans/open-questions.md`.
+- `pyproject.toml` and `roomestim/__init__.py`: 0.5.1 → 0.6.0;
+  `__schema_version__` stays `"0.1-draft"`.
+- `RELEASE_NOTES_v0.6.0.md`.
+- `docs/perf_verification_e2e_2026-05-08.md` (regenerated from gated
+  E2E run with TASLP-MISC plumbing). v0.4 (`2026-05-06.md`) and v0.5
+  (`2026-05-07.md`) perf docs preserved byte-identical.
+
+**Empirical effect (v0.5 → v0.6 perf doc, 500 Hz Sabine errors)**:
+- Lecture_1: +1.201 → +0.125 s (drop −1.076 s; v0.4 F4 hypothesis
+  empirically supported).
+- Office_1: +0.486 → +0.327 s (drop −0.160 s).
+- Office_2: +0.410 → +0.179 s (drop −0.231 s).
+- Meeting_1: +0.072 → −0.017 s (drop −0.089 s).
+- Meeting_2: +0.061 → −0.012 s (drop −0.073 s).
+- Lecture_2: −0.670 → −0.908 s (under-prediction deepens by 0.238 s;
+  consistent with F3 ceiling-material hypothesis — separate v0.7+
+  work; F3 stays DEFERRED).
+- Building_Lobby: unchanged (excluded).
+- Eyring monotonicity (`eyring ≤ sabine + 1e-9`) holds per-room
+  per-band — runtime-asserted in the gated E2E.
+
+**Why this scope and not the alternatives**:
+- "Public API for `furniture_to_misc_soft_area`" rejected — no
+  external consumer asks today; reverse-trigger to public when one
+  does.
+- "Per-furnishing Surface objects" rejected — explodes surface count
+  without changing the Sabine integrand.
+- "Add `floor_hard` MaterialLabel" rejected (OQ-10) — schema-impacting,
+  no per-band data justifies splitting WOOD_FLOOR.
+- "Building_Lobby per-area MISC_SOFT density" rejected (OQ-9) —
+  compounds coupled-space modelling error.
+- "Co-ship coefficient revision (F4a)" rejected — D14 5b cannot
+  evaluate without F1 walls/ceiling materials (still INDETERMINATE
+  per ADR 0012).
+- "Wait for canonical-source materials" rejected — no canonical source
+  exists for walls/ceiling per ADR 0012; v0.6 ships the part that has
+  canonical evidence (TASLP §II-C furniture counts) and leaves the
+  walls/ceiling half DEFERRED with the same explicit rationale as
+  v0.5.1.
+
+**Reverse if**:
+- A textbook re-read or author lookup surfaces a per-piece α value
+  that differs by > 30% on any band → patch the per-piece dicts and
+  re-run gated E2E.
+- An adapter consumer reports the synthesised MISC_SOFT surface area
+  is wrong for their use case → revisit the helper formula and the
+  per-piece α table.
+- A lab visit produces a measured furnishings-class absorption per-
+  room delta that disagrees with the synthesised area by > 30% →
+  revisit.
+- A Building_Lobby coupled-space ADR (v0.7+) ships first → re-evaluate
+  whether B-L should be included with a coupled-space-aware budget.
+- Hard-floor subtype confirmation (lab visit / author email) for any
+  of Lecture_1 / Lecture_2 / Building_Lobby AND the confirmed subtype
+  is not already in the MaterialLabel enum → revisit OQ-10 default.
+
+**Cross-ref**: D14, D15, D16, ADR 0008, ADR 0009, ADR 0010, ADR 0011,
+ADR 0012, ADR 0013, `.omc/plans/v0.6-design.md`,
+`.omc/plans/v0.6-audit-findings.md`, `RELEASE_NOTES_v0.6.0.md`,
+`docs/perf_verification_e2e_2026-05-08.md`,
+`roomestim/adapters/ace_challenge.py` (TASLP-MISC plumbing + LOW-RETRO
+softening).
+
+

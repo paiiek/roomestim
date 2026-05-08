@@ -137,7 +137,7 @@ verdict is the smallest correct move. It:
 - Eaton, J., Gaubitch, N. D., Moore, A. H., & Naylor, P. A. (2016).
   *Estimation of room acoustic parameters: The ACE Challenge.* IEEE/ACM
   Transactions on Audio, Speech, and Language Processing, 24(10), 1681–1693.
-  DOI: 10.1109/TASLP.2016.2577502 (paywalled; institutional access only).
+  DOI: 10.1109/TASLP.2016.2577502 (institutional access).
   - **Table I (p.1683)**: per-room L, W, H, V, mean FB T60. Byte-identical
     to arXiv:1606.03365 Table 1. **No material columns.**
   - **§II-C "Rooms" (p.1683)**: prose room descriptions — floor type +
@@ -150,7 +150,11 @@ verdict is the smallest correct move. It:
 - D16 — v0.5.1 framing correction (this ADR's decisions-log mirror).
 - ADR 0010 — ACE geometry verified vs arXiv:1606.03365 Table 1 (dims only).
 - ADR 0011 — MISC_SOFT MaterialLabel extension.
+- ADR 0013 — TASLP-derived MISC_SOFT surface budget per room (v0.6;
+  consumes the §II-C furniture counts noted under "v0.6 v0.6+ work item
+  set updated" above).
 - `.omc/plans/v0.4-audit-findings.md` "Status update 2026-05-07".
 - `.omc/plans/v0.5-audit-findings.md` "Status update 2026-05-07 (v0.5.1)".
-- `roomestim/adapters/ace_challenge.py` honesty caveats (v0.5.1).
+- `.omc/plans/v0.6-audit-findings.md` (TASLP-MISC ship summary).
+- `roomestim/adapters/ace_challenge.py` honesty caveats (v0.5.1, v0.6).
 - Project memory: `project_taslp_2016_content.md` (paper content map).
