@@ -72,6 +72,21 @@ def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
         help="VBAP elevation in degrees (default 0.0).",
     )
     p.add_argument(
+        "--wfs-f-max-hz",
+        type=float,
+        default=8000.0,
+        metavar="F",
+        help="Highest reproduction frequency for WFS spatial-aliasing bound (default 8000.0).",
+    )
+    p.add_argument(
+        "--wfs-spacing-m",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Override per-speaker spacing in metres "
+        "(default: derived from --layout-radius and --n-speakers).",
+    )
+    p.add_argument(
         "--out-dir",
         default=".",
         metavar="DIR",
@@ -124,6 +139,21 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=0.0,
         metavar="E",
         help="VBAP elevation in degrees (default 0.0).",
+    )
+    p.add_argument(
+        "--wfs-f-max-hz",
+        type=float,
+        default=8000.0,
+        metavar="F",
+        help="Highest reproduction frequency for WFS spatial-aliasing bound (default 8000.0).",
+    )
+    p.add_argument(
+        "--wfs-spacing-m",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Override per-speaker spacing in metres "
+        "(default: derived from --layout-radius and --n-speakers).",
     )
     p.add_argument(
         "--out-dir",
@@ -183,6 +213,8 @@ def _run_placement(
     n_speakers: int,
     layout_radius: float,
     el_deg: float,
+    wfs_f_max_hz: float = 8000.0,
+    wfs_spacing_m: float | None = None,
 ) -> object:
     """Dispatch to the right placement function and return a PlacementResult."""
     from roomestim.model import RoomModel, Surface
@@ -212,20 +244,53 @@ def _run_placement(
         )
 
     if algorithm == "wfs":
+        import math
+
         from roomestim.model import Point2
+        from roomestim.place.wfs import c as wfs_c
         from roomestim.place.wfs import place_wfs
 
         p0 = Point2(x=-layout_radius, z=layout_radius)
         p1 = Point2(x=layout_radius, z=layout_radius)
         baseline_len = abs(p1.x - p0.x)
-        spacing_m = baseline_len / max(n_speakers - 1, 1) if n_speakers > 1 else baseline_len
-        f_max_hz = 8000.0
-        return place_wfs(
-            baseline_p0=p0,
-            baseline_p1=p1,
-            spacing_m=spacing_m,
-            f_max_hz=f_max_hz,
-        )
+        if wfs_spacing_m is not None:
+            spacing_m = float(wfs_spacing_m)
+        else:
+            spacing_m = (
+                baseline_len / max(n_speakers - 1, 1) if n_speakers > 1 else baseline_len
+            )
+        try:
+            return place_wfs(
+                baseline_p0=p0,
+                baseline_p1=p1,
+                spacing_m=spacing_m,
+                f_max_hz=wfs_f_max_hz,
+            )
+        except ValueError as exc:
+            # Re-raise with a constructive remediation message at the CLI layer.
+            # Library-level place_wfs ValueError contract is unchanged.
+            bound = wfs_c / (2.0 * wfs_f_max_hz)
+            if spacing_m > bound:
+                # Max safe f_max for the *current* (derived or supplied) spacing.
+                max_safe_f_max = wfs_c / (2.0 * spacing_m)
+                # Min safe n for the *current* f_max_hz, derived from baseline_len.
+                # n - 1 >= baseline_len / bound = baseline_len * 2 * f_max / c.
+                if baseline_len > 0.0:
+                    min_safe_n = int(math.ceil(baseline_len / bound)) + 1
+                else:
+                    min_safe_n = n_speakers
+                raise ValueError(
+                    f"WFS spatial-aliasing bound violated: "
+                    f"spacing_m={spacing_m:.4f} > c/(2*f_max_hz)={bound:.4f} "
+                    f"(c=343.0 m/s, f_max_hz={wfs_f_max_hz}). "
+                    f"Either pass --wfs-f-max-hz <X> "
+                    f"(max safe --wfs-f-max-hz for current spacing is "
+                    f"X = c/(2*spacing_m) = {max_safe_f_max:.2f} Hz) "
+                    f"OR pass --n-speakers <Y> "
+                    f"(minimum safe --n-speakers for current f_max_hz is "
+                    f"Y = ceil(baseline_len/(c/(2*f_max))) + 1 = {min_safe_n})."
+                ) from exc
+            raise
 
     raise ValueError(f"unknown algorithm: {algorithm!r}")
 
@@ -263,7 +328,15 @@ def _cmd_place(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     room = read_room_yaml(args.in_room)
-    result = _run_placement(room, args.algorithm, args.n_speakers, args.layout_radius, args.el_deg)
+    result = _run_placement(
+        room,
+        args.algorithm,
+        args.n_speakers,
+        args.layout_radius,
+        args.el_deg,
+        wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
+        wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+    )
     assert isinstance(result, PlacementResult)
 
     out_path = out_dir / "layout.yaml"
@@ -309,7 +382,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
     room = parse(args.input, scale_anchor=None, octave_band=octave_band)
     assert isinstance(room, RoomModel)
 
-    result = _run_placement(room, args.algorithm, args.n_speakers, args.layout_radius, args.el_deg)
+    result = _run_placement(
+        room,
+        args.algorithm,
+        args.n_speakers,
+        args.layout_radius,
+        args.el_deg,
+        wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
+        wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+    )
     assert isinstance(result, PlacementResult)
 
     room_out = out_dir / "room.yaml"

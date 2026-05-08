@@ -202,6 +202,9 @@ open hypothesis (v0.4 F4) using a canonical source (TASLP §II-C). It:
 - ADR 0011 — MISC_SOFT MaterialLabel extension (v0.5.0).
 - ADR 0012 — Eaton 2016 TASLP final reviewed; per-surface materials NOT
   in paper (v0.5.1).
+- ADR 0014 — Building_Lobby coupled-space exclusion from aggregate
+  metrics (v0.7; formalises the v0.6 §Alternatives-considered-(d)
+  exclusion).
 - D14 — Eyring shipped; ACE byte-audit deferred.
 - D15 — v0.5.0 partial-A (dims) + B (MISC_SOFT) shipped.
 - D16 — v0.5.1 framing correction; TASLP §II-C furniture counts

@@ -153,6 +153,8 @@ verdict is the smallest correct move. It:
 - ADR 0013 — TASLP-derived MISC_SOFT surface budget per room (v0.6;
   consumes the §II-C furniture counts noted under "v0.6 v0.6+ work item
   set updated" above).
+- ADR 0014 — Building_Lobby coupled-space exclusion from aggregate
+  metrics (v0.7; formalises the structural caveat documented above).
 - `.omc/plans/v0.4-audit-findings.md` "Status update 2026-05-07".
 - `.omc/plans/v0.5-audit-findings.md` "Status update 2026-05-07 (v0.5.1)".
 - `.omc/plans/v0.6-audit-findings.md` (TASLP-MISC ship summary).

@@ -589,4 +589,107 @@ ADR 0012, ADR 0013, `.omc/plans/v0.6-design.md`,
 `roomestim/adapters/ace_challenge.py` (TASLP-MISC plumbing + LOW-RETRO
 softening).
 
+---
+
+## D18 — v0.7.0 ships WFS CLI ergonomics (Scope A) + Building_Lobby coupled-space exclusion ADR (Scope C)
+
+**Date**: 2026-05-09
+
+**Question**: D17 §"v0.6+ work item set updated" listed
+"Building_Lobby coupled-space ADR — separate ADR on its own terms (v0.7+)"
+as an explicit DEFERRED item. Independently, the v0.6 CLI surfaces a
+raw `ValueError(kErrWfsSpacingTooLarge: ...)` at the default invocation
+`roomestim run --algorithm wfs --n-speakers 8 --layout-radius 2.0`
+because `f_max_hz` is hard-coded to 8000.0 in `roomestim/cli.py`. Which
+of these ship at v0.7.0?
+
+**Decision**:
+- **Scope A — WFS CLI ergonomics ships**. `roomestim/cli.py` `place`
+  and `run` parsers gain two new optional flags:
+    - `--wfs-f-max-hz FLOAT` (default 8000.0) — exposes the
+      previously-hardcoded constant.
+    - `--wfs-spacing-m FLOAT` (default None — derived from
+      `--layout-radius` and `--n-speakers`) — escape hatch for
+      explicit spacing.
+  The library-level `place_wfs(...)` `ValueError` API contract is
+  UNCHANGED (kErrWfsSpacingTooLarge still raises with the same
+  message). The constructive remediation message is built only at
+  the CLI layer in `_run_placement(...)` via try/except, citing
+  both remediation paths concretely:
+    - "max safe `--wfs-f-max-hz` for current spacing is X = c/(2*spacing_m) = ... Hz"
+    - "minimum safe `--n-speakers` for current f_max_hz is Y = ceil(baseline_len/(c/(2*f_max))) + 1 = ..."
+- **Scope C — Building_Lobby coupled-space ADR ships** as ADR 0014.
+  No code change (the v0.6 implicit exclusion in `_FURNITURE_BY_ROOM`
+  is the same set of facts; ADR 0014 is the explicit citable
+  decision-handle). ADR 0012 and ADR 0013 References gain one
+  cross-link line each pointing forward to ADR 0014.
+- **No `__schema_version__` flip** (D8 unchanged; A10 lab capture has
+  not shipped).
+- **No new MaterialLabel enum entries.** No new TASLP-MISC
+  per-piece α revisions. No `MaterialAbsorptionBands` coefficient
+  revision. No predictor changes. No perf doc regeneration (Scope A
+  is CLI-UX-only; Scope C is bookkeeping-only).
+- **v0.7.0 is structurally additive vs v0.6.0**: 100 → 104 default-lane
+  tests (+4 in `tests/test_cli_wfs_ergonomics.py`); existing 100 tests
+  remain byte-equal.
+
+**v0.7.0 deliverables**:
+- `roomestim/cli.py`: 2 new flags on `place` and `run` parsers
+  (4 `add_argument` calls total, byte-symmetric); `_run_placement`
+  signature gains `wfs_f_max_hz: float = 8000.0` and
+  `wfs_spacing_m: float | None = None` kwargs; constructive `ValueError`
+  re-raise wrapper around `place_wfs(...)`.
+- `tests/test_cli_wfs_ergonomics.py` (NEW; +4 default-lane tests):
+  constructive-error assertion; `--wfs-f-max-hz 300` success path;
+  `--wfs-spacing-m 0.02` + `--wfs-f-max-hz 8000` success path;
+  `--wfs-spacing-m` overrides derived spacing (verified via
+  `x_wfs_f_alias_hz` round-trip in `layout.yaml`).
+- `docs/adr/0014-building-lobby-coupled-space-exclusion.md` (NEW):
+  full Status / Date / Predecessor / Decision / Drivers /
+  Alternatives considered / Why chosen / Consequences / Reverse if /
+  References sections.
+- `docs/adr/0012-eaton-taslp-materials-not-in-paper.md` and
+  `docs/adr/0013-taslp-misc-soft-surface-budget.md`: References gain
+  one cross-link line each pointing to ADR 0014.
+- `.omc/plans/v0.7-design.md` (NEW): scope-A + scope-C design doc.
+- `.omc/plans/v0.7-audit-findings.md` (NEW): post-implementation
+  audit findings.
+- D18 (this entry; D14, D15, D16, D17 bodies untouched).
+- `pyproject.toml` and `roomestim/__init__.py`: 0.6.0 → 0.7.0;
+  `__schema_version__` stays `"0.1-draft"`.
+- `RELEASE_NOTES_v0.7.0.md`.
+
+**Why this scope and not the alternatives**:
+- "Co-ship Building_Lobby coupled-space predictor" rejected — out
+  of scope (per ADR 0014 §Alternatives considered (b)).
+- "Co-ship `lecture_seat` α₅₀₀ revision (RELEASE_NOTES_v0.6.0.md
+  flagged this as a v0.7+ candidate)" rejected — that revision
+  re-anchors on F3 ceiling material entanglement and is a separate
+  data-table ADR; v0.7 is locked to the two zero-risk items so the
+  v0.6 numerical baseline is preserved.
+- "Promote `kErrWfsSpacingTooLarge` constructive message to library-
+  level `place_wfs(...)`" rejected — the library-level error is
+  algorithmic (it does not know `n_speakers` or `layout_radius`,
+  which are CLI-derived); building remediation strings inside the
+  library would couple it to CLI semantics. Keeping the wrap at the
+  CLI layer matches the existing layering.
+
+**Reverse if**:
+- An external consumer reports the `--wfs-spacing-m` override produces
+  unexpected `x_wfs_f_alias_hz` (i.e. the explicit spacing is silently
+  ignored) → patch and re-test.
+- The constructive message's `min_safe_n` formula misfires on a
+  `baseline_len == 0` edge case (currently guarded; reverse if a
+  real consumer triggers it) → revisit the math in `_run_placement`.
+- ADR 0014's reverse-trigger conditions fire (coupled-space predictor
+  + per-sub-volume geometry; non-canonical effective-volume evidence;
+  external-contributor predictor with > 50% B-L improvement) → see
+  ADR 0014 §Reverse if.
+
+**Cross-ref**: D14, D15, D16, D17, ADR 0008, ADR 0009, ADR 0010,
+ADR 0011, ADR 0012, ADR 0013, ADR 0014,
+`.omc/plans/v0.7-design.md`, `.omc/plans/v0.7-audit-findings.md`,
+`RELEASE_NOTES_v0.7.0.md`, `roomestim/cli.py`,
+`tests/test_cli_wfs_ergonomics.py`.
+
 
