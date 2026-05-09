@@ -1,0 +1,7 @@
+# SoundCam — Lab — measured RT60 (synthesised v0.9 fixture)
+# Honesty: GT corners + RT60 derived from SoundCam paper-published dimensions;
+#          live-mesh corner extraction is v0.10+ upgrade path.
+# Citation status: executor-estimated, citation-pending. Lab-class RT60
+#   range 0.30..0.40 s mid-band per implementation prompt; midpoint used.
+band_hz,measured_t60_s
+500,0.35

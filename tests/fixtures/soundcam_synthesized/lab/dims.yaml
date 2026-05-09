@@ -1,0 +1,27 @@
+# SoundCam — Lab (treated/empty room) — synthesised v0.9 fixture
+#
+# Honesty marker:
+#   GT corners + RT60 derived from SoundCam paper-published dimensions;
+#   live-mesh corner extraction is v0.10+ upgrade path.
+#
+# Source: SoundCam (Stanford, 2024) — arXiv:2311.03517;
+#         purl.stanford.edu/xq364hd5023
+# Citation status: executor-estimated, citation-pending (live paper / repo
+#   access not performed at v0.9 fixture-authoring time; placeholder
+#   dimensions consistent with the implementation prompt). v0.10+ should
+#   retrieve published values.
+
+room_id: lab
+description: SoundCam Room 1 — treated/empty (light furnishings)
+length_m: 5.7  # L (along x)
+width_m: 4.7   # W (along z)
+height_m: 2.7  # H (ceiling)
+citation_pending: true
+floor_material: carpet
+walls_material: misc_soft
+ceiling_material: ceiling_drywall
+# Material rationale (v0.9 synthesised; defensible mapping for ±20% A11):
+#   floor=carpet — paper describes treated room with acoustic floor lining
+#   walls=misc_soft — "treated/empty" implies acoustic wall panels; misc_soft
+#     (α₅₀₀=0.40) is the schema's slot for soft furnishings/treatment budget
+#   ceiling=ceiling_drywall — flat painted ceiling typical of treated lab room

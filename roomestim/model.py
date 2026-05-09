@@ -185,7 +185,7 @@ class RoomModel:
     ceiling_height_m: float
     surfaces: list[Surface]
     listener_area: ListenerArea
-    schema_version: str = "0.1-draft"
+    schema_version: str = "0.1"
 
 
 # --------------------------------------------------------------------------- #

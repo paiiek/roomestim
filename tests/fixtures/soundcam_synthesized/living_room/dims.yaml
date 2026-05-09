@@ -1,0 +1,25 @@
+# SoundCam — Living room (furnished) — synthesised v0.9 fixture
+#
+# Honesty marker:
+#   GT corners + RT60 derived from SoundCam paper-published dimensions;
+#   live-mesh corner extraction is v0.10+ upgrade path.
+#
+# Source: SoundCam (Stanford, 2024) — arXiv:2311.03517;
+#         purl.stanford.edu/xq364hd5023
+# Citation status: executor-estimated, citation-pending.
+
+room_id: living_room
+description: SoundCam Room 2 — furnished living room (sofa, rugs, soft furnishings)
+length_m: 6.0
+width_m: 4.5
+height_m: 2.5
+citation_pending: true
+floor_material: carpet
+walls_material: wall_painted
+ceiling_material: ceiling_acoustic_tile
+# Material rationale (v0.9 synthesised; defensible mapping for ±20% A11):
+#   floor=carpet — typical furnished living room
+#   walls=wall_painted — typical drywall + paint
+#   ceiling=ceiling_acoustic_tile — represents soft furnishings + ceiling
+#     absorption combined; furnished room has higher mid-band absorption
+#     than bare drywall

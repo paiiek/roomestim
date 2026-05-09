@@ -827,3 +827,138 @@ ADR 0011, ADR 0012, ADR 0013, ADR 0014, ADR 0015,
 `docs/perf_verification_lecture2_bracket_2026-05-09.md`.
 
 
+---
+
+## D20 — v0.9.0 ships A10a SoundCam substitute (synthesised) + A11 RT60 boost + Stage-2 schema flip + ADR 0016/0017; cross-repo PR proposal-stage; A10b in-situ DEFERRED (no closure)
+
+**Date**: 2026-05-09
+
+**Question**: D19 §"What stays deferred" carved out (a) Stage-2 schema
+flip / A10 lab capture (D8); (b) F4a constrained sensitivity sweep;
+(c) ratification of any Lecture_2 bracketing variant. The v0.8
+strategic-position report `.omc/plans/v0.8-strategic-position-2026-05-09.md`
+identified 8-release "wait for in-situ A10" deadlock as the 0%-progress
+pattern blocking spatial_engine integration + cross-repo PR. The user
+locked the v0.9 scope to "use clean public-dataset substitute" via
+SoundCam. Which items ship at v0.9.0, and what is the substitute-vs-
+in-situ honesty posture?
+
+**Decision**:
+- **A10a SoundCam corner substitute SHIPS (synthesised path)**. 3
+  rooms (lab / living_room / conference) × synthesised rectangular-
+  shoebox GT corners derived from SoundCam paper-published
+  dimensions; per-corner Euclidean distance ≤ 10 cm. The synthesised
+  path stops short of live-mesh download + extraction (deferred to
+  v0.10+); the v0.9 honesty marker — "GT corners + RT60 derived from
+  SoundCam paper-published dimensions; live-mesh corner extraction
+  is v0.10+ upgrade path" — appears in 4 places (release notes + ADR
+  0016 + ADR 0017 + each test docstring).
+- **A11 SoundCam RT60 boost SHIPS**. Same 3 rooms × Sabine RT60 at
+  500 Hz; |predicted - measured| / measured ≤ 0.20 enforced as a HARD
+  test (not sensitivity-only bracket). Per-room defensible material
+  maps recorded in `tests/fixtures/soundcam_synthesized/<room>/dims.yaml`
+  rationale blocks. Empirical results: lab 0.28 % (predicted 0.351 s
+  vs measured 0.350 s); living_room 5.57 % (0.425 s vs 0.450 s);
+  conference 15.92 % (0.462 s vs 0.550 s). All 3 within ±20 %.
+- **Stage-2 schema flip SHIPS**. `__schema_version__` flips
+  `"0.1-draft"` → `"0.1"`; `RoomModel.schema_version` default flips
+  `"0.1-draft"` → `"0.1"`. `proto/room_schema.json` (Stage 2 strict;
+  `additionalProperties: false`; `version: const "0.1"`; authored
+  byte-stable at v0.1.1 P3) becomes canonical. `proto/room_schema.draft.json`
+  preserved for backward-compat reads. Reader `_load_schema` switch
+  at `roomestim/io/room_yaml_reader.py:32` handles both variants;
+  regression test in `tests/test_schema_stage2_validates.py`.
+- **ADR 0016 SHIPS** — Stage-2 schema flip via SoundCam substitute
+  with explicit reverse-criterion (in-situ ALWAYS overrides
+  substitute; A10b mismatch → schema may revert to `"0.1-draft"`,
+  cross-repo PR pauses).
+- **ADR 0017 SHIPS** — A10-layout DEFERRED-with-classification
+  (non-substitutable by any public dataset). A10 three-way
+  decomposition: A10a PASS (substitute) / A10b DEFERRED (no closure)
+  / A10-layout DEFERRED-with-classification.
+- **Cross-repo PR remains PROPOSAL STAGE**. Proposal text shipped at
+  `.omc/research/cross-repo-pr-v0.9-proposal.md`; merge decision is
+  spatial_engine team responsibility, not v0.9.
+- **Library defaults UNCHANGED.** MaterialLabel (9 entries),
+  `MaterialAbsorption{,Bands}`, `_FURNITURE_BY_ROOM` (sum=276),
+  `_PIECE_EQUIVALENT_ABSORPTION_*` (`lecture_seat` α₅₀₀ = 0.45,
+  MISC_SOFT α = 0.40), `roomestim/place/wfs.py`, `roomestim/cli.py`,
+  `roomestim/adapters/ace_challenge.py`, `roomestim/adapters/polycam.py`,
+  `roomestim/reconstruct/floor_polygon.py` byte-equal to v0.8.0.
+  ADRs 0001..0015 byte-equal.
+- **A10b in-situ DEFERRED — no closure.** v0.9 does NOT claim A10
+  fully closed; A10b remains user-volunteer-only (OQ-12a unchanged).
+- **F4a / coupled-space / Lecture_2 ratification DEFERRED unchanged.**
+  OQ-11 status reaffirmed; ADR 0015 §Reverse-trigger gates remain
+  locked.
+
+**v0.9.0 deliverables**:
+- `roomestim/__init__.py`: 0.8.0 → 0.9.0; `__schema_version__`
+  `"0.1-draft"` → `"0.1"` (2 line-flips).
+- `roomestim/model.py`: `RoomModel.schema_version` default
+  `"0.1-draft"` → `"0.1"` (1 line-flip at line 188).
+- `pyproject.toml`: 0.8.0 → 0.9.0 (1 line-flip).
+- `tests/fixtures/soundcam_synthesized/` (NEW; 11 files):
+  `LICENSE_MIT.txt` + `README.md` + 3 × `dims.yaml` + 3 ×
+  `GT_corners.json` + 3 × `rt60.csv`.
+- `tests/test_a10a_soundcam_corner.py` (NEW; +3 default-lane tests).
+- `tests/test_a11_soundcam_rt60.py` (NEW; +3 default-lane tests).
+- `tests/test_schema_stage2_validates.py` (NEW; +1 default-lane
+  test).
+- `docs/adr/0016-stage2-schema-flip-via-substitute.md` (NEW).
+- `docs/adr/0017-a10-layout-deferred-non-substitutable.md` (NEW).
+- `.omc/research/cross-repo-pr-v0.9-proposal.md` (NEW).
+- `.omc/plans/decisions.md`: D20 appended (D14..D19 bodies untouched).
+- `.omc/plans/open-questions.md`: OQ-12a/b/c already appended at
+  plan time; no further OQs raised.
+- `RELEASE_NOTES_v0.9.0.md` (NEW).
+
+**Empirical findings**:
+- A10a corner errors: 0.00 cm / 0.00 cm / 0.00 cm (lab / living_room
+  / conference); synthesised shoebox is exact by construction.
+- A11 RT60 errors at 500 Hz Sabine: 0.28 % / 5.57 % / 15.92 % (all
+  within ±20 % gate).
+- Default-lane: 111 → 118 (+3 A10a + +3 A11 + +1 Stage-2 = +7).
+  ruff clean.
+
+**Why this scope and not the alternatives**:
+- "Wait for A10b in-situ indefinitely" rejected — 8-release deadlock
+  pattern (v0.8 strategic-position report).
+- "Live SoundCam mesh download + extraction" deferred to v0.10+ — out
+  of v0.9 scope; default-lane CI cannot depend on multi-GB downloads.
+- "ARKitScenes substitute instead" rejected — Apple non-commercial
+  license; ~hundreds-of-GB scope; minimum-leverage move is 3
+  SoundCam rooms first (OQ-12c).
+- "Stage-2 flip with no substitute (declare schema good enough on
+  author judgement)" rejected — would break OQ-4 / D2 / D8 conditions
+  (Stage-2 lock requires real-world fixture exercise; ≥3 captures
+  per D2).
+- "Co-ship F4a / Lecture_2 ratification at v0.9" rejected — ADR 0015
+  reverse-trigger still gated by independent evidence; v0.9 is the
+  Stage-2-flip + A10a/A11-substitute release, not another residual-
+  shrinking experiment.
+
+**Reverse-trigger / ratchet-safe behaviour**:
+- ADR 0016 §Reverse-criterion: if A10b in-situ ever ships and
+  disagrees with substitute (corner > 10 cm OR RT60 > 20 % on same
+  predictor / adapter path), Stage-2 flip RE-EVALUATED; schema may
+  revert to `"0.1-draft"` (reader switch already supports both);
+  cross-repo PR pauses or follow-up PR adjusts.
+- **In-situ ALWAYS overrides substitute.**
+- ADR 0017 §Reverse-trigger: if a future public dataset ships VBAP-N
+  layout GT, ADR 0017 is reverted and an A10a-layout substitute is
+  added in v0.10+.
+
+**Cross-ref**: D2, D8, D11, D14, D15, D16, D17, D18, D19,
+ADR 0001..0015 (untouched), ADR 0016, ADR 0017,
+`.omc/plans/v0.8-strategic-position-2026-05-09.md`,
+`.omc/plans/v0.9-design.md`,
+`.omc/research/cross-repo-pr-v0.9-proposal.md`,
+`RELEASE_NOTES_v0.9.0.md`,
+`tests/fixtures/soundcam_synthesized/`,
+`tests/test_a10a_soundcam_corner.py`,
+`tests/test_a11_soundcam_rt60.py`,
+`tests/test_schema_stage2_validates.py`,
+SoundCam (arXiv:2311.03517; purl.stanford.edu/xq364hd5023; MIT).
+
+

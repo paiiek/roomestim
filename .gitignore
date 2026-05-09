@@ -15,6 +15,10 @@ tests/fixtures/lab_real.usdz
 tests/fixtures/lab_real_*.json
 tests/fixtures/lab_real_*.yaml
 
+# SoundCam upstream PLY meshes (multi-MB; pulled via $ROOMESTIM_SOUNDCAM_DIR;
+# synthesized fixture metadata under tests/fixtures/soundcam_synthesized/ IS checked in)
+tests/fixtures/soundcam_synthesized/**/mesh.ply
+
 # OMC ephemeral session/replay state. Plans/specs/decisions under .omc/ are kept;
 # per-session runtime files are not.
 .omc/state/

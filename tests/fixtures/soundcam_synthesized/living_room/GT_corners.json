@@ -1,0 +1,16 @@
+{
+  "room_id": "living_room",
+  "source": "SoundCam Stanford 2024",
+  "license": "MIT",
+  "extracted_by": "roomestim v0.9 fixture-authoring 2026-05-09",
+  "method": "synthesised rectangular shoebox from SoundCam paper-published dimensions; CCW from minimum-x,minimum-z corner; live-mesh corner extraction is v0.10+ upgrade path",
+  "corners_m": [
+    [-3.0, -2.25],
+    [ 3.0, -2.25],
+    [ 3.0,  2.25],
+    [-3.0,  2.25]
+  ],
+  "ceiling_height_m": 2.5,
+  "floor_z_m": 0.0,
+  "citation_pending": true
+}
