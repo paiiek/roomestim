@@ -692,4 +692,138 @@ ADR 0011, ADR 0012, ADR 0013, ADR 0014,
 `RELEASE_NOTES_v0.7.0.md`, `roomestim/cli.py`,
 `tests/test_cli_wfs_ergonomics.py`.
 
+---
+
+## D19 — v0.8.0 ships Lecture_2 ceiling/seat sensitivity bracketing (Scope A) + per-band ex-BL MAE snapshot (Scope B); F4a + ratification DEFERRED to v0.9+
+
+**Date**: 2026-05-09
+
+**Question**: D18 §"What stays deferred" carved out (1) Lecture_2
+ceiling material hypothesis (F3) — canonical evidence path closed at
+v0.7; (2) `MaterialAbsorptionBands` coefficient revision (F4a) — D14 5b
+pre-condition unchanged; (3) `lecture_seat` α₅₀₀ revision — re-anchors
+on F3 entanglement. The v0.7 critic verdict labelled v0.7 as borderline
+ADR-theatre and demanded that v0.8 ship a residual-shrinking experiment
+rather than another bookkeeping-only release. Which of these ship at
+v0.8.0, and as commitment vs measurement?
+
+**Decision**:
+- **Scope A — Lecture_2 ceiling/seat sensitivity bracketing ships as
+  measurement, NOT commitment.** Four committed variants and one
+  optional bounding case (V0 baseline / V1 ceiling=`ceiling_drywall`
+  / V2 lecture_seat α split unoccupied profile / V3 V1+V2 / **V4**
+  ceiling=`wall_concrete` env-gated bounding case via
+  `ROOMESTIM_BRACKET_V4=1`) are evaluated against the in-tree
+  measured-T60 fixture
+  (`tests/fixtures/ace_eaton_2016_table_i_measured_rt60.csv`). The
+  bracketing test suite passes regardless of the numerical verdict
+  (positive or null); the verdict is recorded in
+  `docs/perf_verification_lecture2_bracket_2026-05-09.md` (auto-emitted,
+  deterministic) + ADR 0015 §Consequences + `RELEASE_NOTES_v0.8.0.md`.
+- **Scope B — per-band ex-BL MAE snapshot ships.** A frozen golden at
+  `tests/fixtures/golden/per_band_mae_ex_bl_2026-05-09.json` records the
+  v0.6 perf doc per-band-per-predictor MAE figures (mean of |err| over
+  the 6 ex-BL rooms). The default-lane test
+  `tests/test_per_band_mae_ex_bl_snapshot.py` recomputes MAE in-process
+  every run; future predictor / adapter / per-band-table changes that
+  shift any MAE force a one-line golden update + PR justification.
+- **Library defaults UNCHANGED.** `_build_room_model(...)` gains an
+  additive `overrides=` keyword (default `None` ⇒ byte-equal to v0.7).
+  `MaterialLabel`, `MaterialAbsorption{,Bands}`, `_FURNITURE_BY_ROOM`,
+  `_PIECE_EQUIVALENT_ABSORPTION_*`, `roomestim/place/wfs.py`,
+  `roomestim/cli.py`, `roomestim/model.py` byte-equal to v0.7.
+- **F4a + ratification DEFERRED to v0.9+** per ADR 0015 §Reverse-trigger.
+  v0.8 verdict is **null** — V3 closes Lecture_2 |err| from −0.908 s to
+  −0.879 s (bracketing only; not below the +/−0.5 s acceptance envelope)
+  and regresses Meeting_1 / Meeting_2 by +0.108 s / +0.142 s @500 Hz
+  Sabine vs V0. Single-coefficient swap is insufficient; v0.9 considers
+  the broader F4a per-band sensitivity sweep + coupled-space modelling.
+
+**v0.8.0 deliverables**:
+- `roomestim/adapters/ace_challenge.py`: + `_RoomBuildOverrides` frozen
+  dataclass; `_build_room_model` gains `overrides=` kwarg (additive);
+  sibling helper `_misc_soft_surface_from_furniture_with_alpha(...)`
+  for per-call seat α (the original
+  `_misc_soft_surface_from_furniture` is byte-equal to v0.7).
+- `tests/test_lecture_2_ceiling_seat_bracket.py` (NEW; +5 tests).
+- `tests/test_per_band_mae_ex_bl_snapshot.py` (NEW; +2 tests).
+- `tests/fixtures/ace_eaton_2016_table_i_measured_rt60.csv` (NEW;
+  factual reproduction of v0.6 perf-doc measured-T60 column).
+- `tests/fixtures/golden/per_band_mae_ex_bl_2026-05-09.json` (NEW).
+- `docs/perf_verification_lecture2_bracket_2026-05-09.md` (NEW;
+  deterministic; auto-emitted by Scope-A test #5).
+- `docs/adr/0015-lecture-2-ceiling-seat-bracketing.md` (NEW; full
+  Status / Date / Predecessor / Decision / Drivers / Alternatives
+  considered (≥4) / Why chosen / Consequences / Reverse-trigger /
+  References sections).
+- `docs/adr/0014-building-lobby-coupled-space-exclusion.md`: References
+  gain one cross-link line forward to ADR 0015.
+- `.omc/plans/v0.8-design.md` (existed pre-executor; READ-ONLY).
+- `.omc/plans/v0.8-audit-findings.md` (NEW; post-implementation; not
+  authored at plan time).
+- D19 (this entry; D14..D18 bodies untouched).
+- OQ-11 appended to `.omc/plans/open-questions.md` under new "v0.8-design
+  — 2026-05-09" section.
+- `pyproject.toml` and `roomestim/__init__.py`: 0.7.0 → 0.8.0;
+  `__schema_version__` stays `"0.1-draft"`.
+- `RELEASE_NOTES_v0.8.0.md` (NEW; mirrors v0.7 release-notes shape;
+  explicitly addresses the v0.7 critic SemVer-loose finding by framing
+  v0.8 as substantive numerical-experiment release).
+- Default-lane test count: 104 → 111 (+5 bracketing + +2 snapshot).
+
+**Empirical Lecture_2 500 Hz Sabine bracketing results**:
+- V0: 0.435 s (err −0.908 s vs measured 1.343 s).
+- V1 ceiling=`ceiling_drywall`: 0.743 s (err −0.600 s; |err| reduced
+  by 0.308 s).
+- V2 unoccupied seat α: 0.322 s (err −1.021 s; |err| INCREASED by
+  0.113 s — lower seat α reduces total absorption further).
+- V3 combined: 0.464 s (err −0.879 s; |err| reduced by 0.029 s; below
+  acceptance envelope; Meeting_1 +0.108 s + Meeting_2 +0.142 s
+  regression at 500 Hz Sabine vs V0).
+
+**Why this scope and not the alternatives**:
+- "Ship F4a constrained sensitivity sweep at 2k/4k as v0.8 headline"
+  rejected — broader sweep without sharpened prior; spawned per-room-
+  per-band combinatorial space without a falsifying question. Deferred
+  to v0.9 *gated on v0.8 outcome* (now v0.9 enters the broader sweep
+  with the v0.8 null result as sharpened prior — single-coefficient
+  ceiling/seat swap insufficient).
+- "Ratify a winning variant as the v0.8 default" rejected — re-anchors
+  on F3 ceiling-material entanglement; v0.8 verdict is null on (1)
+  acceptance-envelope grounds anyway. Independent evidence still
+  required per ADR 0015 §Reverse-trigger.
+- "Ship Scope A only without per-band MAE snapshot" rejected — the
+  snapshot is the infrastructure that makes future bracketing PRs
+  auto-evaluated against residuals (critic M2 finding).
+- "Write a coupled-space predictor (Cremer / Müller) as v0.8 headline"
+  rejected — ADR 0014 §Alternatives considered (b) carved this out
+  (needs per-sub-volume geometry the ACE adapter does not have).
+- "Wait for non-canonical evidence" rejected — the v0.7 critic
+  explicitly flagged this as confusing unknown ground truth with
+  unfalsifiable hypothesis. The corpus IS the truth-table.
+
+**Reverse if**:
+- A v0.9+ release ratifies a variant as new default (requires all of
+  ADR 0015 §Reverse-trigger conditions 1–3) → patch
+  `ACE_ROOM_GEOMETRY` and/or `_PIECE_EQUIVALENT_ABSORPTION_*` and
+  re-run gated E2E.
+- The v0.8 perf doc appendix's md5 drifts on the same inputs (i.e.,
+  Scope-A test #5 is no longer deterministic) → revisit emit-order
+  invariants in the test.
+- The per-band MAE snapshot fires on a routine PR (e.g., minor
+  floating-point drift across dev environments) → tighten
+  determinism (sort orders, accumulation order) or loosen the
+  ±0.001 s tolerance with a recorded justification.
+- A textbook re-read or author lookup surfaces a per-piece α value
+  that differs from the V2 unoccupied profile by > 30% on any band
+  (tightens the V2 representative-not-verbatim caveat).
+
+**Cross-ref**: D14, D15, D16, D17, D18, ADR 0008, ADR 0009, ADR 0010,
+ADR 0011, ADR 0012, ADR 0013, ADR 0014, ADR 0015,
+`.omc/plans/v0.8-design.md`, `RELEASE_NOTES_v0.8.0.md`,
+`roomestim/adapters/ace_challenge.py`,
+`tests/test_lecture_2_ceiling_seat_bracket.py`,
+`tests/test_per_band_mae_ex_bl_snapshot.py`,
+`docs/perf_verification_lecture2_bracket_2026-05-09.md`.
+
 

@@ -1,0 +1,53 @@
+# ACE Challenge measured T60, transcribed 2026-05-09 from
+# `docs/perf_verification_e2e_2026-05-08.md` (the v0.6/v0.7-preserved per-band
+# tables) for use by the v0.8 default-lane Lecture_2 bracketing harness
+# (tests/test_lecture_2_ceiling_seat_bracket.py) and the per-band ex-BL MAE
+# snapshot test (tests/test_per_band_mae_ex_bl_snapshot.py). The figures here
+# are factual reproductions of the measured-RT60 column — not predictor
+# output — and therefore do not depend on any roomestim coefficient table.
+# Building_Lobby is included for transparency but excluded from any aggregate
+# (ADR 0014); the bracketing harness raises if asked to bracket Building_Lobby.
+# Bands: 125, 250, 500, 1000, 2000, 4000 Hz (per OCTAVE_BANDS_HZ).
+room_id,band_hz,measured_t60_s
+Building_Lobby,125,0.450
+Building_Lobby,250,0.608
+Building_Lobby,500,0.597
+Building_Lobby,1000,0.685
+Building_Lobby,2000,0.712
+Building_Lobby,4000,0.685
+Lecture_1,125,0.678
+Lecture_1,250,0.851
+Lecture_1,500,0.561
+Lecture_1,1000,0.535
+Lecture_1,2000,0.639
+Lecture_1,4000,0.678
+Lecture_2,125,0.880
+Lecture_2,250,1.062
+Lecture_2,500,1.343
+Lecture_2,1000,1.506
+Lecture_2,2000,1.378
+Lecture_2,4000,1.161
+Meeting_1,125,0.554
+Meeting_1,250,0.481
+Meeting_1,500,0.427
+Meeting_1,1000,0.401
+Meeting_1,2000,0.417
+Meeting_1,4000,0.432
+Meeting_2,125,0.581
+Meeting_2,250,0.455
+Meeting_2,500,0.407
+Meeting_2,1000,0.331
+Meeting_2,2000,0.328
+Meeting_2,4000,0.350
+Office_1,125,0.535
+Office_1,250,0.406
+Office_1,500,0.377
+Office_1,1000,0.317
+Office_1,2000,0.298
+Office_1,4000,0.327
+Office_2,125,0.508
+Office_2,250,0.450
+Office_2,500,0.452
+Office_2,1000,0.439
+Office_2,2000,0.420
+Office_2,4000,0.402

@@ -177,3 +177,6 @@ superseded by a follow-on ADR that re-evaluates the exclusion list.
 - `RELEASE_NOTES_v0.6.0.md` — "What stays deferred — Building_Lobby
   coupled-space ADR: separate v0.7+ work item" (the open status this
   ADR closes).
+- ADR 0015 — Lecture_2 ceiling/seat sensitivity bracketing methodology
+  (v0.8.0); Building_Lobby remains excluded under §Decision; cross-ref
+  for the v0.8+ residual-shrinking experiment trail.

@@ -388,6 +388,121 @@ def _misc_soft_surface_from_furniture(
     )
 
 
+def _misc_soft_surface_from_furniture_with_alpha(
+    room_id: str,
+    room_dimensions: tuple[float, float, float],
+    alpha_500: float,
+    alpha_bands: tuple[float, float, float, float, float, float],
+) -> Surface | None:
+    """Sibling of ``_misc_soft_surface_from_furniture`` with explicit α values.
+
+    Used by the v0.8 Scope-A bracketing harness (see ADR 0015) to construct a
+    per-variant MISC_SOFT surface where the seat (and other furniture)
+    equivalent absorption is computed against a *supplied* 500 Hz scalar α and
+    6-band tuple, rather than the library default
+    ``MaterialAbsorption[MISC_SOFT]`` / ``MaterialAbsorptionBands[MISC_SOFT]``.
+
+    The library defaults remain byte-equal when this function is not called
+    (the default code path in ``_build_room_model(overrides=None)`` uses
+    ``_misc_soft_surface_from_furniture`` unchanged). This sibling is
+    intentionally additive and never mutates module-level state.
+
+    The synthetic surface area is computed so the Sabine integrand at 500 Hz
+    is preserved against the supplied ``alpha_500`` (i.e.
+    ``area * alpha_500 == Σ_pieces count_i * A_500_i``), rather than against
+    the library MISC_SOFT scalar. The surface stores the supplied
+    ``alpha_500`` and ``alpha_bands`` directly so the per-band predictor sees
+    the per-variant α.
+
+    Parameters
+    ----------
+    room_id:
+        ACE Challenge room identifier (must be in ``_FURNITURE_BY_ROOM``).
+    room_dimensions:
+        ``(L, W, H)`` in metres; only ``L`` and ``W`` are used.
+    alpha_500:
+        The 500 Hz scalar absorption coefficient to use (replacing
+        ``MaterialAbsorption[MISC_SOFT]``).
+    alpha_bands:
+        The 6-band absorption tuple at (125, 250, 500, 1000, 2000, 4000) Hz
+        (replacing ``MaterialAbsorptionBands[MISC_SOFT]``).
+
+    Returns
+    -------
+    Surface | None
+        Same shape as ``_misc_soft_surface_from_furniture(...)`` but with the
+        supplied ``alpha_500`` / ``alpha_bands`` written into the Surface, and
+        Newell-area scaled to preserve the Sabine integrand at 500 Hz against
+        ``alpha_500`` rather than ``MaterialAbsorption[MISC_SOFT]``. Returns
+        ``None`` if the room has no furniture entry.
+    """
+    if room_id not in _FURNITURE_BY_ROOM:
+        return None
+    if alpha_500 <= 0.0:
+        raise ValueError("alpha_500 must be > 0")
+    if len(alpha_bands) != 6:
+        raise ValueError("alpha_bands must have length 6")
+    furniture = _FURNITURE_BY_ROOM[room_id]
+    total_eq_abs = 0.0
+    for piece, count in furniture.items():
+        a_i = _PIECE_EQUIVALENT_ABSORPTION_500HZ_M2[piece]
+        total_eq_abs += count * a_i
+    area = total_eq_abs / alpha_500
+    if area <= 0.0:
+        return None
+
+    L, W, _H = room_dimensions
+    side = math.sqrt(area)
+    if side <= min(L, W):
+        x0, x1 = 0.0, side
+        z0, z1 = 0.0, side
+    else:
+        long_side = max(L, W)
+        short_side = min(L, W)
+        strip_long = min(area / short_side, long_side)
+        other = area / strip_long
+        if L >= W:
+            x0, x1 = 0.0, strip_long
+            z0, z1 = 0.0, other
+        else:
+            x0, x1 = 0.0, other
+            z0, z1 = 0.0, strip_long
+
+    return Surface(
+        kind="floor",
+        polygon=[
+            Point3(x0, 0.0, z0),
+            Point3(x1, 0.0, z0),
+            Point3(x1, 0.0, z1),
+            Point3(x0, 0.0, z1),
+        ],
+        material=MaterialLabel.MISC_SOFT,
+        absorption_500hz=alpha_500,
+        absorption_bands=alpha_bands,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# v0.8 Scope-A bracketing overrides (additive; default-equivalent path is
+# byte-equal to v0.7). See ADR 0015 + tests/test_lecture_2_ceiling_seat_bracket.py.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class _RoomBuildOverrides:
+    """Per-variant overrides used by Scope-A bracketing test (v0.8).
+
+    None of these mutate library defaults — the overrides are constructed at
+    the test layer and passed in for one synthesis call. The default
+    ``_build_room_model(...)`` path is byte-equal to v0.7 when overrides is
+    None.
+    """
+
+    ceiling_label: MaterialLabel | None = None        # V1 / V3 / V4
+    seat_alpha_500: float | None = None               # V2 / V3
+    seat_alpha_bands: tuple[float, float, float, float, float, float] | None = None  # V2 / V3
+
+
 # --------------------------------------------------------------------------- #
 # E2ERoomCase dataclass
 # --------------------------------------------------------------------------- #
@@ -410,7 +525,12 @@ class E2ERoomCase:
 # --------------------------------------------------------------------------- #
 
 
-def _build_room_model(room_id: str, geom: dict[str, object]) -> RoomModel:
+def _build_room_model(
+    room_id: str,
+    geom: dict[str, object],
+    *,
+    overrides: _RoomBuildOverrides | None = None,
+) -> RoomModel:
     """Construct a synthetic RoomModel for one ACE room.
 
     The room is a rectangular shoebox. Surfaces:
@@ -425,6 +545,11 @@ def _build_room_model(room_id: str, geom: dict[str, object]) -> RoomModel:
 
     The ListenerArea is centred at the floor polygon centroid, height=1.20 m,
     radius ~0.5 m (no acoustic significance for RT60; required by RoomModel).
+
+    The optional ``overrides`` keyword (v0.8 Scope-A; see ADR 0015) is the
+    only library hook for the Lecture_2 ceiling/seat bracketing harness. When
+    ``overrides is None`` the output is byte-equal to v0.7 (no surface
+    added/removed/reordered; absorption values per surface unchanged).
     """
     L: float = float(geom["L"])  # x direction
     W: float = float(geom["W"])  # z direction
@@ -432,7 +557,11 @@ def _build_room_model(room_id: str, geom: dict[str, object]) -> RoomModel:
 
     floor_mat = _MATERIAL_MAP[str(geom["floor"])]
     wall_mat = _MATERIAL_MAP[str(geom["walls"])]
-    ceiling_mat = _MATERIAL_MAP[str(geom["ceiling"])]
+    ceiling_mat = (
+        overrides.ceiling_label
+        if overrides is not None and overrides.ceiling_label is not None
+        else _MATERIAL_MAP[str(geom["ceiling"])]
+    )
 
     # Floor polygon (CCW viewed from above → standard orientation)
     floor_pts_2d = [
@@ -543,7 +672,19 @@ def _build_room_model(room_id: str, geom: dict[str, object]) -> RoomModel:
     )
 
     surfaces = [floor_surf, ceiling_surf, wall1, wall2, wall3, wall4]
-    misc_soft_surf = _misc_soft_surface_from_furniture(room_id, (L, W, H))
+    if (
+        overrides is not None
+        and overrides.seat_alpha_500 is not None
+        and overrides.seat_alpha_bands is not None
+    ):
+        misc_soft_surf = _misc_soft_surface_from_furniture_with_alpha(
+            room_id,
+            (L, W, H),
+            overrides.seat_alpha_500,
+            overrides.seat_alpha_bands,
+        )
+    else:
+        misc_soft_surf = _misc_soft_surface_from_furniture(room_id, (L, W, H))
     if misc_soft_surf is not None:
         surfaces.append(misc_soft_surf)
 
