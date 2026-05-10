@@ -24,11 +24,11 @@
   - Paper: arXiv:2311.03517
   - Stanford Digital Repository: purl.stanford.edu/xq364hd5023
   - License: MIT (full text at `./LICENSE_MIT.txt`)
-- **What we ship in v0.9**: rectangular shoebox **synthesised** ground-truth
+- **What v0.9 shipped (superseded — see §Honesty-correction-2026-05-10 above)**: rectangular shoebox **synthesised** ground-truth
   derived from the room dimensions reported in the upstream paper. The actual
   Azure Kinect 3D textured meshes + measured Schroeder RT60 traces are NOT
   redistributed here — see "Synthesis methodology" below.
-- **What we DO NOT ship in v0.9**: live-mesh extraction from upstream PLY/CSV
+- **What v0.9 did NOT ship**: live-mesh extraction from upstream PLY/CSV
   files. That is the v0.10+ upgrade path; ADR 0016 §Reverse-criterion records
   the substitute-vs-in-situ honesty boundary.
 
@@ -36,7 +36,7 @@
 
 For each of the 2 SoundCam rooms (lab / conference; living_room REMOVED at v0.10 per ADR 0018):
 
-1. Take published room dimensions (L × W × H, metres) from the SoundCam
+1. **[v0.9-historical, superseded by §Honesty-correction-2026-05-10]:** Take published room dimensions (L × W × H, metres) from the SoundCam
    paper / repo metadata. If the executor was unable to access the
    canonical published values (paywall / repo offline), placeholder
    estimates from the v0.9 implementation prompt were used and are

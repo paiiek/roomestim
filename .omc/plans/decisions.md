@@ -1046,3 +1046,24 @@ place), `RELEASE_NOTES_v0.10.0.md` (NEW),
 `tests/test_a11_soundcam_rt60.py`,
 `tests/test_schema_stage2_validates.py`,
 SoundCam (arXiv:2311.03517v2; purl.stanford.edu/xq364hd5023; MIT).
+
+---
+
+## D22 — v0.10.1 patch ships fabricated-quote redaction; codifies hybrid audit-trail-discipline pattern for same-week-old ADR corrections; new OQ-13f/g/h/i recorded
+
+- **Date**: 2026-05-10b
+- **Author**: oh-my-claudecode:planner (consulted by user after v0.10.0 critic verdict 7.6/10 composite + architect §Categorisation table flagged 3 v0.10.1 patch-scope items)
+- **Predecessor**: D21 (v0.10.0 honesty correction; ADR 0018; living_room removed)
+- **Decision**: v0.10.1 ships the following audit-trail-discipline pattern as the canonical pattern for same-week-old ADR corrections:
+  - **For factual errors** (uncited quotes, drafting residue, fabricated extrapolations): HYBRID PATTERN — in-line redaction at the offending line + appended `§Status-update-YYYY-MM-DDb` block at the bottom of the ADR (after §References) recording the WHY (issue surfaced, action taken, cross-references).
+  - **For structural errors** (wrong decision-rationale, contradicted alternatives, broken reverse-criterion): ADR SUPERSEDURE — new ADR with §Status: superseded marker on the original.
+- **Drivers**: v0.10's ADR 0018 §Drivers item 2 line 46 quoted `living_room measured 1.121 s` without citation, contradicting v0.10's own §A.2 "no authoritative dims" claim. v0.10 critic flagged as MED honesty-leak. The error is FACTUAL not structural — the ADR's decision (fire reverse-criterion + remove living_room + revert schema) remains correct; only the §Drivers prose contained a fabricated quote.
+- **Why this pattern, not the alternatives**:
+  - "Pure append-only with `<del>`/`<ins>` HTML markup" rejected — unreadable in markdown ADR; markdown ADRs are read by humans, not version-control diff tools.
+  - "ADR supersedure (new ADR 0019 + ADR 0018 marked superseded)" rejected — overkill for a single-line factual correction; supersedure is reserved for structural errors per OQ-13g resolution-candidate.
+  - "Silent in-place correction (no §Status-update record)" rejected — violates audit-trail discipline; the `decisions.md` D22 entry would have no anchor in the ADR itself.
+- **Reverse-trigger / ratchet-safe behaviour**:
+  - If a future ADR has a STRUCTURAL error (decision-rationale wrong; alternatives contradicted), D22 does NOT apply — supersedure is required. (Recorded in OQ-13g resolution-candidate.)
+  - If the §Status-update block grows beyond ~20 lines, escalate to ADR supersedure (the issue is no longer a single-line correction).
+  - If the same ADR requires ≥ 2 §Status-updates within the same week, escalate to ADR supersedure (audit trail is becoming unreadable).
+- **Cross-references**: D2, D8, D11, D14..D20 (byte-equal under v0.10.1), D21 (byte-equal under v0.10.1), ADR 0001..0017 (byte-equal under v0.10.1), ADR 0018 (in-line redaction at line 46 + appended §Status-update-2026-05-10b block), `.omc/plans/v0.10.1-patch.md` (this v0.10.1 plan), `.omc/plans/open-questions.md` (OQ-13f/g/h/i NEW; OQ-13a amended; OQ-12a status-update; OQ-13d resolved).

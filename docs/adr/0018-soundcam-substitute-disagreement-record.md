@@ -42,12 +42,15 @@ amount to a second honesty leak.
    placeholder qualifier. v0.10 must walk back the unqualified
    "PASS" framing.
 2. **Paper-retrieved values disagree with placeholders by structural
-   factors** (lab measured 0.158 s vs placeholder 0.35 s = 2.2× error;
-   living_room measured 1.121 s vs placeholder 0.45 s = 2.5× error).
-   The placeholders had been chosen so the default-enum Sabine
-   prediction silently passed ±20 %; paper values reveal the
-   default-enum cannot reach treated-room (lab) or vaulted-ceiling
-   open-layout (living_room) targets.
+   factors** (lab measured 0.158 s vs placeholder 0.35 s = 2.2× error).
+   Living_room placeholder (0.45 s) is REMOVED at v0.10 with no
+   paper-retrieved counterpart: paper §A.2 publishes no authoritative
+   dims, and Table 7 row coverage was not independently verified for
+   living_room during paper-retrieval (see §Status-update-2026-05-10b
+   below). The placeholder had been chosen so the default-enum
+   Sabine prediction silently passed ±20 %; the paper-retrieved value
+   reveals the default-enum cannot reach treated-room (lab) absorption
+   levels.
 3. **ADR 0016 §Reverse-criterion was DESIGNED FOR THIS EVENT.** The
    ratchet-safe pattern (in-situ ALWAYS overrides substitute; substitute
    is "good enough until in-situ arrives") explicitly makes
@@ -184,3 +187,26 @@ successor ADR.
 - v0.10 release notes — `RELEASE_NOTES_v0.10.0.md`.
 - v0.10 perf doc — `docs/perf_verification_a10_soundcam_2026-05-10.md`.
 - Cross-repo PR withdrawal — `.omc/research/cross-repo-pr-v0.10-deferred.md`.
+
+---
+
+## §Status-update-2026-05-10b (added at v0.10.1 — fabricated-quote redaction)
+
+**Issue**: v0.10 critic verdict (7.6/10, 2026-05-10) flagged §Drivers
+item 2 line 46 quoting `living_room measured 1.121 s` without
+citation. v0.10 elsewhere asserts paper §A.2 publishes no authoritative
+living_room data, so the quoted measurement is either uncited Table 7
+row content (in which case ADR should cite Table 7 position) or
+drafting residue (in which case it should be redacted).
+
+**Action**: v0.10.1 redacts the `1.121 s` quote and the
+`vaulted-ceiling open-layout (living_room) targets` extrapolation
+from §Drivers item 2 (line 46). The line preserves the lab quote
+(`0.158 s vs placeholder 0.35 s`) which has independent Table 7
+citation in §Decision item 1 + §References. The redaction is in-line
+to keep the ADR readable; this §Status-update records the WHY for
+audit-trail discipline.
+
+**Cross-references**: v0.10 critic verdict (§Honesty-leak audit MED);
+v0.11 architect verdict §Categorisation table (categorised as
+v0.10.1 patch); .omc/plans/v0.10.1-patch.md (this plan).
