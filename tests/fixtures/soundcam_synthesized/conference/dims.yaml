@@ -1,23 +1,53 @@
-# SoundCam — Conference room — synthesised v0.9 fixture
+# SoundCam — Conference — paper-retrieved v0.10 fixture
 #
-# Honesty marker:
-#   GT corners + RT60 derived from SoundCam paper-published dimensions;
-#   live-mesh corner extraction is v0.10+ upgrade path.
+# Honesty marker (v0.10 corrected):
+#   Dimensions retrieved from arXiv:2311.03517v2 Appendix A.3 + Table I.
+#   Material treatment: 3 drywall walls + 1 glass wall + ceiling tiles +
+#   office carpet floor. RT60 retrieved from Table 7 Schroeder broadband
+#   mean = 0.581 s (min 0.541; max 0.608 across measurement positions).
 #
-# Source: SoundCam (Stanford, 2024) — arXiv:2311.03517;
-#         purl.stanford.edu/xq364hd5023
-# Citation status: executor-estimated, citation-pending.
+# v0.9.0 placeholder values (CORRECTED IN v0.10):
+#   v0.9 dims (7.5 × 5.0 × 2.7) ❌ → v0.10 paper (6.7 × 3.3 × 2.7) ✓
+#   v0.9 RT60 0.55 s @ 500 Hz ❌ → v0.10 paper 0.581 s broadband ✓
+#
+# A11 status: DISAGREEMENT-RECORD (predicted 0.449 s vs measured 0.581 s
+# with paper-faithful materials = -22.7%, just outside ±20% gate).
+# Sabine shoebox approximation under-counts specular reflections from the
+# single glass wall. v0.11+ candidate: dedicated glass-heavy-room residual
+# study (OQ-13b).
+#
+# Source: arXiv:2311.03517v2 Appendix A.3 + Table I + Table 7
+# Citation status: paper-retrieved (cross-checked); citation_pending: false.
 
 room_id: conference
-description: SoundCam Room 3 — conference room (table + chairs)
-length_m: 7.5
-width_m: 5.0
+description: SoundCam Room 3 — Conference room (3 drywall + 1 glass wall)
+length_m: 6.7
+width_m: 3.3
 height_m: 2.7
-citation_pending: true
-floor_material: carpet
-walls_material: wall_painted
-ceiling_material: ceiling_acoustic_tile
-# Material rationale (v0.9 synthesised; defensible mapping for ±20% A11):
-#   floor=carpet — typical office conference carpet
-#   walls=wall_painted — typical drywall + paint
-#   ceiling=ceiling_acoustic_tile — typical conference acoustic-tile ceiling
+citation_pending: false
+citation: "arXiv:2311.03517v2 Appendix A.3 + Table I"
+
+# A11 status
+a11_status: disagreement_record
+a11_skip_reason: |
+  Paper-faithful material map (carpet floor + 3 drywall walls + 1 glass
+  wall + acoustic-tile ceiling) Sabine prediction = 0.449 s; paper
+  measured broadband = 0.581 s; rel-err = -22.7%. Just outside ±20%
+  gate. Default enum REPRESENTS the paper materials adequately; the
+  residual is a Sabine-shoebox-approximation effect (single glass wall
+  specular reflections under-counted). v0.11+ candidate: glass-heavy-room
+  residual study with mirror-image source method or ray tracing
+  cross-check (OQ-13b).
+
+# Material map (paper-faithful; ADEQUATE representation, but ±20% gate misses)
+floor_material: carpet                       # paper: office carpet
+# Walls split: 3 drywall + 1 glass — represented in test as area-weighted mix
+walls_material_majority: wall_painted        # paper: drywall (3 of 4 walls)
+walls_material_minority: glass               # paper: 1 of 4 walls (assumed short wall, 3.3 × 2.7)
+walls_minority_area_m2: 8.91                 # 3.3 × 2.7 (single short wall)
+ceiling_material: ceiling_acoustic_tile      # paper: ceiling tiles
+material_rationale: |
+  Paper §A.3 confirms 3 drywall + 1 glass + ceiling tile + carpet
+  treatment. Glass wall is assumed to be one of the short walls
+  (3.3 × 2.7 = 8.91 m²) for the area-weighted Sabine integrand;
+  paper does not specify which wall is glass.

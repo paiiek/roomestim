@@ -961,4 +961,88 @@ ADR 0001..0015 (untouched), ADR 0016, ADR 0017,
 `tests/test_schema_stage2_validates.py`,
 SoundCam (arXiv:2311.03517; purl.stanford.edu/xq364hd5023; MIT).
 
+---
 
+## D21 — v0.10.0 honesty correction; ADR 0016 §Reverse-criterion FIRED; ADR 0018 records substitute-disagreement; living_room REMOVED; Stage-2 schema marker REVERTED
+
+**Date**: 2026-05-10 (v0.10.0 commit time).
+
+**Decision**: v0.10.0 is a **honesty-correction release**. v0.9.0 critic
+verdict (4.4/10) flagged a structural honesty leak: every SoundCam
+fixture file carried `citation_pending: true`, but RELEASE_NOTES_v0.9.0.md
++ `docs/perf_verification_a10a_soundcam_2026-05-09.md` + ADR 0016
+§Consequences advertised the values as "measured" without the
+placeholder qualifier. Paper retrieval agents (cross-checked, 2026-05-10)
+confirmed paper-retrieved RT60 (arXiv:2311.03517v2 Table 7 Schroeder
+broadband mean): lab=0.158 s; conference=0.581 s; living_room=NO
+authoritative dims per §A.2. Default 9-entry MaterialLabel enum +
+paper-faithful material maps + Sabine 500 Hz prediction yields lab=0.254 s
+(rel-err +60 %) and conference=0.449 s (rel-err -22.7 %); both outside
+±20 %. ADR 0016 §Reverse-criterion items (1)/(2)/(3) ALL FIRE:
+
+1. ADR 0018 records the substitute-disagreement.
+2. Schema marker REVERTED `"0.1"` → `"0.1-draft"` in
+   `roomestim/__init__.py` + `roomestim/model.py`.
+3. Cross-repo PR proposal annotated WITHDRAWN at
+   `.omc/research/cross-repo-pr-v0.9-proposal.md`; new
+   `.omc/research/cross-repo-pr-v0.10-deferred.md` records restart
+   criteria.
+
+**Files touched (all additive / amend-in-place; v0.8/v0.9 invariants
+byte-equal)**:
+- `tests/fixtures/soundcam_synthesized/lab/{dims.yaml,rt60.csv,GT_corners.json}` — paper-retrieved values.
+- `tests/fixtures/soundcam_synthesized/conference/{dims.yaml,rt60.csv,GT_corners.json}` — paper-retrieved values.
+- `tests/fixtures/soundcam_synthesized/living_room/` — DELETED (paper §A.2: no authoritative dims).
+- `tests/fixtures/soundcam_synthesized/README.md` — §Honesty-correction-2026-05-10 prepend + room-list update.
+- `tests/test_a10a_soundcam_corner.py` — 3 → 2 tests; revealed-tautology disclosure framing per ADR 0018; renamed `_under_10cm` → `_smoke`.
+- `tests/test_a11_soundcam_rt60.py` — 3 PASS-gate → 2 disagreement-record tests; expects ±20 % FAIL by recorded margins.
+- `tests/test_schema_stage2_validates.py` — assertion inverted to `__schema_version__ == "0.1-draft"`.
+- `roomestim/__init__.py` — version 0.9.0 → 0.10.0; `__schema_version__` `"0.1"` → `"0.1-draft"`.
+- `roomestim/model.py` — `RoomModel.schema_version` default `"0.1"` → `"0.1-draft"`.
+- `pyproject.toml` — version 0.9.0 → 0.10.0.
+- `docs/adr/0018-soundcam-substitute-disagreement-record.md` (NEW).
+- `docs/adr/0016-stage2-schema-flip-via-substitute.md` — §Status-update-2026-05-10 + ADR 0018 cross-link appended (body above byte-equal).
+- `RELEASE_NOTES_v0.10.0.md` (NEW).
+- `RELEASE_NOTES_v0.9.0.md` — §Honesty-correction-2026-05-10 prepend (body byte-equal beneath).
+- `docs/perf_verification_a10_soundcam_2026-05-10.md` (NEW).
+- `docs/perf_verification_a10a_soundcam_2026-05-09.md` — 1-line SUPERSEDED prepend (body byte-equal).
+- `.omc/research/cross-repo-pr-v0.9-proposal.md` — WITHDRAWN prepend (body byte-equal).
+- `.omc/research/cross-repo-pr-v0.10-deferred.md` (NEW).
+- `.omc/plans/v0.10-design.md` (planner artefact, ships with this commit).
+- `.omc/plans/decisions.md` — D21 (this entry).
+- `.omc/plans/open-questions.md` — OQ-13 (a..e) appended; OQ-12a/b/c/OQ-11 reaffirmed.
+
+**Empirical findings (paper-retrieved + default-enum Sabine)**:
+- A10a corner errors: 0.00 cm / 0.00 cm (lab / conference); revealed tautology — synthesised-vs-synthesised. Living_room REMOVED.
+- A11 RT60 disagreement-record: lab predicted 0.254 s vs measured 0.158 s = +60 % (signature: `default_enum_underrepresents_treated_room_absorption`); conference predicted 0.449 s vs measured 0.581 s = -22.7 % (signature: `sabine_shoebox_underestimates_glass_wall_specular`). Both OUT of ±20 % gate, recorded.
+- Default-lane: 118 → 116 (-2 from living_room removals; A10a smoke + A11 disagreement-record per-room counts preserved for lab + conference; schema test invariant count preserved). ruff clean.
+
+**Why this scope and not the alternatives**:
+- "v0.9.1 patch" rejected — paper RT60 cannot be matched within ±20 % by any default 9-enum combination on lab; would force mass-fail or silent gate-weakening (new honesty leak Critic will flag).
+- "v0.10 hybrid (add MELAMINE_FOAM + FIBERGLASS_CEILING + TILE_FLOOR enums)" rejected for v0.10 — library-coefficient revision chains into MaterialAbsorption + MaterialAbsorptionBands + many test files; scope explosion. Deferred to v0.11+ (OQ-13a).
+- "Keep schema flip; just replace fixtures" rejected — ADR 0016 §Reverse-criterion explicitly designs a revert path on substitute-vs-paper disagreement; skipping the revert silently breaks the ratchet-safe contract.
+- "Keep living_room with Figure 2 plot-axes-derived dims" rejected — plot-axes-derived is itself fabrication; open-layout + vaulted-ceiling + kitchen+stairway exposure breaks shoebox approximation regardless. Removal is honest.
+
+**Reverse-trigger / ratchet-safe behaviour**:
+- ADR 0018 §Reverse-criterion: if v0.11+ adds `MELAMINE_FOAM` +
+  `FIBERGLASS_CEILING` + `TILE_FLOOR` enums with paper-faithful coefficient
+  sourcing AND A11 substitute returns to ±20 % on lab + conference, the
+  schema marker MAY re-flip `"0.1-draft"` → `"0.1"` per ADR 0019+ (TBD).
+- If a future paper retrieval surfaces authoritative living_room dims,
+  living_room MAY be re-introduced under a successor ADR.
+- If v0.11+ critic flags conference disagreement-record framing as soft-
+  FAIL gate weakening, conference test MAY be removed leaving only lab.
+
+**Cross-ref**: D2, D8, D11, D14..D20 (byte-equal), ADR 0001..0017
+(byte-equal except ADR 0016 §Status-update-2026-05-10 amendment), ADR 0018
+(NEW), `.omc/plans/v0.10-design.md`, `RELEASE_NOTES_v0.9.0.md` (amended in
+place), `RELEASE_NOTES_v0.10.0.md` (NEW),
+`docs/perf_verification_a10a_soundcam_2026-05-09.md` (amended in place),
+`docs/perf_verification_a10_soundcam_2026-05-10.md` (NEW),
+`.omc/research/cross-repo-pr-v0.9-proposal.md` (amended in place),
+`.omc/research/cross-repo-pr-v0.10-deferred.md` (NEW),
+`tests/fixtures/soundcam_synthesized/`,
+`tests/test_a10a_soundcam_corner.py`,
+`tests/test_a11_soundcam_rt60.py`,
+`tests/test_schema_stage2_validates.py`,
+SoundCam (arXiv:2311.03517v2; purl.stanford.edu/xq364hd5023; MIT).

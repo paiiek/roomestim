@@ -1,31 +1,27 @@
-"""v0.9 A10a — SoundCam synthesised corner substitute (default-lane).
+"""v0.10 A10a — SoundCam synthesised corner test (revealed-tautology framing).
 
-Three default-lane tests, one per SoundCam room (lab, living_room,
-conference). Each test:
+Two default-lane tests, one per remaining SoundCam room (lab, conference).
+Living-room was removed in v0.10 (paper publishes no authoritative dims;
+fabricated dims are dishonest).
 
-1. Loads the synthesised fixture room from
-   ``tests/fixtures/soundcam_synthesized/<room_id>/`` (dims.yaml +
-   GT_corners.json).
-2. Builds a roomestim ``RoomModel`` via the existing shoebox path
-   (``tests/fixtures/synthetic_rooms.shoebox``) using the fixture
-   dimensions.
-3. Compares each predicted floor-polygon corner to the cached GT corner
-   (Euclidean xz distance < 10 cm).
+**v0.10 disclosure (REQUIRED reading)**:
 
-**Honesty marker (required in 4 places — release notes + ADR 0016 +
-ADR 0017 + this docstring)**:
+These tests are STRUCTURALLY TAUTOLOGICAL: GT_corners.json corners are
+synthesised-from-paper-published-dims (axis-aligned shoebox); the
+``shoebox(width=L, depth=W, height=H)`` factory builds the same shoebox
+from the same dims; therefore the predicted corners equal the GT corners
+to machine epsilon BY CONSTRUCTION. v0.9.0 advertised this as "A10a
+PASS — corner err 0.00 cm" without acknowledging the tautology; v0.10
+makes the tautology explicit per ADR 0018 §Consequences.
 
-> GT corners + RT60 derived from SoundCam paper-published dimensions;
-> live-mesh corner extraction is v0.10+ upgrade path.
+The 10 cm tolerance is preserved for forward-compatibility ONLY: when
+v0.11+ swaps synthesised-shoebox GT for live-mesh-extracted GT (per
+OQ-13e), this test inherits the same tolerance against substantively
+different GT, at which point the test becomes non-tautological.
 
-The cached-GT framing means this test is a fixture-integrity +
-path-execution check, NOT a mesh-extraction validation. The A10b in-situ
-user-lab test remains the authoritative corner-error gate per ADR 0016
-§Reverse-criterion.
-
-Building on the v0.8 default-lane convention: no ``@pytest.mark.lab``
-or ``@pytest.mark.e2e``; the fixture metadata is checked into-tree at
-``tests/fixtures/soundcam_synthesized/`` per v0.9 design §2.1.
+The substantive A10 corner gate is therefore **A10b in-situ user-lab
+capture** (ADR 0016, ADR 0017, ADR 0018) — A10a substitute is now
+formally a smoke-test, not a verification gate.
 """
 
 from __future__ import annotations
@@ -46,6 +42,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures" / "soundcam_synthesized"
 
 # A10a substitute corner-error tolerance: 10 cm Euclidean per ADR 0016.
+# v0.10 disclosure: tolerance is preserved for forward-compat; current
+# synthesised-shoebox-vs-synthesised-shoebox comparison is 0 cm by
+# construction (revealed tautology per ADR 0018).
 CORNER_TOLERANCE_M: float = 0.10
 
 
@@ -74,9 +73,12 @@ def _corner_errors(room_id: str) -> list[float]:
     Euclidean distances (m) to the cached GT corners.
 
     The roomestim ``shoebox`` factory generates an axis-aligned shoebox
-    centred at the floor-plane origin — the same construction the GT
-    corners JSON encodes — so a defect-free path produces zero error in
-    machine epsilon. The tolerance allows for any future numerical drift.
+    centred at the floor-plane origin — and at v0.10 the GT corners JSON
+    encodes the same axis-aligned shoebox synthesised from paper-published
+    dimensions — so a defect-free path produces zero error in machine
+    epsilon. The tolerance allows for any future numerical drift and for
+    the v0.11+ live-mesh-extraction upgrade (OQ-13e) at which point the
+    comparison becomes non-tautological.
     """
     dims = _load_dims(room_id)
     L = float(dims["length_m"])
@@ -106,46 +108,39 @@ def _corner_errors(room_id: str) -> list[float]:
 # --------------------------------------------------------------------------- #
 
 
-def test_a10a_soundcam_lab_corner_under_10cm() -> None:
-    """SoundCam lab — synthesised shoebox corners within 10 cm of GT.
+def test_a10a_soundcam_lab_corner_smoke() -> None:
+    """SoundCam lab — synthesised shoebox corners equal GT (revealed tautology).
 
-    Honesty marker: GT corners + RT60 derived from SoundCam paper-published
-    dimensions; live-mesh corner extraction is v0.10+ upgrade path.
+    v0.10 disclosure: GT corners synthesised-from-paper-dims =
+    ``shoebox(L, W, H)`` corners by construction. Test is a smoke-test
+    for fixture-integrity, NOT a corner-extraction validation. See
+    ADR 0018 §Consequences.
     """
     errors = _corner_errors("lab")
-    assert len(errors) == 4, f"expected 4 corners, got {len(errors)}"
-    for i, err in enumerate(errors):
-        assert err <= CORNER_TOLERANCE_M, (
-            f"SoundCam lab corner {i}: err={err*100:.2f} cm > "
-            f"{CORNER_TOLERANCE_M*100:.0f} cm tolerance"
-        )
-
-
-def test_a10a_soundcam_living_room_corner_under_10cm() -> None:
-    """SoundCam living_room — synthesised shoebox corners within 10 cm of GT.
-
-    Honesty marker: GT corners + RT60 derived from SoundCam paper-published
-    dimensions; live-mesh corner extraction is v0.10+ upgrade path.
-    """
-    errors = _corner_errors("living_room")
     assert len(errors) == 4
     for i, err in enumerate(errors):
         assert err <= CORNER_TOLERANCE_M, (
-            f"SoundCam living_room corner {i}: err={err*100:.2f} cm > "
-            f"{CORNER_TOLERANCE_M*100:.0f} cm tolerance"
+            f"SoundCam lab corner {i}: err={err*100:.2f} cm > "
+            f"{CORNER_TOLERANCE_M*100:.0f} cm tolerance (this is a smoke-test "
+            f"failure — fixture-integrity broken since GT and prediction are "
+            f"synthesised from the same dims by construction)"
         )
 
 
-def test_a10a_soundcam_conference_corner_under_10cm() -> None:
-    """SoundCam conference — synthesised shoebox corners within 10 cm of GT.
+def test_a10a_soundcam_conference_corner_smoke() -> None:
+    """SoundCam conference — synthesised shoebox corners equal GT (revealed tautology).
 
-    Honesty marker: GT corners + RT60 derived from SoundCam paper-published
-    dimensions; live-mesh corner extraction is v0.10+ upgrade path.
+    v0.10 disclosure: GT corners synthesised-from-paper-dims =
+    ``shoebox(L, W, H)`` corners by construction. Test is a smoke-test
+    for fixture-integrity, NOT a corner-extraction validation. See
+    ADR 0018 §Consequences.
     """
     errors = _corner_errors("conference")
     assert len(errors) == 4
     for i, err in enumerate(errors):
         assert err <= CORNER_TOLERANCE_M, (
             f"SoundCam conference corner {i}: err={err*100:.2f} cm > "
-            f"{CORNER_TOLERANCE_M*100:.0f} cm tolerance"
+            f"{CORNER_TOLERANCE_M*100:.0f} cm tolerance (this is a smoke-test "
+            f"failure — fixture-integrity broken since GT and prediction are "
+            f"synthesised from the same dims by construction)"
         )

@@ -1,16 +1,16 @@
 {
   "room_id": "conference",
-  "source": "SoundCam Stanford 2024",
+  "source": "SoundCam Stanford 2024 — arXiv:2311.03517v2 Appendix A.3 + Table I",
   "license": "MIT",
-  "extracted_by": "roomestim v0.9 fixture-authoring 2026-05-09",
-  "method": "synthesised rectangular shoebox from SoundCam paper-published dimensions; CCW from minimum-x,minimum-z corner; live-mesh corner extraction is v0.10+ upgrade path",
+  "extracted_by": "roomestim v0.10 fixture-correction 2026-05-10 (synthesised from paper-retrieved dims)",
+  "method": "axis-aligned shoebox centred at origin (matching shoebox() factory); CCW from minimum-x,minimum-z corner; live-mesh corner extraction is v0.11+ upgrade path",
   "corners_m": [
-    [-3.75, -2.5],
-    [ 3.75, -2.5],
-    [ 3.75,  2.5],
-    [-3.75,  2.5]
+    [-3.35, -1.65],
+    [ 3.35, -1.65],
+    [ 3.35,  1.65],
+    [-3.35,  1.65]
   ],
   "ceiling_height_m": 2.7,
   "floor_z_m": 0.0,
-  "citation_pending": true
+  "honesty_marker": "Synthesised-from-paper-published-dims (6.7 x 3.3 m centred at origin); live-mesh corner extraction is v0.11+ upgrade path"
 }

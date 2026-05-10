@@ -1,3 +1,7 @@
+> **SUPERSEDED 2026-05-10 by v0.10 honesty correction.** See `docs/perf_verification_a10_soundcam_2026-05-10.md` + ADR 0018 + RELEASE_NOTES_v0.10.0.md. Body preserved verbatim below for audit trail.
+
+---
+
 ---
 title: "v0.9 A10a SoundCam substitute + A11 RT60 boost"
 date: 2026-05-09

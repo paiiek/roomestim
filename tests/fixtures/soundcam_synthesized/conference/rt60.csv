@@ -1,7 +1,6 @@
-# SoundCam — Conference — measured RT60 (synthesised v0.9 fixture)
-# Honesty: GT corners + RT60 derived from SoundCam paper-published dimensions;
-#          live-mesh corner extraction is v0.10+ upgrade path.
-# Citation status: executor-estimated, citation-pending. Conference-class
-#   RT60 range 0.50..0.60 s mid-band per implementation prompt; midpoint used.
-band_hz,measured_t60_s
-500,0.55
+# SoundCam — Conference — paper-retrieved RT60 (v0.10 fixture)
+# Honesty marker: arXiv:2311.03517v2 Table 7 Schroeder broadband mean.
+# Source: arXiv:2311.03517v2 Table 7
+# Citation status: paper-retrieved (cross-checked); citation_pending: false.
+band_label,measured_t60_s
+broadband,0.581

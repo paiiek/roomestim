@@ -1,4 +1,17 @@
-# SoundCam — synthesized fixture (roomestim v0.9 A10a substitute)
+# SoundCam — synthesized fixture (roomestim v0.9..v0.10 A10a substitute)
+
+> **§Honesty-correction-2026-05-10 (v0.10)**: v0.9.0 fixture values were
+> placeholders (`citation_pending: true`); RELEASE_NOTES_v0.9.0.md +
+> docs/perf_verification_a10a_soundcam_2026-05-09.md + ADR 0016
+> §Consequences nonetheless advertised the values as "measured", which
+> Critic flagged as a structural honesty leak (verdict 4.4/10).
+> v0.10 retrieves paper-retrieved dims + RT60 from arXiv:2311.03517v2
+> Appendix A.1-A.3 + Table I + Table 7. Living-room is REMOVED from the
+> fixture (paper §A.2 explicitly: "the room does not have specific walls
+> delineating it from parts of the rest of the house" — no authoritative
+> dims). Lab + conference values are paper-confirmed; A11 PASS-gate is
+> replaced by disagreement-record framing per ADR 0018. See v0.10
+> RELEASE_NOTES + ADR 0018.
 
 ## Honesty marker (required)
 
@@ -21,7 +34,7 @@
 
 ## Synthesis methodology
 
-For each of the 3 SoundCam rooms (lab / living_room / conference):
+For each of the 2 SoundCam rooms (lab / conference; living_room REMOVED at v0.10 per ADR 0018):
 
 1. Take published room dimensions (L × W × H, metres) from the SoundCam
    paper / repo metadata. If the executor was unable to access the
@@ -67,13 +80,12 @@ remains the authoritative corner-error gate (ADR 0016 §Reverse-criterion).
 | `README.md` | This file |
 | `lab/dims.yaml` | Lab room dimensions (treated/empty room) |
 | `lab/GT_corners.json` | Synthesised 4 xz corners + ceiling height |
-| `lab/rt60.csv` | Measured RT60 at 500 Hz |
-| `living_room/dims.yaml` | Living room dimensions (furnished) |
-| `living_room/GT_corners.json` | Synthesised corners |
-| `living_room/rt60.csv` | Measured RT60 |
+| `lab/rt60.csv` | Measured RT60 (paper Table 7 broadband Schroeder mean) |
 | `conference/dims.yaml` | Conference room dimensions |
 | `conference/GT_corners.json` | Synthesised corners |
-| `conference/rt60.csv` | Measured RT60 |
+| `conference/rt60.csv` | Measured RT60 (paper Table 7 broadband Schroeder mean) |
+
+(`living_room/` was REMOVED at v0.10 — paper publishes no authoritative dims. See ADR 0018.)
 
 ## References
 

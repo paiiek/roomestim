@@ -193,3 +193,34 @@ arrives", not "the new ground truth".
 - Tests — `tests/test_a10a_soundcam_corner.py`,
   `tests/test_a11_soundcam_rt60.py`,
   `tests/test_schema_stage2_validates.py`.
+- ADR 0018 — `docs/adr/0018-soundcam-substitute-disagreement-record.md` (v0.10 successor; reverse-criterion firing record).
+
+---
+
+## §Status-update-2026-05-10 (added at v0.10.0)
+
+**Reverse-criterion FIRED**: paper retrieval agents (2026-05-10,
+cross-checked) confirmed that v0.9.0 fixture values were placeholders,
+not paper-retrieved measurements. Paper-retrieved RT60 (Schroeder
+broadband mean per Table 7) is lab=0.158 s, conference=0.581 s
+(living_room dims not authoritative per §A.2 — fixture removed at v0.10).
+Default 9-entry MaterialLabel enum + paper-faithful material maps +
+Sabine 500 Hz prediction yields rel-err +60 % (lab) and -22.7 %
+(conference); both outside ±20 %. Per §Reverse-criterion item (1):
+ADR 0018 records the disagreement. Per §Reverse-criterion item (2):
+schema marker REVERTED `"0.1"` → `"0.1-draft"` at v0.10.0. Per
+§Reverse-criterion item (3): cross-repo PR proposal annotated WITHDRAWN
+at v0.10.0.
+
+The §Consequences claims of "lab 0.28 % / living_room 5.57 % /
+conference 15.92 %" are SUPERSEDED by ADR 0018 disagreement-record
+table. The original §Consequences body is preserved verbatim above for
+audit-trail; readers should consult ADR 0018 + RELEASE_NOTES_v0.10.0.md
+for the corrected disagreement signatures.
+
+The §Honesty-marker block ("GT corners + RT60 derived from SoundCam
+paper-published dimensions") was technically correct for *corners* but
+DECEPTIVE for *RT60* (RT60 was placeholder, not paper-derived); v0.10
+makes the RT60 distinction explicit.
+
+See ADR 0018 for the full disagreement-record + remediation plan.

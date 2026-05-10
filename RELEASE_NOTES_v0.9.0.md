@@ -1,3 +1,40 @@
+> **§Honesty-correction-2026-05-10 (v0.10.0)**:
+>
+> v0.9.0 advertised the SoundCam fixture RT60 values as "measured" and
+> claimed "A11 PASS — all 3 rooms within ±20 %" in this file's Highlights
+> + A11 SoundCam RT60 boost results table. Critic verdict (2026-05-10)
+> rated v0.9.0 4.4/10 due to a structural honesty leak: every fixture file
+> carried `citation_pending: true`, indicating the values were
+> placeholders chosen so the default-enum Sabine prediction silently
+> passed ±20 %.
+>
+> Paper retrieval agents (cross-checked, 2026-05-10) confirmed:
+> - lab: paper Table 7 broadband Schroeder mean = 0.158 s (not 0.350 s)
+> - conference: paper Table 7 broadband Schroeder mean = 0.581 s (not 0.550 s)
+> - living_room: paper §A.2 explicitly publishes NO authoritative dimensions
+>
+> v0.10.0 walks back the v0.9.0 substitute claims:
+> - Fixture values replaced with paper-retrieved data (lab + conference).
+> - Living-room fixture REMOVED (no authoritative dims).
+> - Stage-2 schema marker REVERTED `"0.1"` → `"0.1-draft"` per ADR 0016
+>   §Reverse-criterion (which was DESIGNED FOR THIS EVENT).
+> - A11 substitute reframed as DISAGREEMENT-RECORD (no PASS claim).
+> - Cross-repo PR proposal WITHDRAWN.
+> - ADR 0018 NEW (substitute-disagreement record).
+> - ADR 0016 amended in place (§Status-update-2026-05-10 appended).
+>
+> The original v0.9.0 body BELOW IS PRESERVED VERBATIM for audit trail.
+> The §A11 SoundCam RT60 boost results table values (lab 0.28 % /
+> living_room 5.57 % / conference 15.92 %) are SUPERSEDED by
+> RELEASE_NOTES_v0.10.0.md + ADR 0018 + perf_verification_a10_soundcam_
+> 2026-05-10.md disagreement-record table.
+>
+> See: `RELEASE_NOTES_v0.10.0.md`,
+> `docs/adr/0018-soundcam-substitute-disagreement-record.md`,
+> `docs/perf_verification_a10_soundcam_2026-05-10.md`.
+
+---
+
 # RELEASE NOTES — roomestim v0.9.0
 
 v0.9.0 is a **direction-correcting release**. The v0.8 strategic-position

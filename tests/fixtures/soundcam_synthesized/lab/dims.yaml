@@ -1,27 +1,46 @@
-# SoundCam — Lab (treated/empty room) — synthesised v0.9 fixture
+# SoundCam — Lab (Treated Room) — paper-retrieved v0.10 fixture
 #
-# Honesty marker:
-#   GT corners + RT60 derived from SoundCam paper-published dimensions;
-#   live-mesh corner extraction is v0.10+ upgrade path.
+# Honesty marker (v0.10 corrected):
+#   Dimensions retrieved from arXiv:2311.03517v2 Appendix A.1 + Table I.
+#   Material treatment retrieved from §A.1 (NRC 1.26 melamine foam walls /
+#   NRC 1.0 fiberglass ceiling / office carpet floor — EXTREMELY ABSORPTIVE
+#   TREATED ROOM). RT60 retrieved from Table 7 Schroeder broadband mean =
+#   0.158 s (min 0.112; max 0.264 across 12 measurement positions).
 #
-# Source: SoundCam (Stanford, 2024) — arXiv:2311.03517;
-#         purl.stanford.edu/xq364hd5023
-# Citation status: executor-estimated, citation-pending (live paper / repo
-#   access not performed at v0.9 fixture-authoring time; placeholder
-#   dimensions consistent with the implementation prompt). v0.10+ should
-#   retrieve published values.
+# v0.9.0 placeholder values (CORRECTED IN v0.10):
+#   v0.9 dims (5.7 × 4.7 × 2.7) ❌ → v0.10 paper (4.9 × 5.1 × 2.7) ✓
+#   v0.9 RT60 0.35 s @ 500 Hz ❌ → v0.10 paper 0.158 s broadband ✓
+#   v0.9 walls=misc_soft (α₅₀₀=0.40) ❌ → INSUFFICIENT for paper NRC 1.26
+#
+# Source: SoundCam (Stanford, 2024) — arXiv:2311.03517v2 (NeurIPS 2024 D&B);
+#         Stanford Digital Repository purl.stanford.edu/xq364hd5023
+# Citation status: paper-retrieved (cross-checked by 2 independent retrieval
+#   agents on 2026-05-10); citation_pending: false.
 
 room_id: lab
-description: SoundCam Room 1 — treated/empty (light furnishings)
-length_m: 5.7  # L (along x)
-width_m: 4.7   # W (along z)
-height_m: 2.7  # H (ceiling)
-citation_pending: true
-floor_material: carpet
-walls_material: misc_soft
-ceiling_material: ceiling_drywall
-# Material rationale (v0.9 synthesised; defensible mapping for ±20% A11):
-#   floor=carpet — paper describes treated room with acoustic floor lining
-#   walls=misc_soft — "treated/empty" implies acoustic wall panels; misc_soft
-#     (α₅₀₀=0.40) is the schema's slot for soft furnishings/treatment budget
-#   ceiling=ceiling_drywall — flat painted ceiling typical of treated lab room
+description: SoundCam Room 1 — Treated Room (acoustically dampened)
+length_m: 4.9   # paper Table I (along x)
+width_m: 5.1    # paper Table I (along z)
+height_m: 2.7   # paper Table I
+citation_pending: false
+citation: "arXiv:2311.03517v2 Appendix A.1 + Table I"
+
+# A11 status — DISAGREEMENT-RECORD (not PASS-gate) per v0.10 ADR 0018
+a11_status: disagreement_record
+a11_skip_reason: |
+  Paper-described materials (NRC 1.26 melamine foam walls; NRC 1.0 fiberglass
+  ceiling) cannot be represented by the default 9-entry MaterialLabel enum.
+  Best-achievable α_avg (misc_soft + ceiling_acoustic_tile) ≈ 0.46 vs paper
+  α_avg ≈ 1.10. Sabine prediction with default enum = 0.254 s; paper
+  measured = 0.158 s; rel-err = +60 % (default enum systematically
+  over-predicts RT60 for treated rooms). v0.11+ candidate: add
+  MELAMINE_FOAM and FIBERGLASS_CEILING to MaterialLabel (OQ-13a).
+
+# Material map (paper-faithful; INSUFFICIENT for ±20% A11 with default enum)
+floor_material: carpet                    # paper: office carpet floor
+walls_material: misc_soft                 # paper: NRC 1.26 melamine foam (NOT representable)
+ceiling_material: ceiling_acoustic_tile   # paper: NRC 1.0 fiberglass (NOT representable)
+material_rationale: |
+  Material map records paper-described surface treatment; default enum
+  cannot represent treated-room absorption coefficients. Recorded for
+  audit-honest reproducibility, NOT for A11 ±20% PASS claim. See ADR 0018.
