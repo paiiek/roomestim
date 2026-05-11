@@ -109,9 +109,55 @@ the paper-described NRC 1.26 melamine-foam treatment.
   verbatim page + row + panel-thickness column **PENDING** — v0.11 ships
   the planner-locked envelope mid-value (α₅₀₀ = 0.85) honesty-flagged per
   D22 (not fabricated; bracketed by the coefficient-invariant test).
+  **Citation status (v0.12)**: see §Status-update-2026-05-12 block below
+  for the v0.12 closure-attempt outcome (secondary-source corroboration
+  landed; Vorländer verbatim page/row/panel-thickness still PENDING and
+  re-deferred to v0.13+ per the D27 cadence reverse-criterion).
 - Bies & Hansen (2018), *Engineering Noise Control*, §A — secondary cross-check.
 - NRC manufacturer data sheets — secondary cross-check.
 - arXiv:2311.03517v2 (NeurIPS 2024 D&B, SoundCam) — Table 7 broadband RT60 = 0.158 s (lab).
 - ADR 0011, 0016, 0018, 0020 — cross-refs above.
 - D22, D23, D25 — `.omc/plans/decisions.md`.
 - `.omc/plans/v0.11-design.md`, `.omc/plans/open-questions.md`, `RELEASE_NOTES_v0.11.0.md`.
+
+## §Status-update-2026-05-12 (v0.12.0) — verbatim Vorländer citation closure attempt
+
+**Closure attempt outcome (D22 hybrid pattern, factual: citation status)**:
+v0.12 executor attempted the Vorländer 2020 *Auralization* (2nd ed.,
+Springer) §11 / Appendix A verbatim page + row + panel-thickness column
+lookup for the "melamine foam panel" / "acoustic foam absorber" row.
+
+- **Vorländer 2020 verbatim page / row / panel-thickness**: **STILL
+  PENDING at v0.12**. Executor did not have direct textbook access; per
+  D27 reverse-criterion (d), v0.12 records the closure-attempt outcome
+  honestly rather than fabricating a citation. Re-deferred to v0.13+
+  (verbatim source access-limited; this is the **FIRST of at most two
+  consecutive re-deferral cycles** permitted by D27 — v0.13 is the LAST
+  permitted re-deferral; v0.14 is the hard wall where closure MUST land
+  OR successor ADR switches PRIMARY source).
+- **Secondary-source corroboration landed at v0.12**: SoundCam paper
+  arXiv:2311.03517v2 §A.1 (Stanford 2024 NeurIPS D&B) describes the lab
+  as having **"NRC 1.26 melamine foam walls"** (Noise Reduction
+  Coefficient 1.26 averaged across 250/500/1000/2000 Hz). The NRC 1.26
+  figure is consistent with the planner-locked envelope mid-value
+  α₅₀₀ = 0.85 used at v0.11 (foam absorption rises steeply through
+  250-500 Hz and plateaus above 1 kHz; 500 Hz scalar at ~0.85 is
+  physically plausible for the implied band-average). NOT a Vorländer
+  2020 verbatim citation.
+- **α₅₀₀ value at v0.12**: **0.85 BYTE-EQUAL to v0.11**. No shift inside
+  the [0.80, 0.95] invariant envelope; lab A11 PASS-gate UNCHANGED
+  (rel_err = +2.40 %); STOP rules #5 + #7 did not fire. NEW test
+  `test_melamine_foam_a500_v0_12_status_update_block_present` asserts envelope
+  + §Status-update block presence.
+- **Audit-trail integrity**: per D22 hybrid pattern, v0.11 §References
+  PENDING annotation is in-line annotated ("see §Status-update-2026-05-12
+  below"); this block is the canonical record of WHY closure is
+  re-deferred.
+
+**No library code changes** at v0.12: α₅₀₀ row + band row + lab A11
+PASS-gate predictions all byte-equal to v0.11.
+
+**Cross-references**: D22 (hybrid pattern), D27 NEW (verbatim-pending
+closure cadence; access-limited reverse-criterion invoked), OQ-13a
+(v0.11 `[x]`; v0.12 §Status-update annotation), `.omc/plans/v0.12-design.md`
+§2.2, `tests/test_room_acoustics_octave.py::test_melamine_foam_a500_v0_12_status_update_block_present`.

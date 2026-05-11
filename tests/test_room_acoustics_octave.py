@@ -264,3 +264,48 @@ def test_melamine_foam_bands_monotonic_in_500hz_region() -> None:
         assert 0.0 <= v <= 1.0, f"MELAMINE_FOAM band[{i}] = {v} outside [0,1]"
     # Index 2 (500 Hz) is the legacy scalar (band-2 invariant).
     assert band[2] == MaterialAbsorption[MaterialLabel.MELAMINE_FOAM]
+
+
+def test_melamine_foam_a500_v0_12_status_update_block_present() -> None:
+    """v0.12 (ADR 0019 §Status-update-2026-05-12) — §Status-update block
+    presence guard + envelope invariant check.
+
+    NOTE on the test name (v0.12 ship-time refinement per code-reviewer):
+    this test does **NOT** assert that the Vorländer 2020 verbatim
+    citation is *complete* (it is, in fact, still PENDING at v0.12 per
+    ADR 0019 §Status-update-2026-05-12 and re-deferred to v0.13+ per D27
+    reverse-criterion (d)). The earlier name
+    `test_melamine_foam_a500_verbatim_citation_complete` was misleading
+    because it passed precisely BECAUSE the citation is not complete.
+    The renamed test is honest about what it actually checks:
+      (i) the ADR §Status-update-2026-05-12 block has landed (D22 hybrid
+          pattern: factual change → in-place + appended §Status-update);
+      (ii) α₅₀₀ remains inside the planner-locked [0.80, 0.95] envelope
+          invariant (the envelope is preserved byte-equal at v0.12 per
+          ADR 0019 §References).
+    The actual verbatim-citation completion will be guarded by a v0.13+
+    successor test once the Vorländer page/row/panel-thickness is
+    acquired (or PRIMARY source is switched under successor ADR if
+    re-deferral cycles exhaust per D27).
+    """
+    adr_path = (
+        Path(__file__).resolve().parent.parent
+        / "docs"
+        / "adr"
+        / "0019-melamine-foam-enum-addition.md"
+    )
+    assert adr_path.exists(), f"ADR 0019 missing at {adr_path}"
+    body = adr_path.read_text(encoding="utf-8")
+    assert "## §Status-update-2026-05-12" in body, (
+        "ADR 0019 must gain a §Status-update-2026-05-12 block at v0.12 "
+        "recording the verbatim-citation closure attempt (D27 cadence)."
+    )
+    # The envelope invariant (0.80 ≤ α₅₀₀ ≤ 0.95) is preserved byte-equal
+    # at v0.12; any verbatim-driven shift outside the envelope would have
+    # triggered §0.4 STOP rule #5.
+    value = MaterialAbsorption[MaterialLabel.MELAMINE_FOAM]
+    assert 0.80 <= value <= 0.95, (
+        f"MELAMINE_FOAM α₅₀₀ = {value} outside [0.80, 0.95] envelope "
+        f"at v0.12; ADR 0019 §References + §Status-update-2026-05-12 "
+        f"must be revisited."
+    )

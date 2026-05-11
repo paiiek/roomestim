@@ -86,3 +86,30 @@ def test_no_present_tense_version_specific_framing(tmp_path: Path) -> None:
     )
     code, out = _run_module_against_seeded_text(bad_with_noqa, tmp_path / "b5")
     assert code == 0, f"branch 5: noqa marker must exclude; got {code}, {out!r}"
+
+
+def test_lint_tense_scope_includes_expanded_files() -> None:
+    """v0.12 scope expansion (ADR 0020 §Status-update-2026-05-12): the lint
+    scope MUST include perf docs + architecture + top-level README in addition
+    to the v0.11 baseline scope (fixture README + ADR + past RELEASE_NOTES).
+
+    Asserts that the live `_scoped_files()` returns at least one file from
+    each of the 3 newly-added families (preemptive guard against silent
+    scope contraction).
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("lint_tense", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    files = module._scoped_files()
+    rel_names = {p.relative_to(REPO_ROOT).as_posix() for p in files}
+    perf_hits = [n for n in rel_names if n.startswith("docs/perf_verification_") and n.endswith(".md")]
+    assert perf_hits, f"v0.12 scope must include ≥1 docs/perf_verification_*.md; got {sorted(rel_names)}"
+    assert "docs/architecture.md" in rel_names, (
+        f"v0.12 scope must include docs/architecture.md; got {sorted(rel_names)}"
+    )
+    assert "README.md" in rel_names, (
+        f"v0.12 scope must include top-level README.md; got {sorted(rel_names)}"
+    )

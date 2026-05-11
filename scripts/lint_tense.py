@@ -1,8 +1,13 @@
 #!/usr/bin/env python
 """README/ADR/RELEASE_NOTES present-tense version-specific framing lint (ADR 0020).
 
-Scope: tests/fixtures/**/README.md, docs/adr/*.md, RELEASE_NOTES_v*.md
-(excluding current-version RELEASE_NOTES_v0.11.0.md — asymmetry per ADR 0020).
+Scope (5 file families at v0.12+, expanded from 3 at v0.11):
+  - tests/fixtures/**/README.md
+  - docs/adr/*.md
+  - RELEASE_NOTES_v*.md (excluding current-version RELEASE_NOTES_v0.12.0.md — asymmetry per ADR 0020)
+  - docs/perf_verification_*.md (added v0.12 per ADR 0020 §Status-update-2026-05-12)
+  - docs/architecture.md (added v0.12 per ADR 0020 §Status-update-2026-05-12)
+  - README.md (added v0.12 per ADR 0020 §Status-update-2026-05-12)
 Pattern (word-bounded): \\bwe ship\\b | \\bship in v0\\.[0-9]+\\b.
 Block exclusion (D22): lines inside `## §Status-update-` /
 `## §Honesty-correction-` blocks. Per-line escape: `# noqa: lint-tense`.
@@ -18,7 +23,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Excluded from scope: the current-version release notes (inherently present tense).
-CURRENT_VERSION_RELEASE_NOTES = "RELEASE_NOTES_v0.11.0.md"
+CURRENT_VERSION_RELEASE_NOTES = "RELEASE_NOTES_v0.12.0.md"
 
 # Lint pattern + block-exclusion anchors (referenced from ADR 0020 §Decision).
 LINT_PATTERN = re.compile(r"\bwe ship\b|\bship in v0\.[0-9]+\b", re.IGNORECASE)
@@ -27,7 +32,12 @@ NOQA_MARKER = re.compile(r"#\s*noqa:\s*lint-tense", re.IGNORECASE)
 
 
 def _scoped_files() -> list[Path]:
-    """Collect the v0.11 lint scope (fixture README + ADR + past RELEASE_NOTES)."""
+    """Collect the v0.12 lint scope (5 file families; expanded from v0.11's 3).
+
+    v0.11 scope: fixture README + ADR + past RELEASE_NOTES.
+    v0.12 adds: docs/perf_verification_*.md, docs/architecture.md, README.md
+    per ADR 0020 §Status-update-2026-05-12.
+    """
     files: list[Path] = []
     files.extend(sorted((REPO_ROOT / "tests" / "fixtures").rglob("README.md")))
     files.extend(sorted((REPO_ROOT / "docs" / "adr").glob("*.md")))
@@ -35,6 +45,16 @@ def _scoped_files() -> list[Path]:
         if path.name == CURRENT_VERSION_RELEASE_NOTES:
             continue
         files.append(path)
+    # v0.12 scope expansion (ADR 0020 §Status-update-2026-05-12): preemptive
+    # guard against version-specific present-tense framing in perf docs,
+    # architecture doc, and the top-level README landing page.
+    files.extend(sorted((REPO_ROOT / "docs").glob("perf_verification_*.md")))
+    architecture = REPO_ROOT / "docs" / "architecture.md"
+    if architecture.exists():
+        files.append(architecture)
+    readme = REPO_ROOT / "README.md"
+    if readme.exists():
+        files.append(readme)
     return files
 
 

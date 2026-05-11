@@ -113,3 +113,52 @@ threshold of > 3 files).
 - `.omc/plans/v0.11-design.md` §5.3 pre-mortem (lint-honesty-leak mitigation).
 - `RELEASE_NOTES_v0.11.0.md`.
 - `tests/fixtures/soundcam_synthesized/README.md` — OQ-13h triggering case (fixed v0.10.1; protected by this lint).
+
+## §Status-update-2026-05-12 (v0.12.0) — lint scope expansion
+
+**Expansion outcome (D22 hybrid pattern, operational refinement: scope
+list grows)**: v0.12 fires the OQ-13h reverse-criterion "scope expansion
+if a leak lands outside current scope" preemptively (no leak landed at
+v0.11 ship time, but the README.md rewrite that accompanied v0.11.0
+shipping (`8ab5d54` weekly progress + README sync) is the most likely
+future-leak surface for v0.12+). Per `.omc/plans/v0.12-design.md` §2.4
++ §10.7-§10.8, the scope expansion adds **3 new file families** to
+`scripts/lint_tense.py::_scoped_files()`:
+
+- `docs/perf_verification_*.md` (7 files at v0.12 ship: `_2026-05-04`,
+  `_a10a_soundcam_2026-05-09`, `_a10_soundcam_2026-05-10`,
+  `_e2e_2026-05-06/07/08`, `_lecture2_bracket_2026-05-09`).
+- `docs/architecture.md` (1 file).
+- `README.md` (1 file — the top-level project landing page).
+
+Pattern + block-exclusion + per-line escape semantics are **UNCHANGED**;
+this is an additive scope-list extension, NOT a mechanism revision.
+Current-version `RELEASE_NOTES_v*.md` exclusion constant rotates from
+`RELEASE_NOTES_v0.11.0.md` → `RELEASE_NOTES_v0.12.0.md` (asymmetry
+documented at v0.11; rotation per v0.11 §Reverse-criterion item 4).
+
+**v0.12 first-run flag count**: **0 files flagged** on the expanded
+5-family scope (well under v0.12 §0.4 STOP rule #6 threshold of > 5
+files; below the v0.11 STOP rule #7 threshold of > 3 files too).
+README.md `8ab5d54` body, all 7 perf docs, and `docs/architecture.md`
+all use past-tense version-specific framing already — the live-repo
+sweep found no present-tense leaks. No `# noqa: lint-tense` markers
+were required at v0.12 ship time.
+
+**New test** `tests/test_lint_tense.py::test_lint_tense_scope_includes_expanded_files`
+asserts that the `_scoped_files()` discovery hits at least one file
+from each of the 3 newly-added families (preemptive guard against
+silent scope contraction in future refactors).
+
+**Reverse-criterion (unchanged)**: pre-commit advisory fallback,
+allow-list-based suppression, and scope re-expansion remain available
+at v0.13+ per the original §Reverse-criterion block above.
+
+**Cross-references**: D22 (block-exclusion pattern; preserved
+byte-equal at v0.12), D24 NEW (CI tense lint policy; v0.11 codification
+covers the v0.12 expansion as an operational refinement, NOT a new
+ADR — STOP rule #14 prevents a second lint-related ADR), OQ-13h
+(already `[x]` at v0.11; v0.12 reverse-criterion firing annotation
+appended), `.omc/plans/v0.12-design.md` §2.4 + §10.7-§10.8 +
+§14.K, `scripts/lint_tense.py::_scoped_files()` (modified to add 3
+new file families).
