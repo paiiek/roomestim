@@ -253,3 +253,24 @@ def test_band_index_2_equals_legacy_scalar_for_synthesized_misc_soft_surface() -
     assert surf.absorption_bands[2] == surf.absorption_500hz
     assert surf.absorption_500hz == MaterialAbsorption[MaterialLabel.MISC_SOFT]
     assert surf.absorption_bands == MaterialAbsorptionBands[MaterialLabel.MISC_SOFT]
+
+
+# --------------------------------------------------------------------------- #
+# v0.11 MELAMINE_FOAM enum extension (ADR 0019)
+# --------------------------------------------------------------------------- #
+
+
+def test_melamine_foam_a500_in_expected_range() -> None:
+    """MaterialAbsorption[MELAMINE_FOAM] is in the Vorländer 2020 §11 / Appx A
+    typical-2-to-4-inch-panel envelope (planner-locked: 0.80 ≤ α₅₀₀ ≤ 0.95).
+
+    Guards against silent coefficient drift outside the ADR 0019 envelope.
+    A future verbatim Vorländer lookup may tighten this bracket; the
+    envelope-band assertion is the v0.11 honesty-marker contract.
+    """
+    value = MaterialAbsorption[MaterialLabel.MELAMINE_FOAM]
+    assert 0.80 <= value <= 0.95, (
+        f"MELAMINE_FOAM α₅₀₀ = {value} outside Vorländer 2020 §11 / Appx A "
+        f"envelope [0.80, 0.95]; ADR 0019 §References must be revisited "
+        f"before re-shipping."
+    )

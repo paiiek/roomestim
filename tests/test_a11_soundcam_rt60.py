@@ -1,44 +1,13 @@
-"""v0.10 A11 — SoundCam paper-retrieved RT60 disagreement-record (default-lane).
+"""v0.11 A11 — SoundCam paper-retrieved RT60 record (default-lane).
 
-Two default-lane tests, one per remaining SoundCam room (lab, conference).
-v0.9.0 framing: 3 PASS-gate tests asserting predicted-vs-measured ≤ 20 %.
-v0.10 framing: 2 disagreement-record tests asserting predicted-vs-measured
-matches the recorded disagreement signature.
-
-**v0.10 disclosure (REQUIRED reading)**:
-
-v0.9.0 used placeholder RT60 values (0.35 / 0.45 / 0.55 s — chosen so the
-default-enum Sabine prediction passed ±20 %). v0.10 replaces those with
-paper-retrieved Schroeder broadband means (0.158 / N/A / 0.581 s — paper
-does not publish living_room dims so that room is removed). Under
-paper-faithful material maps + the existing 9-entry MaterialLabel enum:
-
-- **lab**: predicted (Sabine, 500 Hz, default enum max α_avg ≈ 0.46) =
-  0.254 s; measured (paper Table 7 broadband) = 0.158 s; rel-err ≈ +60 %.
-  Default enum SYSTEMATICALLY OVER-PREDICTS treated-room RT60 because
-  it cannot represent NRC 1.26 melamine foam / NRC 1.0 fiberglass
-  treatment. v0.11+ candidate: add MELAMINE_FOAM + FIBERGLASS_CEILING
-  enums (OQ-13a). v0.10 records this disagreement; does NOT pretend
-  it is within ±20 %.
-
-- **conference**: predicted (Sabine, 500 Hz, paper-faithful material
-  map = carpet + 3 drywall + 1 glass + ceiling tiles) = 0.449 s;
-  measured (paper Table 7 broadband) = 0.581 s; rel-err ≈ -22.7 %.
-  Just outside ±20 % gate. Default enum REPRESENTS paper materials
-  adequately; the residual is a Sabine-shoebox-approximation effect
-  (single glass wall under-counted). v0.11+ candidate: glass-heavy-room
-  residual study (OQ-13b). v0.10 records this disagreement; does NOT
-  pretend it is within ±20 %.
-
-The unit mismatch (Sabine 500 Hz prediction vs paper Schroeder broadband
-measurement) is itself recorded as part of the disagreement signature.
-v0.10 makes this mismatch explicit; v0.11+ may sharpen it via per-band
-prediction + Figure 10 graph-reading reconciliation.
-
-ACE A11 corpus (gated E2E) is unchanged — substitute disagreement does
-NOT invalidate ACE evidence; it bounds the SUBSTITUTE's reach.
-
-See ADR 0018 + OQ-13a/b for full disagreement-record + remediation plan.
+Three tests covering lab + conference. v0.11 (ADR 0019) flips lab walls
+MISC_SOFT → MELAMINE_FOAM (α₅₀₀ = 0.85, planner-locked envelope per
+Vorländer 2020 §11 / Appx A); §2.4 executor decision-point landed
+sub-branch A — lab returns to A11 PASS-gate (rel_err ≈ +2.4 %; signature
+`RECOVERED_under_melamine_foam_enum`). Conference byte-equal (no foam in
+paper-faithful map); residual is a Sabine-shoebox approximation effect
+(OQ-13b). v0.11 adds redundant structural-sign assertions on both tests
+(OQ-13f). ACE A11 (gated E2E) unchanged. See ADR 0018 + ADR 0019.
 """
 
 from __future__ import annotations
@@ -53,18 +22,19 @@ from roomestim.model import MaterialAbsorption, MaterialLabel
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_ROOT = REPO_ROOT / "tests" / "fixtures" / "soundcam_synthesized"
 
-# Per-room expected disagreement signature (v0.10 honesty correction).
-# These values are deliberately RECORDED, not asserted-equal — the test
-# checks predicted-vs-measured falls in the recorded-disagreement BAND
-# (~±5 % around the recorded signature) so any silent enum/coefficient
-# drift will trip the test. See ADR 0018 + OQ-13a/b.
+# Per-room expected band (v0.11: lab returns to A11 PASS-gate under
+# MELAMINE_FOAM (sub-branch A); conference preserved as disagreement-record).
+# Values are deliberately RECORDED, not asserted-equal — the tests check
+# predicted-vs-measured falls in the recorded BAND (~±5 % around the
+# observed predicted value) so any silent enum/coefficient drift trips the
+# test. See ADR 0018 + ADR 0019 + OQ-13a/f.
 _LAB_EXPECTED = {
-    "predicted_s_min": 0.235,
-    "predicted_s_max": 0.270,  # ~0.254 s ± ~5%
+    "predicted_s_min": 0.150,
+    "predicted_s_max": 0.175,  # ~0.162 s ± ~8% under MELAMINE_FOAM walls
     "measured_s": 0.158,
-    "rel_err_min": 0.45,
-    "rel_err_max": 0.70,  # +60% ± window
-    "disagreement_signature": "default_enum_underrepresents_treated_room_absorption",
+    "rel_err_min": -0.20,
+    "rel_err_max": 0.20,  # A11 ±20% PASS-gate recovered at v0.11 (ADR 0019)
+    "disagreement_signature": "RECOVERED_under_melamine_foam_enum",
 }
 _CONFERENCE_EXPECTED = {
     "predicted_s_min": 0.430,
@@ -92,9 +62,8 @@ def _load_measured_rt60_broadband(room_id: str) -> float:
 
 
 def _predict_lab() -> float:
-    """Lab: paper material map cannot be represented — use best-achievable
-    default-enum proxy (carpet floor + misc_soft walls + ceiling_acoustic_tile).
-    """
+    """v0.11 paper-faithful: walls = MELAMINE_FOAM (ADR 0019); floor = CARPET;
+    ceiling = CEILING_ACOUSTIC_TILE (FIBERGLASS_CEILING deferred to OQ-14)."""
     dims = _load_dims("lab")
     length = float(dims["length_m"])
     width = float(dims["width_m"])
@@ -105,7 +74,7 @@ def _predict_lab() -> float:
     absorption = (
         floor_a * MaterialAbsorption[MaterialLabel.CARPET]
         + ceiling_a * MaterialAbsorption[MaterialLabel.CEILING_ACOUSTIC_TILE]
-        + walls_a * MaterialAbsorption[MaterialLabel.MISC_SOFT]
+        + walls_a * MaterialAbsorption[MaterialLabel.MELAMINE_FOAM]
     )
     return 0.161 * volume / absorption
 
@@ -132,35 +101,49 @@ def _predict_conference() -> float:
     return 0.161 * volume / absorption
 
 
-def test_a11_soundcam_lab_disagreement_record() -> None:
-    """Lab disagreement-record: default enum cannot represent treated-room.
+def test_a11_soundcam_lab_band_record() -> None:
+    """v0.11 sub-branch A (PASS-gate recovered) — renamed from disagreement_record.
 
-    v0.10 disclosure: this test EXPECTS the prediction to fail ±20% by
-    a recorded margin. See ADR 0018 + OQ-13a.
+    Redundant `assert rel_err < 0.20` guards against silent regression. See ADR 0019.
     """
     predicted = _predict_lab()
     measured = _load_measured_rt60_broadband("lab")
     rel_err = (predicted - measured) / measured
     assert _LAB_EXPECTED["predicted_s_min"] <= predicted <= _LAB_EXPECTED["predicted_s_max"], (
-        f"lab predicted {predicted:.3f} s outside expected disagreement band "
+        f"lab predicted {predicted:.3f} s outside expected band "
         f"[{_LAB_EXPECTED['predicted_s_min']:.3f}, {_LAB_EXPECTED['predicted_s_max']:.3f}]"
     )
     assert abs(measured - _LAB_EXPECTED["measured_s"]) < 1e-6, (
         f"lab measured {measured} drift from paper-retrieved {_LAB_EXPECTED['measured_s']}"
     )
     assert _LAB_EXPECTED["rel_err_min"] <= rel_err <= _LAB_EXPECTED["rel_err_max"], (
-        f"lab rel_err {rel_err*100:+.1f}% outside expected disagreement signature "
+        f"lab rel_err {rel_err*100:+.1f}% outside expected band "
         f"[{_LAB_EXPECTED['rel_err_min']*100:+.0f}%, {_LAB_EXPECTED['rel_err_max']*100:+.0f}%] "
         f"({_LAB_EXPECTED['disagreement_signature']})"
+    )
+    # v0.11 redundant structural-sign assertion (sub-branch A PASS-gate).
+    assert rel_err < 0.20, (
+        f"lab rel_err {rel_err*100:+.1f}% > +20% PASS-gate (ADR 0019)"
+    )
+
+
+def test_a11_soundcam_lab_pass_gate_recovered() -> None:
+    """v0.11 NEW (ADR 0019): named-companion recording the lab regime change
+    (disagreement-record → PASS-gate). Any re-opening of the gap is loud."""
+    predicted = _predict_lab()
+    measured = _load_measured_rt60_broadband("lab")
+    rel_err = (predicted - measured) / measured
+    assert -0.20 <= rel_err <= 0.20, (
+        f"lab PASS-gate regression (ADR 0019): rel_err {rel_err*100:+.1f}% "
+        f"outside ±20%; predicted {predicted:.3f} s vs measured {measured:.3f} s."
     )
 
 
 def test_a11_soundcam_conference_disagreement_record() -> None:
-    """Conference disagreement-record: Sabine + paper materials misses ±20% by ~3pp.
+    """Conference: Sabine + paper materials miss ±20% by ~3pp (rel_err ≈ -22.7%).
 
-    v0.10 disclosure: this test EXPECTS the prediction to fail ±20% by a
-    recorded ~22.7% margin. See ADR 0018 + OQ-13b.
-    """
+    v0.11 byte-equal (no foam in paper map) + adds `assert rel_err < -0.10`
+    per OQ-13f. See ADR 0018 + OQ-13b."""
     predicted = _predict_conference()
     measured = _load_measured_rt60_broadband("conference")
     rel_err = (predicted - measured) / measured
@@ -181,4 +164,8 @@ def test_a11_soundcam_conference_disagreement_record() -> None:
         f"[{_CONFERENCE_EXPECTED['rel_err_min']*100:+.0f}%, "
         f"{_CONFERENCE_EXPECTED['rel_err_max']*100:+.0f}%] "
         f"({_CONFERENCE_EXPECTED['disagreement_signature']})"
+    )
+    # v0.11 redundant structural-sign assertion (OQ-13f conference branch).
+    assert rel_err < -0.10, (
+        f"conference rel_err {rel_err*100:+.1f}% > -10% (OQ-13f; ADR 0018)"
     )

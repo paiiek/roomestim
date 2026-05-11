@@ -36,11 +36,15 @@ a11_skip_reason: |
   over-predicts RT60 for treated rooms). v0.11+ candidate: add
   MELAMINE_FOAM and FIBERGLASS_CEILING to MaterialLabel (OQ-13a).
 
-# Material map (paper-faithful; INSUFFICIENT for ±20% A11 with default enum)
+# Material map (paper-faithful; v0.11 walls = melamine_foam per ADR 0019)
 floor_material: carpet                    # paper: office carpet floor
-walls_material: misc_soft                 # paper: NRC 1.26 melamine foam (NOT representable)
-ceiling_material: ceiling_acoustic_tile   # paper: NRC 1.0 fiberglass (NOT representable)
+walls_material: melamine_foam             # v0.11 ADR 0019: paper NRC 1.26 melamine foam → MELAMINE_FOAM enum
+ceiling_material: ceiling_acoustic_tile   # paper: NRC 1.0 fiberglass (closest default-enum proxy)
 material_rationale: |
-  Material map records paper-described surface treatment; default enum
-  cannot represent treated-room absorption coefficients. Recorded for
-  audit-honest reproducibility, NOT for A11 ±20% PASS claim. See ADR 0018.
+  Material map records paper-described surface treatment. v0.11 (ADR 0019)
+  adds MELAMINE_FOAM enum (α₅₀₀ = 0.85, planner-locked envelope per
+  Vorländer 2020 §11 / Appx A) which represents the paper-described NRC
+  1.26 melamine-foam wall treatment within the closed-enum slot. Ceiling
+  fiberglass treatment (paper NRC 1.0) still uses the closest available
+  proxy CEILING_ACOUSTIC_TILE (α₅₀₀ = 0.55); FIBERGLASS_CEILING addition
+  deferred to v0.12+ under OQ-14. See ADR 0019 + ADR 0018.

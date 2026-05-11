@@ -26,5 +26,8 @@ jobs:
       - name: Type-check (mypy)
         run: mypy roomestim
 
+      - name: Lint (tense)
+        run: python scripts/lint_tense.py
+
       - name: Test (pytest, skip lab fixtures)
         run: pytest -m "not lab" -v

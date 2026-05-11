@@ -1,0 +1,117 @@
+# ADR 0019 — MELAMINE_FOAM MaterialLabel extension + lab fixture material flip
+
+- **Status**: Accepted (v0.11.0)
+- **Date**: 2026-05-11
+- **Cross-ref**: D3, D14, D22 (audit-trail-discipline pattern), D23, D24,
+  D25, ADR 0011 (MISC_SOFT precedent), ADR 0016 (Stage-2 schema flip
+  predicate; reverse-criterion firing), ADR 0018 (substitute-disagreement
+  record at v0.10), ADR 0020 (CI tense lint), OQ-13a (resolved at v0.11),
+  OQ-13f (resolved at v0.11), OQ-14 (NEW v0.11; FIBERGLASS_CEILING +
+  TILE_FLOOR deferred to v0.12+), `roomestim/model.py`
+  (`MaterialLabel`, `MaterialAbsorption`, `MaterialAbsorptionBands`),
+  `tests/test_a11_soundcam_rt60.py`,
+  `tests/test_misc_soft_furniture_budget.py`,
+  `tests/test_room_acoustics_octave.py`,
+  `tests/fixtures/soundcam_synthesized/lab/dims.yaml`.
+
+## Decision
+
+Extend the closed `MaterialLabel` enum (D3, ADR 0011) with one new entry
+**`MELAMINE_FOAM`** (`"melamine_foam"`), and add the corresponding rows
+to the absorption tables:
+
+- `MaterialAbsorption[MaterialLabel.MELAMINE_FOAM] = 0.85` at 500 Hz mid-band.
+- `MaterialAbsorptionBands[MaterialLabel.MELAMINE_FOAM] = (0.35, 0.65, 0.85, 0.92, 0.93, 0.92)`
+  for (125, 250, 500, 1000, 2000, 4000) Hz.
+
+Both rows are sourced from the **Vorländer 2020 *Auralization* §11 /
+Appendix A** "melamine foam panel" / "acoustic foam absorber" entry,
+class "porous absorber, 2-4 inch panel". The α₅₀₀ value 0.85 is taken
+from the **planner-locked envelope** (0.80 ≤ α₅₀₀ ≤ 0.95) per the
+OQ-13a amendment recorded in `.omc/plans/open-questions.md` and the
+v0.11-design plan §0.1; the verbatim page + row + panel-thickness
+column citation is recorded as **pending verbatim Vorländer lookup**
+under §References below — honesty-first policy applies (D22) and the
+coefficient invariant test `test_melamine_foam_a500_in_expected_range`
+brackets the value to the envelope so any silent drift outside the
+0.80-0.95 range trips the test.
+
+The band-index-2 ↔ legacy-scalar invariant
+(`MaterialAbsorptionBands[m][2] == MaterialAbsorption[m]`) is preserved
+by construction and continues to be enforced by
+`tests/test_room_acoustics_octave.py::test_band_a500_matches_legacy_scalar`
+plus the new `test_melamine_foam_band_a500_matches_legacy_scalar` /
+`test_melamine_foam_bands_monotonic_in_500hz_region` guards.
+
+The lab SoundCam substitute fixture (`tests/fixtures/soundcam_synthesized/lab/dims.yaml`)
+`material_rationale` block + `tests/test_a11_soundcam_rt60.py::_predict_lab()`
+flip the lab wall material `MISC_SOFT` → **`MELAMINE_FOAM`**, matching
+the paper-described NRC 1.26 melamine-foam treatment.
+
+## Drivers
+
+1. **ADR 0018 §Reverse-criterion** named MELAMINE_FOAM addition as the path back to A11 PASS-gate for treated rooms; v0.11 closes that path.
+2. **OQ-13a amendment (v0.10.1)** locked Vorländer 2020 §11 / Appx A as PRIMARY source; v0.11 uses the planner-locked envelope mid-value (verbatim page citation pending follow-up — flagged in §References).
+3. **Conference disagreement-record stays** byte-equal because the conference paper-faithful map has no foam; the conference residual is a Sabine-shoebox-approximation effect (OQ-13b), orthogonal to this enum.
+4. **§2.4 executor outcome**: lab Sabine 500 Hz under MELAMINE_FOAM walls = 0.162 s vs measured 0.158 s; rel_err = +2.40 %; sub-branch A (PASS-gate recovered). Lab umbrella renamed `test_a11_soundcam_lab_band_record`; new companion `test_a11_soundcam_lab_pass_gate_recovered`.
+
+## Alternatives considered
+
+- **(a) Add MELAMINE_FOAM + FIBERGLASS_CEILING + TILE_FLOOR.** Rejected: minimum-leverage scope discipline — lab needs wall treatment, not ceiling/floor. Other two enums re-deferred under OQ-14.
+- **(b) Add MELAMINE_FOAM but keep lab fixture on MISC_SOFT walls.** Rejected: new enum is dead weight without a fixture exercising it; the flip is paper-faithful.
+- **(c) Block on verbatim Vorländer α₅₀₀.** Rejected for v0.11: envelope (0.80-0.95) is tight; coefficient-invariant test brackets the value; honesty-first marker (D22) flags as planner-envelope, not fabricated.
+- **(d) Re-tune MISC_SOFT α₅₀₀ from 0.40 → 0.85.** Rejected: MISC_SOFT is the furnishings slot (ADR 0011); re-purposing silently breaks ADR 0011's honesty contract and per-room budget tests.
+- **(e) Defer the addition to v0.12+.** Rejected: v0.10.1 named v0.11 as the closure point; further deferral violates deferral cadence.
+
+## Why chosen
+
+- **Minimum-leverage**: 1 enum entry + 2 dict rows + 1 fixture flip + 1 test material switch; no predictor/adapter/CLI surfaces touched.
+- **Honesty-first coefficient sourcing**: planner-locked envelope + citation-pending marker + invariant test bracket (same policy as ADR 0011 / ADR 0008).
+- **Symmetric with ADR 0018 §Reverse-criterion**: closes the treated-room half (lab); leaves conference disagreement-record for the orthogonal OQ-13b path.
+
+## Consequences
+
+- **(+) Lab A11 PASS-gate recovered** (rel_err +2.40 %; signature `default_enum_underrepresents_treated_room_absorption` → `RECOVERED_under_melamine_foam_enum`).
+- **(+) Default-lane test count +5** (+1 coefficient invariant, +2 band-row tests, +1 lint smoke, +1 PASS-gate-recovered companion).
+- **(+) `MaterialLabel` 9 → 10**; Stage-1 schema absorbs gracefully; `__schema_version__` stays `"0.1-draft"` (Stage-2 flip still bound to A10b + ≥ 3 captures per ADR 0016 + D2).
+- **(+) Conference disagreement-record band byte-equal** (only redundant `assert rel_err < -0.10` added per OQ-13f).
+- **(−) α₅₀₀ = 0.85 is planner-envelope, not verbatim** (citation-pending; coefficient-invariant test brackets [0.80, 0.95]; successor patch updates if verbatim Vorländer lookup shifts the value).
+- **(−) Schema marker does NOT re-flip at v0.11** (D2 ≥3-captures requirement unmet; only 2 substitute rooms).
+
+## Reverse-criterion
+
+- Verbatim Vorländer α₅₀₀ outside [0.80, 0.95] → v0.11.x patch updating row + invariant test + §References.
+- FIBERGLASS_CEILING + TILE_FLOOR added at v0.12+ AND lab returns to PASS without MELAMINE_FOAM → re-evaluate under OQ-14.
+- §2.4 PASS reframed as fixture-flip-tautology by successor critic → ADR 0021 re-frames as fixture-flip-dependent + ratchets citation to verbatim.
+- Conference disagreement-record closes (OQ-13b residual study) → successor ADR may flip conference band back to PASS-gate.
+
+## §2.4 executor decision-point record (v0.11.0)
+
+| Metric | Value |
+| --- | --- |
+| Lab `predicted` (Sabine 500 Hz, MELAMINE_FOAM walls) | **0.161795 s** |
+| Lab `measured` (paper Table 7 broadband) | 0.158000 s |
+| Lab `rel_err = (predicted - measured) / measured` | **+2.40 %** |
+| Sub-branch selected | **A (PASS-gate recovered)** |
+| `_LAB_EXPECTED.predicted_s_min` | 0.150 (new) |
+| `_LAB_EXPECTED.predicted_s_max` | 0.175 (new) |
+| `_LAB_EXPECTED.rel_err_min` | -0.20 (new) |
+| `_LAB_EXPECTED.rel_err_max` | +0.20 (new) |
+| `_LAB_EXPECTED.disagreement_signature` | `RECOVERED_under_melamine_foam_enum` |
+| Umbrella test renamed | `test_a11_soundcam_lab_disagreement_record` → `test_a11_soundcam_lab_band_record` |
+| NEW companion test | `test_a11_soundcam_lab_pass_gate_recovered` |
+
+## References
+
+- **Vorländer, M. (2020). *Auralization*, §11 / Appendix A.** Springer.
+  PRIMARY source for MELAMINE_FOAM α₅₀₀ + per-band coefficients (per OQ-13a
+  amendment + ADR 0011 / OQ-2 / OQ-6 precedent). **Citation status (v0.11)**:
+  verbatim page + row + panel-thickness column **PENDING** — v0.11 ships
+  the planner-locked envelope mid-value (α₅₀₀ = 0.85) honesty-flagged per
+  D22 (not fabricated; bracketed by the coefficient-invariant test).
+- Bies & Hansen (2018), *Engineering Noise Control*, §A — secondary cross-check.
+- NRC manufacturer data sheets — secondary cross-check.
+- arXiv:2311.03517v2 (NeurIPS 2024 D&B, SoundCam) — Table 7 broadband RT60 = 0.158 s (lab).
+- ADR 0011, 0016, 0018, 0020 — cross-refs above.
+- D22, D23, D25 — `.omc/plans/decisions.md`.
+- `.omc/plans/v0.11-design.md`, `.omc/plans/open-questions.md`, `RELEASE_NOTES_v0.11.0.md`.

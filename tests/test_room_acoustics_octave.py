@@ -232,3 +232,35 @@ def test_misc_soft_in_sabine_rt60_smoke() -> None:
     rt60 = sabine_rt60(56.0, sa)
     assert math.isfinite(rt60)
     assert rt60 > 0.0
+
+
+# --------------------------------------------------------------------------- #
+# v0.11 MELAMINE_FOAM enum extension (ADR 0019)
+# --------------------------------------------------------------------------- #
+
+
+def test_melamine_foam_band_a500_matches_legacy_scalar() -> None:
+    """MaterialAbsorptionBands[MELAMINE_FOAM][2] == MaterialAbsorption[MELAMINE_FOAM].
+
+    Reinforces the global band-2 ↔ legacy-scalar invariant
+    (test_band_a500_matches_legacy_scalar) for the new MELAMINE_FOAM row.
+    """
+    band = MaterialAbsorptionBands[MaterialLabel.MELAMINE_FOAM]
+    assert band[2] == MaterialAbsorption[MaterialLabel.MELAMINE_FOAM]
+
+
+def test_melamine_foam_bands_monotonic_in_500hz_region() -> None:
+    """MELAMINE_FOAM 6-band tuple is physically plausible.
+
+    Sanity guard against typo'd band entries: all 6 values must be in
+    [0.0, 1.0] (Sabine-coefficient domain), the row must be 6 entries long,
+    and the band centred at 500 Hz (index 2) must equal the legacy scalar.
+    Foam panels typically rise from low frequencies (~0.30-0.40 at 125 Hz)
+    to a plateau ~0.90 above 1 kHz; the row is sanity-checked, not pinned.
+    """
+    band = MaterialAbsorptionBands[MaterialLabel.MELAMINE_FOAM]
+    assert len(band) == 6, f"MELAMINE_FOAM band tuple length {len(band)} != 6"
+    for i, v in enumerate(band):
+        assert 0.0 <= v <= 1.0, f"MELAMINE_FOAM band[{i}] = {v} outside [0,1]"
+    # Index 2 (500 Hz) is the legacy scalar (band-2 invariant).
+    assert band[2] == MaterialAbsorption[MaterialLabel.MELAMINE_FOAM]

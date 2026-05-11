@@ -52,6 +52,7 @@ class MaterialLabel(str, Enum):
     CEILING_DRYWALL = "ceiling_drywall"
     UNKNOWN = "unknown"
     MISC_SOFT = "misc_soft"
+    MELAMINE_FOAM = "melamine_foam"
 
 
 # Mid-band 500 Hz absorption coefficients per Vorländer 2020,
@@ -66,6 +67,8 @@ MaterialAbsorption: dict[MaterialLabel, float] = {
     MaterialLabel.CEILING_DRYWALL: 0.10,
     MaterialLabel.UNKNOWN: 0.10,
     MaterialLabel.MISC_SOFT: 0.40,
+    # planner-locked envelope per ADR 0019 §References pending verbatim Vorländer 2020 §11 / Appx A lookup
+    MaterialLabel.MELAMINE_FOAM: 0.85,
 }
 
 OCTAVE_BANDS_HZ: tuple[int, ...] = (125, 250, 500, 1000, 2000, 4000)
@@ -98,6 +101,8 @@ MaterialAbsorptionBands: dict[MaterialLabel, tuple[float, float, float, float, f
     MaterialLabel.UNKNOWN:                (0.10, 0.10, 0.10, 0.10, 0.10, 0.10),
     # representative mid-band profile for mixed soft furnishings (curtains, fabric panels, books, light upholstery); not a verbatim Vorländer Appx A row. Schema slot reserved for adapter-emitted furnishings/occupants absorption budget — NOT a per-furnishing-item physics model. Reverse if ≥1 adapter starts emitting MISC_SOFT and downstream consumer reports magnitude wrong.
     MaterialLabel.MISC_SOFT:              (0.20, 0.30, 0.40, 0.50, 0.60, 0.65),
+    # planner-locked envelope per ADR 0019 §References pending verbatim Vorländer 2020 §11 / Appx A "melamine foam panel" / "acoustic foam absorber" lookup. Typical 2-4" foam panel rising profile; index 2 (500 Hz) equals MaterialAbsorption row above (band-2 invariant).
+    MaterialLabel.MELAMINE_FOAM:          (0.35, 0.65, 0.85, 0.92, 0.93, 0.92),
 }
 
 
