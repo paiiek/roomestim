@@ -161,3 +161,48 @@ PASS-gate predictions all byte-equal to v0.11.
 closure cadence; access-limited reverse-criterion invoked), OQ-13a
 (v0.11 `[x]`; v0.12 §Status-update annotation), `.omc/plans/v0.12-design.md`
 §2.2, `tests/test_room_acoustics_octave.py::test_melamine_foam_a500_v0_12_status_update_block_present`.
+
+## §Status-update-2026-05-12-2 (v0.13.0) — Vorländer verbatim citation SECOND re-deferral
+
+**Closure attempt outcome (D22 hybrid pattern, factual: citation status)**:
+v0.13 executor attempted the Vorländer 2020 *Auralization* (2nd ed.,
+Springer) §11 / Appendix A verbatim page + row + panel-thickness column
+lookup for the "melamine foam panel" / "acoustic foam absorber" row.
+
+- **Vorländer 2020 verbatim page / row / panel-thickness**: **STILL
+  PENDING at v0.13**. No library, ILL, or NRC datasheet path materialised
+  during the v0.13 cycle. Per D27 reverse-criterion (d), v0.13 records
+  the closure-attempt outcome honestly. This is the **SECOND-AND-LAST
+  permitted re-deferral** under D27 cadence. **v0.14 = HARD WALL** —
+  closure MUST land OR successor ADR 0022 switches PRIMARY source.
+- **Path α/β evidence lock (planner-locked at v0.13-design)**: path α
+  (verbatim Vorländer 2020 acquisition) remains the default path.
+  Path β (PRIMARY-source switch to Bies & Hansen 2018 §A) was REJECTED
+  at v0.13 design time because no in-repo verbatim α₅₀₀ for melamine foam
+  from Bies & Hansen 2018 §A exists — `grep -rn "Bies\|Hansen" docs/
+  roomestim/` returns ONLY the ADR 0019 §References row naming Bies &
+  Hansen as secondary cross-check (no extracted value). Switching PRIMARY
+  source without an extracted verbatim value would be a fabricated-quote
+  honesty leak (ADR 0018 §Drivers / D22).
+- **α₅₀₀ value at v0.13**: **0.85 BYTE-EQUAL to v0.11 / v0.12**. No
+  shift inside the [0.80, 0.95] invariant envelope; lab A11 PASS-gate
+  UNCHANGED (rel_err = +2.40 %). STOP rules #5 + #7 did not fire.
+- **D27 cadence accounting**: v0.13 = SECOND-AND-LAST permitted
+  re-deferral. v0.14 = HARD WALL. Three v0.14 closure paths explicitly
+  previewed: (i) verbatim Vorländer 2020 §11 / Appx A acquired and
+  recorded; (ii) successor ADR 0022 switches PRIMARY to Bies & Hansen
+  2018 §A with verbatim extracted α₅₀₀; (iii) successor ADR 0022
+  switches PRIMARY to NRC manufacturer datasheet with verbatim value.
+- **External-acquisition-channel exhaustion record (Option B —
+  HONEST-FALLBACK)**: At v0.13 executor-time, external acquisition
+  channels (SNU library ILL, OA mirrors, publisher OA page) for Bies &
+  Hansen 2018 §A were NOT investigated. v0.14 hard-wall closure MUST
+  exhaust these channels before invoking path-β under successor ADR 0022.
+
+**No library code changes** at v0.13: α₅₀₀ row + band row + lab A11
+PASS-gate predictions all byte-equal to v0.12 / v0.11.
+
+**Cross-references**: D22 (hybrid pattern), D27 (cadence; SECOND-AND-LAST
+re-deferral invoked), D28-P1 NEW (audit-trail process meta-rules),
+OQ-13a (v0.13 annotation), OQ-16 NEW (path-α-vs-β lock at v0.14 hard
+wall), `.omc/plans/v0.13-design.md` §2.A.

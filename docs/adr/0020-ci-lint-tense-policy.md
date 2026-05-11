@@ -162,3 +162,102 @@ ADR — STOP rule #14 prevents a second lint-related ADR), OQ-13h
 appended), `.omc/plans/v0.12-design.md` §2.4 + §10.7-§10.8 +
 §14.K, `scripts/lint_tense.py::_scoped_files()` (modified to add 3
 new file families).
+
+## §Status-update-2026-05-13 (v0.13.0) — lint scope expansion-2
+
+**Expansion outcome (D28-P1 supersedure clause applies — factual-scope-
+list-growth case; D22 hybrid pattern; operational refinement: scope
+list grows further)**: v0.13 fires the OQ-13h reverse-criterion
+"scope expansion" trigger a SECOND time per `.omc/plans/v0.13-design.md`
+§2.D (Item D) + §0.0 Item D row. The v0.12 §Status-update-2026-05-12
+absorbed the first expansion (perf + architecture + README); the v0.13
+expansion-2 absorbs the REMAINDER of `docs/*.md` (i.e., the non-`adr/`,
+non-`perf_verification_*`, non-`architecture.md` subset) plus
+`.omc/research/*.md`. After v0.13, all top-level `docs/*.md` files
+are covered uniformly.
+
+**New file families added to `scripts/lint_tense.py::_scoped_files()`**:
+
+- `docs/ace_geometry_audit_*.md` (1 file at v0.13 ship: `_2026-05-07`).
+- `docs/competitive_analysis_*.md` (1 file at v0.13 ship: `_2026-05-05`).
+- `docs/protocol_a10b_*.md` (1 file at v0.13 ship: `protocol_a10b_insitu_capture.md`).
+- `docs/room_yaml_spec.md` (1 file).
+- `docs/weekly_progress_report_*.md` (1 file at v0.13 ship: `_2026-05-11`).
+- `.omc/research/*.md` (3 files at v0.13 ship: `ace-table-i-acquisition.md`,
+  `cross-repo-pr-v0.9-proposal.md`, `cross-repo-pr-v0.10-deferred.md`).
+
+The implementation uses a `docs/*.md` top-level glob to absorb the union
+(non-recursive — `docs/adr/` subdir continues to be handled separately
+above; the perf_verification_/architecture additions from v0.12 are now
+implicitly part of the `docs/*.md` glob, deduplicated by path identity).
+
+**Pattern + block-exclusion (D22) + per-line escape (`# noqa: lint-tense`)
++ current-version-`RELEASE_NOTES_v*.md` exclusion mechanism**: BYTE-EQUAL
+to v0.11 + v0.12. ONLY the factual list of covered files grows. This is
+EXACTLY the case D28-P1 supersedure clause governs (Critic Round-2
+Delta 1) — factual-scope-list-growth where pattern / block-exclusion /
+per-line-escape / current-version-exclusion mechanism stays byte-equal
+qualifies for in-place §Status-update on ADR 0020, NOT a successor ADR.
+The v0.11 ADR 0020 §Reverse-criterion item 3 "Scope too narrow (leak in
+`docs/perf_verification_*.md` / `architecture.md`) → expand scope under
+successor ADR, not silently" wording is SUPERSEDED by D28-P1 for the
+factual-scope-list-growth case (D24 reverse-trigger item 3 is similarly
+superseded). The v0.13 expansion-2 follows the v0.12 expansion-1
+in-place precedent under the now-codified D28-P1 authority.
+
+**Current-version `RELEASE_NOTES_v*.md` exclusion constant rotation**:
+`CURRENT_VERSION_RELEASE_NOTES = "RELEASE_NOTES_v0.12.0.md"` →
+`"RELEASE_NOTES_v0.13.0.md"` (per v0.11 §Reverse-criterion item 4
+asymmetry-rotation requirement; v0.12 rotated v0.11 → v0.12 the same
+way). Guarded at v0.13 ship time by the NEW test
+`tests/test_lint_tense.py::test_lint_tense_v0_13_release_notes_exclusion_rotated`.
+
+**v0.13 first-run flag count**: **1 file flagged** on the expanded
+8-family scope — `docs/weekly_progress_report_2026-05-11.md:204`,
+flagging the inline-quoted citation `"we ship"` that the line text
+USES to describe the lint pattern itself. This is the classic
+pattern-citation false positive that the planner pre-simulated; the
+fix is **1 `# noqa: lint-tense` annotation with rationale** at the end
+of the line (NOT a content rewrite — the line correctly describes the
+lint and would be less clear in past tense). v0.13 §0.4 STOP rule #2
+threshold of > 5 files in newly-included scope DID NOT FIRE; STOP
+rule #4 threshold of > 5 files anywhere DID NOT FIRE. `.omc/research/`
+portion of the expansion is NOT reverted (first-run = 0 flags there,
+well under the 3-flag conditional-revert threshold).
+
+**New tests** (at `tests/test_lint_tense.py`):
+
+- `test_lint_tense_scope_includes_v0_13_expansion` — asserts at least
+  one file from each new v0.13 family is in `_scoped_files()` output
+  (preemptive guard against silent scope contraction).
+- `test_lint_tense_v0_13_release_notes_exclusion_rotated` — asserts
+  the `CURRENT_VERSION_RELEASE_NOTES` constant rotated to
+  `RELEASE_NOTES_v0.13.0.md` at v0.13 ship time.
+
+The pre-existing v0.12 test `test_lint_tense_scope_includes_expanded_files`
+remains BYTE-EQUAL in body — its assertions on the v0.12 baseline
+(perf docs + architecture + README) remain valid under the v0.13
+strict-superset expansion; only the docstring is augmented to note
+the v0.13 sibling test.
+
+**Reverse-criterion (unchanged)**: pre-commit advisory fallback (if
+GH Actions step proves flaky at v0.14+), allow-list-based suppression
+(if false-positive rate > 1 per 10 files), and scope re-expansion
+remain available per the original §Reverse-criterion block above.
+Item 3 ("Scope too narrow → expand under successor ADR") is SUPERSEDED
+by D28-P1 for the factual-scope-list-growth case (this v0.13 ship
+under D28-P1 authority is the canonical example); the wording stays
+in §Reverse-criterion for historical fidelity but the operational
+mechanism is now D28-P1-§Status-update.
+
+**Cross-references**: **D22** (block-exclusion pattern; preserved
+byte-equal at v0.13), **D24** (CI tense lint policy codification;
+D24 reverse-trigger item 3 + this ADR's §Reverse-criterion item 3
+SUPERSEDED by D28-P1 for the factual-scope-list-growth case),
+**D28 NEW v0.13** (audit-trail meta-rules; P1 hybrid pattern is the
+authority for this §Status-update; supersedure clause governs the
+relaxation), OQ-13h (already `[x]` at v0.11; v0.13 reverse-criterion
+firing-2 annotation appended in `.omc/plans/open-questions.md`),
+`.omc/plans/v0.13-design.md` §2.D + §0.0 Item D row + §1 row Item D,
+`scripts/lint_tense.py::_scoped_files()` (modified to add the
+remaining `docs/*.md` glob + `.omc/research/*.md`).

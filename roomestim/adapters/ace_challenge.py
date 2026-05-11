@@ -525,6 +525,30 @@ class E2ERoomCase:
 # --------------------------------------------------------------------------- #
 
 
+def _geom_float(geom: dict[str, object], field: str) -> float:
+    """Narrow a ``geom[field]`` value (typed `object` because
+    `ACE_ROOM_GEOMETRY: dict[str, dict[str, object]]` mixes numeric L/W/H with
+    string floor/walls/ceiling) into a runtime-checked `float`.
+
+    Raises ``TypeError`` with the field name if the value is not numeric.
+    Used by `_build_room_model` for the L / W / H dimensional fields; the
+    geometry table is populated literally in this module (`ACE_ROOM_GEOMETRY`)
+    so the runtime check is a defensive guard against table mis-population
+    rather than a primary validation path.
+
+    Per ADR 0019 v0.13 ship (mypy --strict baseline; OQ-13i resolved):
+    replaces the pre-v0.13 bare `float(geom[field])` call that mypy --strict
+    rejected as ``Argument 1 to "float" has incompatible type "object"``.
+    """
+    value = geom[field]
+    if not isinstance(value, (int, float)):
+        raise TypeError(
+            f"ACE_ROOM_GEOMETRY[{field!r}]: expected numeric, "
+            f"got {type(value).__name__}"
+        )
+    return float(value)
+
+
 def _build_room_model(
     room_id: str,
     geom: dict[str, object],
@@ -551,9 +575,9 @@ def _build_room_model(
     ``overrides is None`` the output is byte-equal to v0.7 (no surface
     added/removed/reordered; absorption values per surface unchanged).
     """
-    L: float = float(geom["L"])  # x direction
-    W: float = float(geom["W"])  # z direction
-    H: float = float(geom["H"])  # y (ceiling height)
+    L: float = _geom_float(geom, "L")  # x direction
+    W: float = _geom_float(geom, "W")  # z direction
+    H: float = _geom_float(geom, "H")  # y (ceiling height)
 
     floor_mat = _MATERIAL_MAP[str(geom["floor"])]
     wall_mat = _MATERIAL_MAP[str(geom["walls"])]

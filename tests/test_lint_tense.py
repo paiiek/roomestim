@@ -96,6 +96,12 @@ def test_lint_tense_scope_includes_expanded_files() -> None:
     Asserts that the live `_scoped_files()` returns at least one file from
     each of the 3 newly-added families (preemptive guard against silent
     scope contraction).
+
+    NOTE (v0.13): v0.13 scope expansion-2 (ADR 0020 §Status-update-2026-05-MM-2)
+    is a strict superset of v0.12 scope; this v0.12-baseline guard remains
+    valid because the v0.13 expansion is strictly additive. The v0.13
+    sibling test `test_lint_tense_scope_includes_v0_13_expansion` covers
+    the new families.
     """
     import importlib.util
 
@@ -112,4 +118,70 @@ def test_lint_tense_scope_includes_expanded_files() -> None:
     )
     assert "README.md" in rel_names, (
         f"v0.12 scope must include top-level README.md; got {sorted(rel_names)}"
+    )
+
+
+def test_lint_tense_scope_includes_v0_13_expansion() -> None:
+    """v0.13 scope expansion-2 (ADR 0020 §Status-update-2026-05-MM-2;
+    governed by D28-P1 supersedure clause for factual-scope-list-growth):
+    lint scope MUST include the remaining `docs/*.md` families
+    (non-adr / non-perf / non-architecture) AND `.omc/research/*.md`.
+
+    Asserts at least one file from each of the newly-added v0.13 families
+    is present in `_scoped_files()` output. Preemptive guard against
+    silent scope contraction in future refactors.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("lint_tense", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    files = module._scoped_files()
+    rel_names = {p.relative_to(REPO_ROOT).as_posix() for p in files}
+
+    weekly_hits = [
+        n for n in rel_names
+        if n.startswith("docs/weekly_progress_report_") and n.endswith(".md")
+    ]
+    assert weekly_hits, (
+        "v0.13 scope must include ≥1 docs/weekly_progress_report_*.md; "
+        f"got {sorted(rel_names)}"
+    )
+    competitive_hits = [
+        n for n in rel_names
+        if n.startswith("docs/competitive_analysis_") and n.endswith(".md")
+    ]
+    assert competitive_hits, (
+        "v0.13 scope must include ≥1 docs/competitive_analysis_*.md; "
+        f"got {sorted(rel_names)}"
+    )
+    research_hits = [
+        n for n in rel_names if n.startswith(".omc/research/") and n.endswith(".md")
+    ]
+    assert research_hits, (
+        "v0.13 scope must include ≥1 .omc/research/*.md; "
+        f"got {sorted(rel_names)}"
+    )
+
+
+def test_lint_tense_v0_13_release_notes_exclusion_rotated() -> None:
+    """v0.13 ship time: the current-version release-notes exclusion constant
+    MUST rotate to `RELEASE_NOTES_v0.13.0.md` per ADR 0020 §Reverse-criterion
+    item 4 (asymmetry-rotation requirement) and v0.11 §Reverse-criterion
+    item 4.
+
+    Guards against the v0.12 → v0.13 rotation being forgotten at release
+    time (the asymmetry stays correct only if executor remembers to rotate).
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("lint_tense", SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.CURRENT_VERSION_RELEASE_NOTES == "RELEASE_NOTES_v0.13.0.md", (
+        "v0.13 ship: CURRENT_VERSION_RELEASE_NOTES must rotate to "
+        "RELEASE_NOTES_v0.13.0.md per ADR 0020 §Reverse-criterion item 4; "
+        f"got {module.CURRENT_VERSION_RELEASE_NOTES}"
     )

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.12.0"
+version = "0.13.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]

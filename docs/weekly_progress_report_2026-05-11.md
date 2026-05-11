@@ -201,7 +201,7 @@ v0.10 critic verdict(7.6/10 composite)이 ADR 0018 자체에서 새 honesty-leak
 
 #### 4) CI tense-lint policy 도입 (v0.11; ADR 0020)
 
-v0.10.1이 발견한 README-tense-mismatch 패턴 — `RELEASE_NOTES`나 ADR 본문에 `"we ship"`, `"ship in v0.9"` 같은 version-specific 현재 시제 framing이 들어가면 후속 버전에서도 여전히 현재 시제로 읽혀 "이 버전이 지금 ship 중이다"는 잘못된 인상을 준다 — 을 막기 위한 lightweight CI 가드.
+v0.10.1이 발견한 README-tense-mismatch 패턴 — `RELEASE_NOTES`나 ADR 본문에 `"we ship"`, `"ship in v0.9"` 같은 version-specific 현재 시제 framing이 들어가면 후속 버전에서도 여전히 현재 시제로 읽혀 "이 버전이 지금 ship 중이다"는 잘못된 인상을 준다 — 을 막기 위한 lightweight CI 가드. # noqa: lint-tense — line cites the lint pattern itself, not a version-specific framing leak
 
 - **Scope**: `tests/fixtures/**/README.md`, `docs/adr/*.md`, `RELEASE_NOTES_v*.md`. current-version `RELEASE_NOTES_v0.11.0.md`는 의도적 asymmetry로 제외 (release notes는 출시 시점에 현재 시제가 자연스럽다).
 - **Pattern**: word-bounded `\bwe ship\b | \bship in v0\.[0-9]+\b`.
