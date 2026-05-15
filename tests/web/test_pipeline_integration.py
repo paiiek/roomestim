@@ -28,6 +28,25 @@ def synthetic_source_wav(tmp_path: Path) -> Path:
 
 
 @pytest.mark.web
+@pytest.mark.parametrize("mesh_ext", [".gltf", ".glb", ".ply"])
+def test_pipeline_end_to_end_mesh_formats(tmp_path: Path, mesh_ext: str) -> None:
+    """MeshAdapter formats → run_pipeline → both YAMLs exist."""
+    fixture = Path(f"tests/fixtures/lab_room{mesh_ext}")
+    result = run_pipeline(
+        fixture,
+        algorithm="vbap",
+        n_speakers=8,
+        layout_radius_m=2.0,
+        el_deg=0.0,
+        octave_band=False,
+        out_dir=tmp_path,
+    )
+    assert result.room_yaml_path.exists()
+    assert result.layout_yaml_path.exists()
+    assert len(result.layout.speakers) == 8
+
+
+@pytest.mark.web
 def test_pipeline_end_to_end_obj_produces_yamls(tmp_path: Path) -> None:
     """Polycam .obj → run_pipeline → both YAMLs exist."""
     result = run_pipeline(

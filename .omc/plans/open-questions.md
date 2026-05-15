@@ -215,3 +215,52 @@ architecture; mark the byte-exact test as `@pytest.mark.xfail(condition=platform
 if cross-arch reproducibility proves infeasible.
 
 Cross-refs: ADR 0025; `tests/web/test_binaural_renderer.py::test_binaural_render_byte_exact_golden`.
+
+---
+
+## v0.12-web.1-design — 2026-05-15b
+
+## OQ-20 — glTF binary (`.glb`) byte-equal reproducibility across trimesh versions (v0.12-web.1)
+
+Does `trimesh.load("lab_room.glb", force="mesh").vertices` return bit-identical ndarrays
+when trimesh upgrades from 4.0 → 4.x → 5.x?
+
+Resolution candidate: likely non-issue — glTF binary buffer is little-endian IEEE-754 by
+spec and trimesh round-trips through `np.frombuffer`. Pin `trimesh>=4.0,<5` in
+`pyproject.toml` IF the v0.12-web.1 CI flags any byte drift. Otherwise leave the lower
+bound permissive and re-record fixtures at the v0.13-web.0 or v0.14 boundary if trimesh
+majors. Also covers the glTF axis-convention caveat: for files exported with a Z-up root
+transform, `MeshAdapter` returns geometrically valid but axis-swapped floor/ceiling
+projections (documented in ADR 0027 § "Consequences" and `RELEASE_NOTES_v0.12-web.1.md`
+§ "Known gaps").
+
+Cross-refs: §3-P2; ADR 0027.
+
+
+## OQ-21 — `.ply` files with vertex colour but no faces (points-only degenerate case) (v0.12-web.1)
+
+What does `MeshAdapter` do with a PLY upload that contains vertices but no triangular faces
+(a degenerate point-cloud export)?
+
+Resolution candidate: at v0.12-web.1 ship, `trimesh.load(path, force="mesh")` returned a
+`Trimesh` with 0 faces; the existing `vertices.shape[1] != 3` guard did NOT catch this.
+Resolution candidate: add a `if hasattr(loaded, "faces") and len(loaded.faces) == 0: raise
+ValueError("PLY contains points-only, no triangular faces")` guard at v0.12-web.2 if a user
+reported it. Documented as a known degenerate case in `RELEASE_NOTES_v0.12-web.1.md`
+§ "Known gaps". Reverse: if v0.12-web.1 verifier flagged a CI segfault on a real
+points-only `.ply` upload, hotpatch in v0.12-web.1 itself.
+
+Cross-refs: §3-P1; ADR 0027.
+
+
+## OQ-22 — `_TEMP_REAPER` 4 h `atexit` window tightening (v0.12-web.1)
+
+Should `_temp_reaper`'s 4 h `atexit` window become a per-submit TTL instead — e.g. delete
+a tempdir 30 min after `_on_submit` returned regardless of process state?
+
+Resolution candidate: at v0.12-web.1 ship, 4 h `atexit` was sufficient for HF Spaces
+(containers cycle ≤ 24 h; the 8-entry deque covered the typical session). Resolution
+candidate: if OQ-18 measurement (cold-start budget) revealed containers cycle < 1 h, tighten
+to 30 min at v0.12-web.2 or v0.13-web.0.
+
+Cross-refs: §3-P4; D32.

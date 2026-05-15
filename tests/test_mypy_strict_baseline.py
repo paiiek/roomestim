@@ -18,9 +18,19 @@ If this test ever fails:
 
 from __future__ import annotations
 
+import importlib.util
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+_MYPY_AVAILABLE = shutil.which("mypy") is not None or importlib.util.find_spec("mypy") is not None
+pytestmark = pytest.mark.skipif(
+    not _MYPY_AVAILABLE,
+    reason="mypy not installed; run `pip install -e \".[dev]\"` to enable the strict-baseline guard",
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 

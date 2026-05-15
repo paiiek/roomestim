@@ -1220,3 +1220,38 @@ is ~1 MB (well under the 10 MB §0.4 STOP threshold).
 Reverse: switch to download-on-first-use if combined bundle exceeds 10 MB.
 
 Cross-refs: D29; ADR 0024; ADR 0026.
+
+
+## D32 — Tempdir lifecycle: bounded deque + atexit reaper, NOT per-call cleanup
+
+**Date**: 2026-05-15b (v0.12-web.1).
+
+**Context**: `_on_submit` in v0.12-web.0 used `tempfile.mkdtemp(prefix="roomestim_")` and never cleaned up. HF Spaces deployed the demo on an ephemeral container with bounded disk; abandoned tempdirs accumulated and eventually OOM-the-disk the container. But Gradio's `gr.File` output required the file to remain on disk after `_on_submit` returned (the user downloaded it lazily on tab navigation).
+
+**Decision**: Held the last 8 `TemporaryDirectory` instances in a module-level `deque(maxlen=8)`. Deque eviction triggered `__exit__` on the oldest entry, which `shutil.rmtree`d its directory. An `atexit`-registered reaper walked `tempfile.gettempdir()` at process shutdown for any `roomestim_*` directories older than 4 h (`mtime` heuristic) and removed them. The 8-entry cap covered the typical HF Spaces user session; the 4 h `atexit` window caught abandoned containers without breaking active downloads.
+
+**Alternatives considered**:
+- **(a) `tempfile.TemporaryDirectory()` with `gr.State`-tracked cleanup**: Gradio's `gr.State` did not survive page reload, and the cleanup hook fired on user navigation, which could happen before the download completed. Rejected — race condition.
+- **(b) `atexit`-only reaper without the deque cap**: process never exited in HF Spaces (long-running gunicorn worker), so atexit never fired until container cycle. Without the deque cap, every submit leaked until cycle. Rejected — leak window too large.
+- **(c) Document as known and ignore**: rejected per code-reviewer MED-2 — HF Spaces disk OOM was a real failure mode, not a theoretical one.
+
+**Reverse-criterion**: If OQ-18 (HF Spaces cold-start) measurement reveals containers cycle in < 1 h, tighten to 30-min `mtime` window at v0.12-web.2 per OQ-22 resolution path. If the 8-entry deque cap proves too low for power users (i.e. anyone who submits > 8 times in one session), raise to 16 or switch to a 2 h TTL eviction.
+
+**Cross-ref**: §3-P4; OQ-22; `roomestim_web/app.py:_TEMP_REAPER` + `_reap_stale_tempdirs()`.
+
+
+## D33 — MeshAdapter rename (NOT shim): single canonical class; PolycamAdapter retained as deprecated subclass alias
+
+**Date**: 2026-05-15b (v0.12-web.1).
+
+**Context**: v0.12-web.1 generalised the OBJ-only path to four mesh formats (`.obj`, `.gltf`, `.glb`, `.ply`). Two surfacing options were available: (i) rename `PolycamAdapter` → `MeshAdapter` and re-export the old name as a deprecated alias; (ii) keep `PolycamAdapter` as-is and add a new sibling `MeshAdapter` class that delegated.
+
+**Decision**: Option (i) — rename. `MeshAdapter` lived in `roomestim/adapters/mesh.py` and carried the full mesh-parsing logic. `PolycamAdapter` became a 5-line subclass shim in `roomestim/adapters/polycam.py` that emitted one `DeprecationWarning` on first `.parse()` call per location. The rename was the cleaner option because: (a) the v0.1+ class name no longer matched its actual scope (it parsed much more than Polycam exports); (b) the convex-hull-of-projection geometry was mesh-format-agnostic, so a subclass added no behavioural value; (c) external callers (incl. `pipeline.py`, `test_adapter_polycam.py`, `test_binaural_renderer.py`, `test_3d_viewer.py`, `test_pipeline_integration.py`) could migrate to `MeshAdapter` at their own pace via the alias; (d) the alias-as-subclass pattern made `isinstance(PolycamAdapter(), MeshAdapter)` → True, so any duck-typing call sites continued to work byte-equal.
+
+**Alternatives considered**:
+- **(ii) New sibling `MeshAdapter` delegating to `PolycamAdapter`**: rejected because it froze the misleading `PolycamAdapter` name as the canonical implementation, perpetuating the v0.1-era misnomer; also doubled the maintenance surface (every behaviour change required touching two classes).
+- **(iii) Add a `format=` kwarg to `PolycamAdapter.parse()` without rename**: rejected because the suffix dispatch already existed at the top of `parse()`; a kwarg would be redundant noise.
+
+**Reverse-criterion**: If a v0.13+ user reports the `DeprecationWarning` is too noisy in HF Spaces logs, downgrade to `PendingDeprecationWarning` at v0.13-web.0. If a v0.14 release decides to drop `PolycamAdapter` entirely (full removal of the alias), that lands under a successor D-decision and a `RELEASE_NOTES_v0.14-web.0.md` "Breaking changes" callout.
+
+**Cross-ref**: §2.2 (`roomestim/adapters/polycam.py` shim); §3-P1; ADR 0027; v0.12-web.0 ADR 0024 (parallel-track package boundary preserved); D6 (convex-hull-of-projection caveat unchanged).

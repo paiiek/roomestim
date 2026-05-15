@@ -27,11 +27,19 @@ def fixture_room_and_layout():
 
 @pytest.mark.web
 def test_room_figure_trace_count(fixture_room_and_layout):
-    """Mesh3d per surface + 1 Scatter3d for speakers + 1 for listener + 1 for aim-lines."""
+    """Plotly trace count == len(room.surfaces) + 3.
+
+    The +3 is: 1 Scatter3d for speakers + 1 Scatter3d for listener + 1
+    Scatter3d for aim-direction lines. The verifier's 'expected >= N+3
+    where N = speakers' heuristic at v0.12-web.0 was INVERTED — N is
+    surfaces, not speakers. For lab_room.obj (4 walls + 1 floor + 1
+    ceiling = 6 surfaces) the trace count is 6 + 3 = 9.
+    """
     room, layout = fixture_room_and_layout
     fig = build_room_figure(room, layout)
     n_surfaces = len(room.surfaces)
-    expected = n_surfaces + 3  # surfaces + speakers + listener + aim
+    assert n_surfaces == 6, f"lab_room.obj should produce 6 surfaces, got {n_surfaces}"
+    expected = n_surfaces + 3
     assert len(fig.data) == expected
 
 

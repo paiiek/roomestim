@@ -31,7 +31,7 @@ that carries 10-entry `MaterialLabel` enum + octave-band absorption coefficients
 
 ## Web demo
 
-A Gradio web app at `roomestim_web/` lets users upload a phone room scan (.usdz or .obj),
+A Gradio web app at `roomestim_web/` lets users upload a phone room scan (.usdz / .obj / .gltf / .glb / .ply),
 configure speaker placement, and receive: a 3D interactive viewer, an octave-band RT60 report,
 a printable per-speaker setup PDF, a binaural demo WAV (HUTUBS HRTF + pyroomacoustics ISM
 inside their own room), and a ZIP archive of all artefacts. Install via the `[web]` optional
@@ -83,6 +83,15 @@ pytest -m "not lab and not e2e" -v
 
 # CI lint (tense audit for honesty leaks)
 python scripts/lint_tense.py
+```
+
+## Install (dev)
+
+```bash
+# Debian/Ubuntu (PEP-668 system Python): use --user --break-system-packages OR venv
+pip install --user --break-system-packages -e ".[dev,web]"
+# OR
+python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,web]"
 ```
 
 ## Repo layout

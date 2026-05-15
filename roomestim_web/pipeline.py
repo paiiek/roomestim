@@ -47,16 +47,22 @@ def run_pipeline(
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    MESH_SUFFIXES = {".obj", ".gltf", ".glb", ".ply"}
+
     suffix = input_path.suffix.lower()
     if suffix == ".usdz":
         from roomestim.adapters.roomplan import RoomPlanAdapter
         adapter: object = RoomPlanAdapter()
-    elif suffix == ".obj":
-        from roomestim.adapters.polycam import PolycamAdapter
-        adapter = PolycamAdapter()
+    elif suffix == ".json":
+        from roomestim.adapters.roomplan import RoomPlanAdapter
+        adapter = RoomPlanAdapter()
+    elif suffix in MESH_SUFFIXES:
+        from roomestim.adapters.mesh import MeshAdapter
+        adapter = MeshAdapter()
     else:
         raise ValueError(
-            f"Unsupported input format '{suffix}'. Expected .usdz or .obj."
+            f"Unsupported input format '{suffix}'."
+            " Expected .usdz / .obj / .gltf / .glb / .ply."
         )
 
     # parse() is defined on both adapter types

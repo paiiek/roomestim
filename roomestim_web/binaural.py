@@ -10,10 +10,13 @@ SOFA HRTF is requested (via load_default_hrtf / load_hutubs / load_kemar).
 """
 from __future__ import annotations
 
+import logging
 import math
 from math import gcd
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
+
+_LOG = logging.getLogger("roomestim_web.binaural")
 
 import numpy as np
 import pyroomacoustics as pra  # type: ignore[import-untyped]
@@ -62,6 +65,30 @@ def _default_material(surfaces: Sequence["Surface"]) -> Any:
         if w.absorption_500hz == common_alpha:
             return _build_pra_material(w)
     return pra.Material(common_alpha)
+
+
+def _image_inside_floor(
+    image_xz: tuple[float, float], floor_polygon: Sequence["Point2"]
+) -> bool:
+    """True if image-source xz projection is inside the floor polygon."""
+    from shapely.geometry import Point, Polygon
+
+    poly = Polygon([(float(p.x), float(p.z)) for p in floor_polygon])
+    return bool(poly.contains(Point(float(image_xz[0]), float(image_xz[1]))))
+
+
+def _resolve_damping_scalar(damping: Any) -> Any:
+    """Collapse multi-band damping array to 500 Hz reference band (index 2).
+
+    Raises ValueError for unexpected band counts (not 1 or 6).
+    """
+    if damping.ndim == 1:
+        damp_scalar = damping
+    elif damping.ndim == 2 and damping.shape[0] in (1, 6):
+        damp_scalar = damping[2] if damping.shape[0] == 6 else damping[0]
+    else:
+        raise ValueError(f"unexpected damping band count {damping.shape}")
+    return damp_scalar
 
 
 def _is_rectilinear_shoebox(floor_polygon: Sequence["Point2"]) -> bool:
@@ -273,6 +300,7 @@ def render_binaural_demo(
     out_right = np.zeros(buf_len, dtype=np.float64)
 
     # -- Per-image-source binaural accumulation ----------------------------
+    total_dropped_images = 0
     for s_idx, pra_source in enumerate(room_pra.sources):
         images = pra_source.images  # shape (3, N_images)
         damping = pra_source.damping  # shape (n_bands, N_images) or (N_images,)
@@ -282,13 +310,22 @@ def render_binaural_demo(
         # consistency with the rest of roomestim (Sabine 500 Hz, ADR 0021).
         # pra.Material(scalar) produces 1 band; band dict produces 6 bands
         # at center_freqs=[125, 250, 500, 1000, 2000, 4000] → band index 2.
-        if damping.ndim == 2:
-            damp_scalar = damping[2] if damping.shape[0] >= 6 else damping[0]
-        else:
-            damp_scalar = damping  # shape (N_images,)
+        damp_scalar = _resolve_damping_scalar(damping)
 
         for i in range(n_images):
             img_pos = images[:, i]  # (x, y, z) in pra frame
+
+            # For non-shoebox (extrusion) rooms, drop image sources whose xz
+            # projection falls outside the floor polygon. The extrusion path
+            # uses pra coordinates (x, z, height), so xz is img_pos[0], img_pos[1].
+            if not is_shoebox_path:
+                # Convert pra coords back to roomestim world frame for containment
+                img_x_world = float(img_pos[0]) + min_x
+                img_z_world = float(img_pos[1]) + min_z
+                if not _image_inside_floor((img_x_world, img_z_world), room.floor_polygon):
+                    total_dropped_images += 1
+                    continue
+
             rel = img_pos - listener_pos
 
             dist = float(np.linalg.norm(rel))
@@ -321,6 +358,13 @@ def render_binaural_demo(
                 actual_end_r = min(end_r, buf_len)
                 out_left[n_delay:actual_end_l] += conv_l[: actual_end_l - n_delay]
                 out_right[n_delay:actual_end_r] += conv_r[: actual_end_r - n_delay]
+
+    if total_dropped_images >= 1:
+        _LOG.warning(
+            "render_binaural_demo: dropped %d image source(s) outside floor polygon"
+            " (non-rectilinear extrusion room).",
+            total_dropped_images,
+        )
 
     # -- Trim to duration + reverb tail -------------------------------------
     # Spec §5.2 step 7: keep up to 2 s of late-arriving reflection tail so
