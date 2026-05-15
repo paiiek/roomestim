@@ -25,6 +25,14 @@ dev = [
     "ruff>=0.5",
     "mypy>=1.8",
 ]
+web = [
+    "gradio>=4.0",
+    "plotly>=5.18",
+    "pyroomacoustics>=0.7",
+    "pysofaconventions>=0.1",
+    "reportlab>=4.0",
+    "soundfile>=0.12",
+]
 viz = ["matplotlib>=3.7"]
 usd = ["pyusd"]
 colmap = ["pycolmap>=0.6"]
@@ -44,6 +52,7 @@ markers = [
     "lab: requires lab_real.usdz fixture; skipped in default CI",
     "e2e: end-to-end pipeline against external GT dataset (env-var gated)",
     "network: marker reserved for tests that may fetch over network (currently no test invokes it; gate is local-dir env var)",
+    "web: requires the [web] optional extras (Gradio, pyroomacoustics, HRTF data); excluded from default CI",
 ]
 testpaths = ["tests"]
 

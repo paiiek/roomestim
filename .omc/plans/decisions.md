@@ -1175,3 +1175,48 @@ SoundCam (arXiv:2311.03517v2; purl.stanford.edu/xq364hd5023; MIT).
   - If P2's two-cycle cadence proves too lax (a single re-deferral cycle is the right discipline for a specific class of pendency), introduce D29 narrowing the P2 cadence for that class WITHOUT amending D28-P2 inline (mechanism / scope change for a P-rule is itself a STRUCTURAL change requiring its own D-decision per D28-P1 applicability table).
   - If a v0.14+ ADR demonstrates that the supersedure clause is itself unsound (e.g., a scope-list growth case where in-place §Status-update silently grows beyond what readers can audit), supersede ADR 0020 with ADR 0022+ and amend D28-P1's supersedure-clause text under a successor D-decision.
 - **Cross-references**: **D22** (hybrid pattern source — v0.10.1 same-week ADR corrections; P1 generalises D22 from "same-week" to "any factual band"); **D24** (CI lint codification; D24 reverse-trigger item 3 + ADR 0020 §Reverse-criterion item 3 SUPERSEDED by D28-P1 for the factual-scope-list-growth case); **D26** (predictor-adoption deferral; parallel cadence policy structurally identical to P2's permitted-re-deferral cycle; D26's "characterise-first-decide-second" is P2-shaped); **D27** (verbatim-pending closure cadence; cycle-count discipline source — P2 is its generalisation); implementing artefacts: ADR 0019 (D27 instance; v0.12 §Status-update + v0.13 §Status-update-2 are both P1 cases), ADR 0020 (v0.12 §Status-update + v0.13 §Status-update-2 are both P1 cases governed by the supersedure clause), ADR 0021 (NEW at v0.12 — example of P1 NOT applying: structural reframing required NEW ADR); plan refs: `.omc/plans/v0.13-design.md` §0.1 (a)-(d) + §2.B + §0.0 rows for Items A / B / D.
+
+
+## D29 — Output filename routing for parallel-track design plans (v0.12-web.0, 2026-05-15)
+
+When a planner pass on a parallel track (web demo) would otherwise overwrite an
+acoustics-track design plan at `.omc/plans/v0.X-design.md`, write to
+`.omc/plans/v0.X-{track-suffix}-design.md` instead (here: `v0.12-web-design.md`).
+
+Drivers: overwriting the shipped acoustics-track v0.12 plan would silently break six
+ADR/OQ cross-references (honesty leak per D22 audit-trail discipline).
+
+Reverse: if the acoustics track absorbs the parallel track (web demo merged into core),
+the renamed file collapses into a single `v0.X-design.md` under a successor planner pass.
+
+Cross-refs: D22; `.omc/plans/v0.12-web-design.md` §0.0 Item Z.
+
+
+## D30 — Web-demo-as-parallel-track release versioning (v0.12-web.0, 2026-05-15)
+
+The web demo ships under a parallel version string `v{core_version_at_branch}-web.N`
+(here: `v0.12-web.0`). Core `pyproject.toml [project] version` stays at the acoustics-track
+number (`0.13.0`); `roomestim_web/__init__.py::__version__` carries the parallel string.
+
+Drivers: web demo and core acoustics track evolve at different cadences; coupling them under
+a single SemVer would force lock-step releases.
+
+Reverse: collapse to a single combined version if the web demo becomes mandatory for the core install.
+
+Cross-refs: D29; ADR 0024.
+
+
+## D31 — HRTF licensing and bundling policy (v0.12-web.0, 2026-05-15)
+
+Bundle both PRIMARY (HUTUBS subject pp1; CC BY 4.0; TU Berlin) and FALLBACK (MIT KEMAR;
+Public Domain) SOFA files in-repo under `roomestim_web/data/hrtf/`. SHA-256 pins captured in
+`HRTF_ATTRIBUTION.md` at data-bundle commit time and verified by `tests/web/conftest.py`.
+Attribution required at three locations: file-level `HRTF_ATTRIBUTION.md`, repo `README.md`
+`## License` section, and the web UI footer.
+
+Drivers: HF Spaces cold-start must not block on network; HUTUBS URLs rotate; combined bundle
+is ~1 MB (well under the 10 MB §0.4 STOP threshold).
+
+Reverse: switch to download-on-first-use if combined bundle exceeds 10 MB.
+
+Cross-refs: D29; ADR 0024; ADR 0026.

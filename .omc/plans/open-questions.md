@@ -177,3 +177,41 @@ All v0.1 implementation decisions are now locked. New questions raised during P0
 - **OQ-15 reaffirmation (v0.13.0)**: DEFERRED to v0.14 DELIBERATE UNCHANGED per main-agent tiebreaker (Critic-lean). v0.13 = SHORT-mode admin bundle; OQ-15 ISM library bundle is structurally its own v0.14 DELIBERATE.
 
 - **OQ-11 / OQ-12a/b/c / OQ-13b / OQ-13c / OQ-13d / OQ-13e / OQ-13f / OQ-13g / OQ-14 / OQ-16 reaffirmation (v0.13.0)**: all UNCHANGED at v0.13 ship. OQ-16 (path-α-vs-β lock) remains OPEN pending v0.14 hard-wall closure. Context: planner pre-shipping notes above (Status update 2026-05-13 (planner)) apply unchanged.
+
+---
+
+## v0.12-web-design — 2026-05-15
+
+## OQ-17 — HUTUBS subject-id stability across HRTF library updates (v0.12-web.0)
+
+When TU Berlin re-issues the HUTUBS dataset (correction patches, additional subjects),
+does `pp1` remain the canonical first subject AND remain anthropometrically equivalent
+to the v0.12-web.0 bundled file?
+
+Resolution candidate: SHA-256 pin + manual diff at every HUTUBS release. If `pp1` changes
+byte-non-equal, re-record binaural golden hash and bump `0.12-web.0 → 0.12-web.1`.
+
+Cross-refs: ADR 0026; D31.
+
+
+## OQ-18 — HF Spaces cold-start budget for the bundled web demo (v0.12-web.0)
+
+What is the measured cold-start wall time (Spaces build + first request) for the v0.12-web.0
+deploy?
+
+Resolution candidate: measure once at executor-time after first deploy. If > 90 s, switch to
+a Docker-based Space or trim deps.
+
+Cross-refs: §4 S3 (pre-mortem); ADR 0024.
+
+
+## OQ-19 — Binaural WAV byte-exact reproducibility across pyroomacoustics versions (v0.12-web.0)
+
+Does pinning `pyroomacoustics==0.7.X` (or 0.9.X) guarantee byte-exact output across host
+CPU architectures (Intel x86_64 vs ARM64)?
+
+Resolution candidate: record golden hash on x86_64 Linux Python 3.11; CI gate on the same
+architecture; mark the byte-exact test as `@pytest.mark.xfail(condition=platform.machine() != "x86_64")`
+if cross-arch reproducibility proves infeasible.
+
+Cross-refs: ADR 0025; `tests/web/test_binaural_renderer.py::test_binaural_render_byte_exact_golden`.

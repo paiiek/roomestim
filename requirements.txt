@@ -1,0 +1,14 @@
+# AUTO-MIRROR of pyproject.toml [project.dependencies] + [project.optional-dependencies].web
+# Keep in sync; see .omc/plans/v0.12-web-design.md §0.2 row 20.
+numpy>=1.24
+pyyaml>=6
+jsonschema>=4
+shapely>=2.0
+scipy>=1.10
+trimesh>=4.0
+gradio>=4.0
+plotly>=5.18
+pyroomacoustics>=0.7
+pysofaconventions>=0.1
+reportlab>=4.0
+soundfile>=0.12

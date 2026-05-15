@@ -1,3 +1,14 @@
+---
+title: roomestim — spatial audio configurator
+emoji: 🏠
+colorFrom: blue
+colorTo: green
+sdk: gradio
+sdk_version: "4.0.0"
+app_file: app.py
+pinned: false
+---
+
 # roomestim
 
 Capture-to-config tool. Phone room-scan (Apple RoomPlan / Polycam / COLMAP fallback) or public corpus
@@ -9,6 +20,7 @@ that carries 10-entry `MaterialLabel` enum + octave-band absorption coefficients
   (rel_err +2.4%) + CI tense-lint (ADR 0020) + in-situ A10b protocol DOC (no capture commitment yet).
   See `RELEASE_NOTES_v0.11.0.md` and `docs/weekly_progress_report_2026-05-11.md` for the cumulative
   v0.5.0 → v0.11.0 weekly story.
+  v0.12-web.0 parallel-track web demo ships in `roomestim_web/` (sibling package; D30 release versioning; ADR 0024-0026).
 - **Precision target**: cm-grade — walls ±10 cm, speaker angles ±2–5°, RT60 ±20%. NOT BIM precision.
 - **Coordinate frame**: VBAP layout-frame (`spatial_engine/docs/coordinate_convention.md`) — listener
   at origin, x=right, y=up, z=front, metres. RIGHT = +az_deg, UP = +el_deg.
@@ -16,6 +28,25 @@ that carries 10-entry `MaterialLabel` enum + octave-band absorption coefficients
   `/home/seung/mmhoa/vid2spatial_v2/`.
 - **Schema marker**: `__schema_version__ = "0.1-draft"` (Stage-1 permissive). Stage-2 strict flip is
   bound to A10b in-situ capture per ADR 0016 §Reverse-criterion + ADR 0018.
+
+## Web demo
+
+A Gradio web app at `roomestim_web/` lets users upload a phone room scan (.usdz or .obj),
+configure speaker placement, and receive: a 3D interactive viewer, an octave-band RT60 report,
+a printable per-speaker setup PDF, a binaural demo WAV (HUTUBS HRTF + pyroomacoustics ISM
+inside their own room), and a ZIP archive of all artefacts. Install via the `[web]` optional
+extra:
+
+```bash
+pip install -e ".[web]"
+python -m roomestim_web   # or: gradio app.py for hot-reload
+```
+
+Deploy as a Hugging Face Space: the repo root `app.py` + `requirements.txt` + the front-matter
+YAML block at the top of this file constitute the canonical Spaces layout.
+
+See `RELEASE_NOTES_v0.12-web.0.md`, `docs/adr/0024-web-demo-separate-package.md`,
+`docs/adr/0025-binaural-demo-stack.md`, `docs/adr/0026-hrtf-dataset-selection.md`.
 
 ## Capture backends
 
