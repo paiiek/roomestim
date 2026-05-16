@@ -6,13 +6,12 @@ from __future__ import annotations
 
 import pytest
 
-plotly = pytest.importorskip("plotly")
-import plotly.graph_objects as go  # noqa: E402
+pytest.importorskip("plotly")
 
-from roomestim.adapters.polycam import PolycamAdapter
-from roomestim.place.dispatch import run_placement
-from roomestim_web.material_palette import MATERIAL_PALETTE
-from roomestim_web.viewer import build_room_figure
+from roomestim.adapters.polycam import PolycamAdapter  # noqa: E402
+from roomestim.place.dispatch import run_placement  # noqa: E402
+from roomestim_web.material_palette import MATERIAL_PALETTE  # noqa: E402
+from roomestim_web.viewer import build_room_figure  # noqa: E402
 
 
 @pytest.fixture

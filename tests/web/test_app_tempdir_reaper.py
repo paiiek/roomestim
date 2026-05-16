@@ -11,7 +11,6 @@ import pytest
 
 pytest.importorskip("gradio")
 
-import roomestim_web.app as app_module
 from roomestim_web.app import _TEMP_REAPER, _reap_stale_tempdirs
 
 
@@ -28,10 +27,7 @@ def test_deque_eviction_removes_oldest_tempdir() -> None:
     # Drain any pre-existing entries so the deque is clean for this test.
     # We can't clear() a module-level deque without side-effects, so we push
     # enough entries to flush whatever is already there, then track the 9th.
-    initial_len = len(_TEMP_REAPER)
-
-    # We need to push (maxlen - initial_len + 1) extra entries to guarantee eviction.
-    # Simpler: fill the deque completely, then push one more and check the first is gone.
+    # Fill the deque completely, then push one more and check the first is gone.
 
     # Record initial oldest entries (to restore nothing — we just note their dirs)
     # Push 8 fresh TDs to fill the deque (this evicts any prior entries)

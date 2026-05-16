@@ -1,7 +1,6 @@
 """tests/web/test_archive.py — archive + provenance unit tests."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import zipfile
 

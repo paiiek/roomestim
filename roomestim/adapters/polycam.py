@@ -9,8 +9,10 @@ from __future__ import annotations
 import warnings
 from pathlib import Path
 
+from roomestim.adapters.base import ScaleAnchor
 from roomestim.adapters.mesh import MeshAdapter
 from roomestim.adapters.roomplan import RoomPlanAdapter
+from roomestim.model import RoomModel
 
 __all__ = ["PolycamAdapter"]
 
@@ -26,7 +28,13 @@ class PolycamAdapter(MeshAdapter):
     :class:`RoomPlanAdapter` as in v0.1.
     """
 
-    def parse(self, path, *args, **kwargs):  # type: ignore[override]
+    def parse(
+        self,
+        path: Path | str,
+        *,
+        scale_anchor: ScaleAnchor | None = None,
+        octave_band: bool = False,
+    ) -> RoomModel:
         warnings.warn(
             "PolycamAdapter is deprecated; use roomestim.adapters.MeshAdapter",
             DeprecationWarning,
@@ -34,6 +42,7 @@ class PolycamAdapter(MeshAdapter):
         )
         path_obj = Path(path)
         if path_obj.suffix.lower() == ".json":
-            octave_band = kwargs.get("octave_band", False)
             return RoomPlanAdapter().parse(path_obj, octave_band=octave_band)
-        return super().parse(path_obj, *args, **kwargs)
+        return super().parse(
+            path_obj, scale_anchor=scale_anchor, octave_band=octave_band
+        )

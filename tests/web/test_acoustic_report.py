@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("plotly")
 
 from roomestim.adapters.polycam import PolycamAdapter
-from roomestim_web.report import build_acoustic_report, build_rt60_bar_chart
+from roomestim_web.report import build_acoustic_report
 
 
 @pytest.fixture
