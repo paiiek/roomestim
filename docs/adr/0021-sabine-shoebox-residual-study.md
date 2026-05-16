@@ -174,3 +174,98 @@ fires under the ambiguous classification (STOP rule #11 holds).
   `::test_a11_soundcam_conference_disagreement_classification` — NEW at v0.12.
 - `roomestim/reconstruct/materials.py::eyring_rt60` — D9 / ADR 0009.
 - `.omc/plans/v0.12-design.md` §2.3 / §2.4 — thresholds + §2.3.5 reverse-criterion.
+
+## §Status-update-2026-05-16 (v0.14.0) — Conference ISM ratio recorded
+
+**Closure-status update (D22 hybrid pattern + D28-P1 factual band)**:
+v0.14.0 Item B executor pass landed the OQ-15 ISM library
+(`roomestim/reconstruct/image_source.py` NEW per ADR 0028 §Decision
+sub-item 2) and computed the conference SoundCam-substitute
+(6.7×3.3×2.7; 3 drywall + 1 glass + carpet + acoustic-tile ceiling)
+ISM-vs-Sabine ratio. This block records the factual ratio as evidence
+supporting the Item C reclassification (which lands STRUCTURALLY in
+ADR 0028 §Decision sub-item 3, NOT in this ADR 0021 — signature
+reframing is STRUCTURAL per D28-P1 applicability table; this
+§Status-update records ratio data only per D28-P1 factual band).
+
+- **Conference ISM RT60**: 2.2693 s (`tests/test_image_source.py::test_a11_soundcam_conference_ism_ratio_characterises`
+  line 320; Allen & Berkley 1979 ISM + Lehmann-Johansson 2008 §III
+  placement bookkeeping; `max_order=50`).
+- **Conference Sabine RT60**: 0.4490 s (unchanged from v0.12 + ADR 0021
+  §2.4 executor decision-point output; library BYTE-EQUAL).
+- **Conference Eyring RT60**: 0.3981 s (unchanged from v0.12).
+- **Conference ISM/Sabine ratio**: **5.0537** (= 2.2693 / 0.4490; well
+  above the 1.15 threshold).
+- **Conference ISM/Eyring ratio**: **5.7002** (= 2.2693 / 0.3981).
+- **Conference Sabine/Eyring ratio**: **1.1279** (BYTE-EQUAL to v0.12
+  AMBIGUOUS-zone value; library unchanged).
+- **ACE Office_1 ISM/Sabine ratio** (second-room confirmation per the
+  D26 forbidden-indefinite-deferral clause): **2.0059** (= 1.7324 /
+  0.8637; `tests/test_image_source.py::test_ace_office_1_ism_ratio_characterises`
+  line 441). Office_1 is NOT a glass-heavy room (carpet + 4 painted
+  walls + drywall ceiling per `ACE_ROOM_GEOMETRY`); the > 1.15 ratio
+  indicates the ISM-vs-Sabine departure is NOT specific to glass — it
+  is a general pure-specular-vs-diffuse-field characterisation effect
+  (Lehmann & Johansson 2008 §IV finding).
+- **Convergence caveat (added 2026-05-16 per code-reviewer pass
+  MAJOR finding #1)**: the conference + Office_1 ISM ratios above are
+  computed at `max_order=50` (planner-locked default + per-room test
+  parameter). They are **NOT numerically converged at `max_order=50`**.
+  Code-reviewer sweep at `max_order=100`: conference ISM=2.5774 s →
+  ISM/Sabine = **5.7400** (+13.6 % vs the 5.0537 above); Office_1
+  ISM=2.0376 s → ISM/Sabine = **2.3593** (+17.6 % vs the 2.0059
+  above). Branch C-i (ratio > 1.15) fires under BOTH truncations for
+  BOTH rooms, so the Item C structural reframe (lands in ADR 0028
+  §Decision sub-item 3) and the D26 ≥ 2-rooms gate are **robust to
+  convergence**; the absolute ratio values are NOT load-bearing for
+  the v0.14 decision and are recorded for characterisation only.
+  v0.15+ may revise quantitative ratios under a successor
+  §Status-update if higher-order convergence becomes load-bearing
+  for a future predictor-default decision. Cross-ref: ADR 0028
+  §Decision sub-item 2 "Convergence caveat" + code-review memo
+  `.omc/plans/v0.14-code-review-2026-05-16.md` §2.1.
+
+**Item C branch fired**: **C-i** (ratio > 1.15) per plan §0.0 row
+"Item C". Signature reframe to
+`sabine_shoebox_approximation_for_glass_heavy_room` lands in ADR 0028
+§Decision sub-item 3 (STRUCTURAL change per D28-P1 applicability
+table). This ADR 0021 §Status-update is the parallel factual record;
+ADR 0028 §Decision is the structural reframe authority.
+
+**`_CONFERENCE_EXPECTED["disagreement_classification"]` field in
+`tests/test_a11_soundcam_rt60.py`**: NOT updated at v0.14.0 Item B + C
+executor pass. The existing classification value `"ambiguous"` reflects
+the **Sabine/Eyring ratio** classification (still 1.128 → AMBIGUOUS zone
+per the planner-locked thresholds in §Decision above; library is
+BYTE-EQUAL). The v0.12 existing test
+`test_a11_soundcam_conference_disagreement_classification` cross-checks
+via Sabine/Eyring ratio, not ISM/Sabine; that test stays BYTE-EQUAL.
+The Item C ISM-driven branch driver lands as a new test
+`test_conference_ism_item_c_branch_driver` in
+`tests/test_image_source.py` line 739 — additive, not replacement.
+This separation keeps Eyring-based classification and ISM-based
+reclassification as parallel data streams per plan §0.4 STOP rule #11.
+
+**No library code change** at v0.14.0 in
+`roomestim/reconstruct/materials.py` or any predictor call site —
+Sabine + Eyring rows BYTE-EQUAL to v0.12 / v0.13. The ISM library is a
+NEW PARALLEL PREDICTOR per ADR 0028 §Decision sub-item 2; Item D
+predictor-default switch DEFERRED to v0.15+ per D26 + ADR 0028
+§Reverse-criterion item 2.
+
+**Cross-references**: D22 (hybrid pattern), D26 (predictor-adoption
+deferral cadence — Item B (e+) Office_1 ratio + conference ratio both
+> 1.15 → v0.15+ MUST land Item D), D27 (cycle 3 hard wall closed at
+v0.14.0 under path γ via ADR 0028), D28-P1 (factual-band
+§Status-update + STRUCTURAL-reframe-via-§Decision applicability table),
+D34 (v0.14 ADR + OQ re-numbering audit-trail), D35 (v0.14.0 hard-wall
+closure under path γ recording decision), OQ-13b (CONDITIONALLY closed
+at v0.14 — branch C-i fired; signature reframe lands in ADR 0028
+§Decision sub-item 3), OQ-15 (CLOSED at v0.14 — ISM library landed),
+**ADR 0028 NEW** (`docs/adr/0028-hardwall-closure-and-ism-adoption.md`
+§Decision sub-item 3 + §References — composite Item A + B + C ADR),
+`tests/test_image_source.py::test_a11_soundcam_conference_ism_ratio_characterises`
++ `::test_ace_office_1_ism_ratio_characterises` +
+`::test_conference_ism_item_c_branch_driver`,
+`.omc/plans/v0.14-design.md` §0.0 row "Item C" + §2.B + §1.2 row 12,
+`RELEASE_NOTES_v0.14.0.md`.

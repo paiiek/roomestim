@@ -106,13 +106,29 @@ the paper-described NRC 1.26 melamine-foam treatment.
 - **Vorländer, M. (2020). *Auralization*, §11 / Appendix A.** Springer.
   PRIMARY source for MELAMINE_FOAM α₅₀₀ + per-band coefficients (per OQ-13a
   amendment + ADR 0011 / OQ-2 / OQ-6 precedent). **Citation status (v0.11)**:
-  verbatim page + row + panel-thickness column **PENDING** — v0.11 ships
+  verbatim page + row + panel-thickness column **PENDING** — v0.11 shipped
   the planner-locked envelope mid-value (α₅₀₀ = 0.85) honesty-flagged per
   D22 (not fabricated; bracketed by the coefficient-invariant test).
   **Citation status (v0.12)**: see §Status-update-2026-05-12 block below
   for the v0.12 closure-attempt outcome (secondary-source corroboration
   landed; Vorländer verbatim page/row/panel-thickness still PENDING and
   re-deferred to v0.13+ per the D27 cadence reverse-criterion).
+  **Citation status (v0.13)**: see §Status-update-2026-05-12-2 block below
+  for the SECOND-AND-LAST permitted re-deferral under D27 / D28-P2 cadence
+  (verbatim page/row/panel-thickness still PENDING; v0.14 = HARD WALL
+  previewed). **Citation status (v0.14)**: HARD-WALL CLOSURE under **path γ
+  (honesty-leak fallback)** via successor **ADR 0028 NEW** (see
+  `docs/adr/0028-hardwall-closure-and-ism-adoption.md` §Decision sub-item 1
+  + §References "multi-source envelope" row); PRIMARY-source row reframed
+  from "Vorländer 2020 §11 / Appx A (PRIMARY, verbatim pending)" to a
+  **multi-source envelope record** (Vorländer 2020 §11/Appx A PRIMARY
+  envelope-bracketed verbatim unattained through D27 cadence exhaustion +
+  Bies & Hansen 2018 §A secondary unverified + NRC manufacturer datasheets
+  secondary unverified + SoundCam paper arXiv:2311.03517v2 §A.1 NRC 1.26
+  corroboration consistent with envelope mid-value). α₅₀₀ = 0.85 BYTE-EQUAL
+  to v0.11/v0.12/v0.13; lab A11 PASS-gate rel_err = +2.40 % BYTE-EQUAL; enum
+  MELAMINE_FOAM RETAINED. See §Status-update-2026-05-16 block below for the
+  v0.14 HARD-WALL CLOSURE record.
 - Bies & Hansen (2018), *Engineering Noise Control*, §A — secondary cross-check.
 - NRC manufacturer data sheets — secondary cross-check.
 - arXiv:2311.03517v2 (NeurIPS 2024 D&B, SoundCam) — Table 7 broadband RT60 = 0.158 s (lab).
@@ -206,3 +222,101 @@ PASS-gate predictions all byte-equal to v0.12 / v0.11.
 re-deferral invoked), D28-P1 NEW (audit-trail process meta-rules),
 OQ-13a (v0.13 annotation), OQ-16 NEW (path-α-vs-β lock at v0.14 hard
 wall), `.omc/plans/v0.13-design.md` §2.A.
+
+## §Status-update-2026-05-16 (v0.14.0) — Vorländer verbatim citation HARD-WALL CLOSURE under path γ via ADR 0028
+
+**Closure outcome (D22 hybrid pattern + D28-P1 factual band; factual:
+citation closure-path)**: v0.14.0 was cycle 3 of the D27 / D28-P2
+verbatim-pending-closure cadence (v0.11 NEW pending → v0.12 FIRST
+re-deferral → v0.13 SECOND-AND-LAST re-deferral → **v0.14 HARD WALL**).
+Per D27 reverse-criterion + D28-P2, a third consecutive re-deferral
+was forbidden; v0.14 had to close OR escalate to a successor ADR
+switching PRIMARY source. The v0.14 Item A executor pass landed
+**HARD-WALL CLOSURE under path γ (honesty-leak fallback)** via the
+successor **ADR 0028 NEW**
+(`docs/adr/0028-hardwall-closure-and-ism-adoption.md`).
+
+- **Closure path actually taken**: **γ (honesty-leak fallback)** per
+  planner-locked default-safe lock (v0.14-design.md §0.0 row "Item A"
+  + §0.4 STOP rule #7 OPPORTUNISTIC reverse not fired at executor-time).
+  At the v0.14 Item A executor pass (2026-05-16), a verbatim-citation
+  grep across `docs/`, `roomestim/`, and `tests/` returned ONLY
+  §References row labels + closure-attempt outcome records inside this
+  ADR 0019 (lines 114, 116, 165, 173, 180, 182-183, 193, 198). NO
+  extracted verbatim α₅₀₀ value with page + row + panel-thickness
+  landed inside the [0.80, 0.95] envelope. STOP rule #7 did NOT fire;
+  path α (verbatim Vorländer) and path β (PRIMARY-source switch to
+  Bies & Hansen 2018 §A or NRC manufacturer datasheet with verbatim
+  extracted value) remained OPPORTUNISTIC upgrades for v0.14.x patch
+  or v0.15+ per ADR 0028 §Reverse-criterion item 1.
+- **D27 cadence accounting**: **v0.14 = cycle 3 = HARD WALL CLOSED**
+  (NOT a third re-deferral). The cadence schedule that v0.11 design
+  pass + v0.12 §Status-update + v0.13 §Status-update-2026-05-12-2
+  collectively previewed landed under path γ at v0.14.0 ship time.
+  Cycle count is final; no further D27 re-deferral cycles permitted
+  for this ADR.
+- **α₅₀₀ value at v0.14**: **0.85 BYTE-EQUAL to v0.11 / v0.12 / v0.13**.
+  Under path γ, the MELAMINE_FOAM library row stayed bracketed within
+  the [0.80, 0.95] invariant envelope; no library-coefficient change.
+  `MaterialAbsorption[MaterialLabel.MELAMINE_FOAM] = 0.85` BYTE-EQUAL;
+  `MaterialAbsorptionBands[MaterialLabel.MELAMINE_FOAM] = (0.35, 0.65, 0.85, 0.92, 0.93, 0.92)`
+  BYTE-EQUAL. Under the OPPORTUNISTIC α/β branch (NOT fired), the
+  envelope-bracketed value would have been re-checked against the
+  extracted verbatim; out-of-envelope shift would have tripped a
+  v0.14.x patch per ADR 0028 §Reverse-criterion item 1.
+- **Lab A11 PASS-gate at v0.14**: **rel_err = +2.40 % BYTE-EQUAL** to
+  v0.11 / v0.12 / v0.13. Under path γ no library state changed;
+  `_LAB_EXPECTED` predictions BYTE-EQUAL; sub-branch A (PASS-gate
+  recovered) annotation BYTE-EQUAL.
+- **§References PRIMARY-source row reframe (v0.14)**: the v0.11
+  "Vorländer 2020 §11 / Appx A (PRIMARY, verbatim pending)" framing
+  was reframed at v0.14 to a **multi-source envelope record** —
+  Vorländer 2020 §11/Appx A PRIMARY envelope-bracketed verbatim
+  unattained through D27 cadence exhaustion + Bies & Hansen 2018 §A
+  secondary unverified + NRC manufacturer datasheets secondary
+  unverified + SoundCam paper arXiv:2311.03517v2 §A.1 NRC 1.26
+  corroboration consistent with envelope mid-value. The reframe was
+  recorded in-place at the Vorländer §References row above ("Citation
+  status (v0.14)" entry) per D28-P1 factual band + D28-P1 supersedure
+  clause (factual citation-status growth → in-place §References
+  edit + appended §Status-update block; STRUCTURAL PRIMARY-source
+  switch under path β would have required ADR 0028 §Decision
+  sub-item 1 to record the switch — which it does as the path γ
+  closure record + the path β OPPORTUNISTIC reverse).
+- **Honesty-leak entry preserved (per ADR 0018 §Drivers lineage)**:
+  the explicit record that "verbatim citation unattainable through
+  three ship cycles + external-acquisition exhaustion at v0.13
+  documented Option B (channels NOT investigated)" was preserved as
+  the truthful audit-trail record of WHY path γ was the closure
+  path. Per ADR 0018 §Drivers item 1, silent claim-shifting
+  (placeholder framed as measured) was the v0.9 → v0.10 walk-back
+  failure mode that v0.14+ planner rounds actively resisted; this
+  §Status-update block is the audit-trail entry, NOT a softening of
+  the hard wall. v0.15+ may §Status-update ADR 0028 upgrading
+  γ → α/β if verbatim later surfaces per ADR 0028 §Reverse-criterion
+  item 1.
+- **STOP rules**: STOP rule #5 (`__schema_version__` UNCHANGED at
+  `"0.1-draft"`) held; STOP rule #6 (`MaterialLabel` enum UNCHANGED
+  at 10 entries) held; STOP rule #7 (verbatim landed mid-cycle
+  inside envelope) did NOT fire at the Item A executor pass.
+
+**No library code changes** at v0.14 under path γ: α₅₀₀ row + band
+row + lab A11 PASS-gate predictions all BYTE-EQUAL to v0.13 / v0.12 /
+v0.11. The Item A executor pass scope was documentation-only (ADR
+0028 NEW + this §Status-update block + decisions.md D35 NEW +
+RELEASE_NOTES_v0.14.0.md scaffold).
+
+**Cross-references**: D22 (hybrid pattern), D27 (cadence; cycle 3
+HARD WALL closed), D28-P1 (factual-band §Status-update + supersedure
+clause), D28-P2 (permitted re-deferral cadence with cycle-count
+hard-wall), D34 (v0.14 ADR + OQ re-numbering audit-trail), D35
+(v0.14.0 hard-wall closure under path γ recording decision),
+OQ-13a (CLOSED at v0.14 via HARD-WALL CLOSURE under path γ),
+OQ-16 (CLOSED at v0.14 — path γ default locked; α/β OPPORTUNISTIC
+reverse not fired), ADR 0018 (§Drivers honesty-leak lineage), **ADR
+0028 NEW** (`docs/adr/0028-hardwall-closure-and-ism-adoption.md`
+§Decision sub-item 1 + §References "multi-source envelope" row),
+`.omc/plans/v0.14-design.md` §0.0 row "Item A" + §2.A + §0.4 STOP
+rule #7, `.omc/plans/v0.14-architect-revalidation-2026-05-16.md`
+§2.1-§2.4 (hard-wall verification + path γ default-safe lock
+re-confirmation), `RELEASE_NOTES_v0.14.0.md`.

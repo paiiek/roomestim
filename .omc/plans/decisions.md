@@ -1255,3 +1255,93 @@ Cross-refs: D29; ADR 0024; ADR 0026.
 **Reverse-criterion**: If a v0.13+ user reports the `DeprecationWarning` is too noisy in HF Spaces logs, downgrade to `PendingDeprecationWarning` at v0.13-web.0. If a v0.14 release decides to drop `PolycamAdapter` entirely (full removal of the alias), that lands under a successor D-decision and a `RELEASE_NOTES_v0.14-web.0.md` "Breaking changes" callout.
 
 **Cross-ref**: §2.2 (`roomestim/adapters/polycam.py` shim); §3-P1; ADR 0027; v0.12-web.0 ADR 0024 (parallel-track package boundary preserved); D6 (convex-hull-of-projection caveat unchanged).
+
+
+## D34 — v0.14 ADR + OQ re-numbering audit-trail (ADR 0022/0023 → 0028/0029; OQ-17/18/19 → OQ-23/24/25)
+
+**Date**: 2026-05-16 (v0.14 planner architect-revalidation absorption round).
+
+**Context**: The v0.14-design.md planner draft (drafted 2026-05-13; `.omc/plans/v0.14-design.md`) planner-locked "ADR 0022 NEW" / "ADR 0023 RESERVED" + "OQ-17 NEW (Polygon ISM v0.15+)" / "OQ-18 NEW (Predictor-default switch v0.15+)" / "OQ-19 NEW (Per-band glass α revision v0.15+)". Between 2026-05-13 and 2026-05-16 the parallel web-track shipped two interim releases:
+
+- **v0.12-web.0** (`cfea9cb`, 2026-05-15): allocated ADR 0024 (web-demo-separate-package) + ADR 0025 (binaural-demo-stack) + ADR 0026 (hrtf-dataset-selection) AND OQ-17 (HUTUBS subject-id stability; `.omc/plans/open-questions.md:185`) + OQ-18 (HF Spaces cold-start budget; `:197`) + OQ-19 (binaural WAV byte-exact reproducibility; `:208`) + D29 (HRTF licensing) + D30 (web-track versioning) + D31 (HRTF licensing details).
+- **v0.12-web.1** (`0bef198`, 2026-05-16): allocated ADR 0027 (mesh-format-generalisation) AND OQ-20 (glTF `.glb` byte-equal; `:223`) + OQ-21 (PLY no-faces; `:240`) + OQ-22 (`_TEMP_REAPER` tightening; `:256`) + D32 (tempdir lifecycle; `decisions.md:1225`) + D33 (MeshAdapter rename; `decisions.md:1243`).
+
+The original v0.14 ADR / OQ numbers therefore collided with already-shipped allocations. Shipping v0.14 with "ADR 0022" / "OQ-17 NEW" would silently overwrite existing audit-trail entries — a D22 / D28-P1 audit-trail honesty-leak.
+
+**Trigger**: `.omc/plans/v0.14-architect-revalidation-2026-05-16.md` (architect READ-ONLY re-validation pass; verdict YELLOW — 4 amendments needed before executor takeoff). Architect memo §3 AMENDMENT 2 (lines 159-176) flagged the ADR-numbering collision as MAJOR; AMENDMENT 4(b) (lines 200-206) flagged the OQ-numbering collision as borderline MAJOR (bundled under MINOR sub-items for absorption efficiency).
+
+**Decision**: v0.14 acoustics-track allocates the next-available slots per D22 / D28-P1 sequential-numbering audit-trail discipline:
+
+- **ADR 0028 NEW** (replaces "ADR 0022 NEW"): combined hard-wall closure under path γ + ISM library landing (`roomestim/reconstruct/image_source.py`) + conference signature reframe/AMBIGUOUS-persist + ACE Office_1 ratio recorded + predictor-default DEFER decision per D26 with v0.15+ reverse-trigger. Combined as a single ADR to avoid ADR-inflation per D28-P1 single-D consolidation lesson.
+- **ADR 0029 RESERVED** (replaces "ADR 0023 RESERVED"): predictor-default switch slot; ships at v0.14 ONLY if Item D reverse fires per v0.14-design.md §0.4 STOP rule #8; otherwise reserved for v0.15+.
+- **OQ-23 NEW** (replaces "OQ-17 NEW"): Polygon ISM v0.15+ deferral. Resolution candidate per v0.14-design.md §3.1.
+- **OQ-24 NEW** (replaces "OQ-18 NEW"): Predictor-default switch v0.15+. Resolution candidate per v0.14-design.md §3.1 + D26 reverse.
+- **OQ-25 NEW conditional** (replaces "OQ-19 NEW conditional"): Per-band glass α revision v0.15+ if Item C branch C-iii fires.
+
+Additionally, v0.14-design.md §10.1 ADR-supersession reverse-criterion's "ADR 0024" reference is bumped to **ADR 0030** (next-available after v0.12-web.0/web.1 + v0.14 acoustics-track allocations 0028/0029).
+
+**Alternatives considered**:
+- **(a) Keep ADR 0022/0023 + OQ-17/18/19 and force-overwrite v0.12-web.0/web.1 entries**: rejected per D22 + D28-P1 audit-trail honesty discipline (silent overwrite of existing audit-trail entries is forbidden). Would also require renumbering v0.12-web.0/web.1's already-shipped ADRs/OQs, which is post-hoc audit-trail mutation (also D22-forbidden).
+- **(b) Allocate ADR 0022 + ADR 0023 to v0.14 acoustics-track AND argue the v0.12-web.0 planner deliberately jumped to 0024 to reserve 0022/0023 for v0.14**: the architect memo §3 AMENDMENT 2 (line 174) acknowledges this is a "viable reverse-reading" but flags that no explicit D-decision or planner artefact records the 0022/0023 reservation intent. Rejected on the precautionary principle: ship with the explicit safe allocation (sequential next-available) rather than rely on inferred reservation intent that could be re-litigated by a v0.15+ critic.
+- **(c) Re-number all four v0.12-web.x ADRs (0024-0027) to 0022-0025 and ship v0.14 acoustics-track ADRs as 0026/0027**: rejected — post-hoc renumbering of already-shipped artefacts is D22-forbidden audit-trail mutation; would also invalidate cross-references in shipped RELEASE_NOTES_v0.12-web.0.md + RELEASE_NOTES_v0.12-web.1.md.
+
+**Why chosen**: Sequential-next-available allocation is the unique audit-discipline-compliant choice given the v0.12-web.0/web.1 baseline. ADR 0028/0029 + OQ-23/24/25 + ADR 0030 supersession-target preserve audit-trail honesty without requiring any v0.12-web.x mutation. The collision was a consequence of parallel-track interim releases shipping between v0.14 planner-draft (2026-05-13) and v0.14 planner architect-revalidation absorption (2026-05-16) — a procedural finding, not a substantive plan-correctness issue.
+
+**Consequences**:
+- (+) v0.14-design.md re-numbered in place (~120 token-level rewrites: 73 ADR 0022→0028 + 10 ADR 0023→0029 + 5 file-path renames + 5 bare-number narrative updates + 1 supersession-target update + 10 OQ-17→23 + 7 OQ-18→24 + 6 OQ-19→25). New §Status-update-2026-05-16 absorption block at end of v0.14-design.md captures the audit trail.
+- (+) v0.14-design.md §0 prologue NOTE added explaining the re-numbering reason for future v0.14 critic readers + v0.15+ planner readers.
+- (+) D34 (this decision) captures the re-numbering audit-trail in the canonical D-decision log.
+- (−) v0.14 substantive plan content unchanged (no Items A/B/C/D framing change; no path γ default-safe lock change; no [0.80, 0.95] envelope change; no MELAMINE_FOAM α₅₀₀ change; no lab A11 PASS-gate change; no ISM library API change); only mechanical / cross-reference adjustments. Plan-currency unaffected.
+- (−) Future planner rounds (v0.15+) MUST consult both `.omc/plans/decisions.md` (for D-decision next-available slot) AND `docs/adr/` directory (for ADR next-available slot) AND `.omc/plans/open-questions.md` (for OQ next-available slot) at planner-draft time to avoid similar collisions when parallel-track releases ship between draft and executor takeoff.
+
+**Reverse-criterion**:
+- If a v0.15+ critic / archivist surfaces explicit documentation (planner artefact, code-comment, or commit message body) showing that v0.12-web.0 ADR allocator (commit `cfea9cb`) DID reserve 0022/0023 for v0.14 acoustics-track deliberately, append §Status-update on this D34 recording the reservation evidence. Does NOT revert the v0.14 ADR 0028/0029 allocation (already shipped); records the audit-trail finding for v0.16+ planner discipline.
+- If v0.14 acoustics-track ships ADR 0028 and an unrelated v0.13.x or v0.12-web.x patch later needs to ship between v0.12-web.1 and v0.14 (allocating 0028+), bump v0.14's ADR allocation to the new next-available slot at v0.14 executor-time (re-absorb via second §Status-update on v0.14-design.md). Same applies to OQ-23/24/25.
+
+**Cross-ref**:
+- Architect memo: `/home/seung/mmhoa/roomestim/.omc/plans/v0.14-architect-revalidation-2026-05-16.md` (§3 AMENDMENT 2 + §3 AMENDMENT 4(b); 257 lines).
+- Planner artefact (re-numbered in place): `/home/seung/mmhoa/roomestim/.omc/plans/v0.14-design.md` (§0 prologue NOTE; §Status-update-2026-05-16 absorption block at end).
+- Interim release plans (collision source): `/home/seung/mmhoa/roomestim/.omc/plans/v0.12-web.1-design.md` (D32/D33 + OQ-20/21/22 source); `.omc/plans/open-questions.md:185,197,208,223,240,256` (OQ-17/18/19/20/21/22 entries).
+- ADR allocation map at 2026-05-16: 0001..0021 (acoustics-track sequential) + 0024/0025/0026 (v0.12-web.0) + 0027 (v0.12-web.1); v0.14 acoustics-track allocates 0028/0029 + (0030 reserved for supersession-target).
+- D-decisions: D22 (audit-trail-honesty), D28-P1 (hybrid pattern), D29 (web-track filename routing, v0.12-web.0), D30 (web-track versioning, v0.12-web.0), D31 (HRTF licensing, v0.12-web.0), D32 (tempdir lifecycle, v0.12-web.1), D33 (MeshAdapter rename, v0.12-web.1).
+
+
+## D35 NEW — v0.14.0 hard-wall closure under path γ (honesty-leak fallback) via ADR 0028
+
+**Date**: 2026-05-16 (v0.14.0 Item A executor pass; first sub-pass of the v0.14 release cycle).
+
+**Context**: D27 (verbatim-pending closure cadence) + D28-P2 (permitted-re-deferral-cadence-with-cycle-count-hard-wall) bound the ADR 0019 melamine-foam α₅₀₀ verbatim-citation closure schedule at v0.11 NEW pending → v0.12 FIRST re-deferral → v0.13 SECOND-AND-LAST re-deferral → **v0.14 = HARD WALL**. A third consecutive re-deferral was forbidden; v0.14.0 had to close OR escalate to a successor ADR switching PRIMARY source. The v0.14 planner-locked DEFAULT closure path was **γ (honesty-leak fallback)** per `.omc/plans/v0.14-design.md` §0.0 row "Item A" (default-safe lock — does not require external acquisition success); path α (verbatim Vorländer 2020 §11 / Appx A acquired) and path β (PRIMARY-source switch to Bies & Hansen 2018 §A or NRC manufacturer datasheet with extracted verbatim value) were OPPORTUNISTIC upgrades per §0.4 STOP rule #7.
+
+**Trigger**: v0.14 Item A executor pass (2026-05-16). The MANDATORY one-shot pre-flight verbatim-citation grep across `docs/`, `roomestim/`, and `tests/` (per §0.4 STOP rule #7 + §9 Critic preview item 6) returned ONLY §References row labels + closure-attempt outcome records inside `docs/adr/0019-melamine-foam-enum-addition.md` (lines 114, 116, 165, 173, 180, 182-183, 193, 198). NO extracted verbatim α₅₀₀ value with page + row + panel-thickness landed inside the [0.80, 0.95] envelope. STOP rule #7 did NOT fire; path γ default-safe lock held.
+
+**Decision**: v0.14.0 closed the D27 / D28-P2 hard-wall cadence at cycle 3 under **path γ (honesty-leak fallback)** via successor **ADR 0028 NEW** (`docs/adr/0028-hardwall-closure-and-ism-adoption.md` §Decision sub-item 1). Concretely:
+
+- **α₅₀₀ value at v0.14**: **0.85 BYTE-EQUAL** to v0.11 / v0.12 / v0.13 (envelope-bracketed [0.80, 0.95]; coefficient-invariant test `test_melamine_foam_a500_in_expected_range` preserved). MELAMINE_FOAM enum entry RETAINED. Library row BYTE-EQUAL.
+- **Lab A11 PASS-gate at v0.14**: **rel_err = +2.40 % BYTE-EQUAL** to v0.11 / v0.12 / v0.13 (no library state change under γ).
+- **§References reframe** (per D28-P1 factual band): PRIMARY-source row "Vorländer 2020 §11 / Appx A (PRIMARY, verbatim pending)" reframed in-place to a multi-source envelope record (Vorländer PRIMARY envelope-bracketed verbatim unattained through D27 cadence exhaustion + Bies & Hansen 2018 §A secondary unverified + NRC manufacturer datasheets secondary unverified + SoundCam paper arXiv:2311.03517v2 §A.1 NRC 1.26 corroboration consistent with envelope mid-value). Recorded at ADR 0019 §References + appended §Status-update-2026-05-16 (v0.14.0) HARD-WALL CLOSURE block per D28-P1 hybrid pattern.
+- **Honesty-leak entry preserved** (per ADR 0018 §Drivers lineage): explicit "verbatim citation unattainable through three ship cycles + external-acquisition exhaustion at v0.13 documented Option B (channels NOT investigated)" as the truthful audit-trail record of WHY path γ was the closure path. NOT a softening of the hard wall; the entry IS the audit-trail.
+- **Cycle count is final**: NO further D27 re-deferral cycles permitted for this ADR. v0.15+ may §Status-update ADR 0028 upgrading γ → α/β if verbatim later surfaces per ADR 0028 §Reverse-criterion item 1, but the cadence-bound closure landed at v0.14.0.
+
+**Drivers**:
+- **D27 hard wall reached at v0.14.0 cycle 3** — the cadence schedule that v0.11 design pass + v0.12 §Status-update + v0.13 §Status-update-2026-05-12-2 collectively previewed. D27 + D28-P2 forbade a third consecutive re-deferral; v0.14.0 had to close. Re-deferral would have been an indefinite-promissory-note honesty leak per D27 + D28-P2 forbidden-indefinite-deferral discipline.
+- **Path γ default-safe lock at planner-time** — v0.13.0 ship-time documented external acquisition channels (SNU library ILL, OA mirrors, publisher OA page) as Option B "channels NOT investigated" per ADR 0019 §Status-update-2026-05-12-2 lines 196-200. The planner could NOT assume path α or β would materialise at executor-time; default-safe lock was γ (no fabrication risk; D27 hard wall absolutely satisfied; honesty discipline preserved per ADR 0018 lineage).
+- **STOP rule #7 OPPORTUNISTIC reverse not fired at executor-time** — the MANDATORY one-shot pre-flight verbatim-citation grep returned no extracted verbatim α₅₀₀ value with page + row + panel-thickness inside the [0.80, 0.95] envelope at the v0.14 Item A executor pass.
+- **D28-P1 hybrid-§Status-update pattern applicable** — citation closure-path is a §References factual band per D28-P1 applicability table; in-place §References edit + appended §Status-update block on ADR 0019 is the canonical mechanism. PRIMARY-source SWITCH under path β would have been STRUCTURAL (mechanism / source change → NEW ADR per D28-P1 applicability table) — which ADR 0028 NEW is, as the closure-path record + the path β OPPORTUNISTIC reverse anchor.
+
+**Why this decision, not alternatives**:
+- **(a) v0.15 hard wall (third re-deferral)** — rejected per D27 + D28-P2 forbidden-indefinite-deferral clause. A third re-deferral would make the cadence rule a dead letter.
+- **(b) Path α / β closure at v0.14 (verbatim acquired mid-cycle)** — would have been the OPPORTUNISTIC upgrade per §0.4 STOP rule #7 if verbatim landed mid-cycle. Did NOT fire at the Item A executor pass; reserved for v0.14.x patch OR v0.15+ per ADR 0028 §Reverse-criterion item 1.
+- **(c) Remove MELAMINE_FOAM enum entry at v0.14** — rejected. Removing the enum would have (i) regressed the lab A11 PASS-gate to the pre-v0.11 state (default 9-entry enum systematically under-represents treated-room absorption per ADR 0018 §Drivers item 4); (ii) invalidated the v0.11 + v0.12 + v0.13 audit trail; (iii) been a STRUCTURAL regression needing a much stronger honesty basis than "verbatim unattained". Path γ retained the enum + honestly documented the citation gap.
+- **(d) Treat path γ as a 4th re-deferral framed as closure** — rejected as the v0.9-style silent claim-shifting failure mode. Path γ explicitly recorded the honesty-leak entry (verbatim unattained + external-acquisition exhaustion); cycle count is final; v0.15+ §Status-update can upgrade γ → α/β if verbatim surfaces but cannot re-open the cadence cycle (per ADR 0028 §Reverse-criterion item 4 — "do NOT relax path γ to 'verbatim pursued indefinitely' (would be 4th re-deferral, FORBIDDEN by D27 / D28-P2)").
+
+**Reverse-criterion / ratchet-safe behaviour**:
+- If verbatim Vorländer / Bies & Hansen / NRC datasheet surfaces at v0.14.x patch OR v0.15+, append §Status-update on ADR 0028 recording the closure-path upgrade γ → α/β per D28-P1 factual band (no new D-decision needed; D35 is the v0.14.0 closure record, not a perpetual policy). If extracted value lands inside [0.80, 0.95] envelope, library row BYTE-EQUAL; if OUTSIDE envelope, v0.14.x patch lands library row update + coefficient-invariant test re-run + lab A11 re-run per ADR 0028 §Reverse-criterion item 1.
+- If a v0.15+ critic argues path γ honesty-leak undermines D27 framing, refine ADR 0028 §Drivers inline via §Status-update; do NOT relax path γ to "verbatim pursued indefinitely" (FORBIDDEN per above).
+- D35 does NOT supersede D27 or D28-P2; D27 + D28-P2 remain the cadence-policy decisions; D35 is the SPECIFIC instance closure record for ADR 0019's verbatim-citation cadence at v0.14.0. Future cadence instances (other ADRs with PENDING citations) continue to be governed by D27 + D28-P2.
+
+**Cross-references**:
+- ADRs: **ADR 0028 NEW** (`docs/adr/0028-hardwall-closure-and-ism-adoption.md` §Decision sub-item 1 records the path γ closure + the path α/β OPPORTUNISTIC reverse anchor); **ADR 0019 §Status-update-2026-05-16 (v0.14.0) HARD-WALL CLOSURE block** records the cycle-3 closure under path γ (cross-ref to ADR 0028); ADR 0018 (substitute-disagreement record; §Drivers honesty-leak lineage source).
+- D-decisions: D22 (audit-trail hybrid pattern), D27 (verbatim-pending closure cadence; this D35 is its v0.14.0 cycle-3 closure record), D28-P1 (hybrid §Status-update pattern + applicability table; in-place §References edit + appended §Status-update block on ADR 0019), D28-P2 (permitted re-deferral cadence with cycle-count hard-wall; this D35 closes cycle 3), D34 (v0.14 ADR + OQ re-numbering audit-trail; ADR 0028 next-available slot allocation).
+- OQs: OQ-13a (CLOSED at v0.14 via path γ HARD-WALL CLOSURE — flip `[ ]` → `[x]` landed at Item A + B executor pass), OQ-16 (CLOSED at v0.14 — path γ default locked).
+- Plan: `.omc/plans/v0.14-design.md` (§0.0 row "Item A", §2.A detailed design, §0.4 STOP rule #7, §5.5 lab A11 PASS-gate preservation gate, §5.7 ADR presence checks, §10.1 ADR 0028 framing); architect re-validation memo: `.omc/plans/v0.14-architect-revalidation-2026-05-16.md` (verdict YELLOW; §2.2 STOP rule #7 NOT FIRED verification at architect pass; re-confirmed at Item A executor pass).
+- Release: `RELEASE_NOTES_v0.14.0.md` (Item A "What v0.14 ships" §HARD-WALL CLOSURE entry).

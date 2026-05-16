@@ -165,13 +165,13 @@ def test_lint_tense_scope_includes_v0_13_expansion() -> None:
     )
 
 
-def test_lint_tense_v0_13_release_notes_exclusion_rotated() -> None:
-    """v0.13 ship time: the current-version release-notes exclusion constant
-    MUST rotate to `RELEASE_NOTES_v0.13.0.md` per ADR 0020 §Reverse-criterion
+def test_lint_tense_v0_14_release_notes_exclusion_rotated() -> None:
+    """v0.14 ship time: the current-version release-notes exclusion constant
+    MUST rotate to `RELEASE_NOTES_v0.14.0.md` per ADR 0020 §Reverse-criterion
     item 4 (asymmetry-rotation requirement) and v0.11 §Reverse-criterion
     item 4.
 
-    Guards against the v0.12 → v0.13 rotation being forgotten at release
+    Guards against the v0.13 → v0.14 rotation being forgotten at release
     time (the asymmetry stays correct only if executor remembers to rotate).
     """
     import importlib.util
@@ -180,8 +180,8 @@ def test_lint_tense_v0_13_release_notes_exclusion_rotated() -> None:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert module.CURRENT_VERSION_RELEASE_NOTES == "RELEASE_NOTES_v0.13.0.md", (
-        "v0.13 ship: CURRENT_VERSION_RELEASE_NOTES must rotate to "
-        "RELEASE_NOTES_v0.13.0.md per ADR 0020 §Reverse-criterion item 4; "
+    assert module.CURRENT_VERSION_RELEASE_NOTES == "RELEASE_NOTES_v0.14.0.md", (
+        "v0.14 ship: CURRENT_VERSION_RELEASE_NOTES must rotate to "
+        "RELEASE_NOTES_v0.14.0.md per ADR 0020 §Reverse-criterion item 4; "
         f"got {module.CURRENT_VERSION_RELEASE_NOTES}"
     )

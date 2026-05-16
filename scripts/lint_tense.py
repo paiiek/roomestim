@@ -5,7 +5,7 @@ Scope (v0.13+ — second expansion per ADR 0020 §Status-update-2026-05-MM-2;
 governed by D28-P1 supersedure clause for factual-scope-list-growth):
   - tests/fixtures/**/README.md
   - docs/adr/*.md
-  - RELEASE_NOTES_v*.md (excluding current-version RELEASE_NOTES_v0.13.0.md — asymmetry per ADR 0020)
+  - RELEASE_NOTES_v*.md (excluding current-version RELEASE_NOTES_v0.14.0.md — asymmetry per ADR 0020)
   - docs/perf_verification_*.md (added v0.12 per ADR 0020 §Status-update-2026-05-12)
   - docs/architecture.md (added v0.12 per ADR 0020 §Status-update-2026-05-12)
   - README.md (added v0.12 per ADR 0020 §Status-update-2026-05-12)
@@ -31,8 +31,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Excluded from scope: the current-version release notes (inherently present tense).
-# Rotated v0.12.0 → v0.13.0 per ADR 0020 §Reverse-criterion item 4 (rotation requirement).
-CURRENT_VERSION_RELEASE_NOTES = "RELEASE_NOTES_v0.13.0.md"
+# Rotated v0.13.0 → v0.14.0 per ADR 0020 §Reverse-criterion item 4 (rotation requirement).
+CURRENT_VERSION_RELEASE_NOTES = "RELEASE_NOTES_v0.14.0.md"
 
 # Lint pattern + block-exclusion anchors (referenced from ADR 0020 §Decision).
 LINT_PATTERN = re.compile(r"\bwe ship\b|\bship in v0\.[0-9]+\b", re.IGNORECASE)
