@@ -186,82 +186,92 @@ def _on_submit(
 
 def build_demo() -> gr.Blocks:
     """Build and return the Gradio Blocks app shell."""
-    with gr.Blocks(title="roomestim — spatial audio configurator") as demo:
-        gr.Markdown("## roomestim · spatial audio configurator")
+    with gr.Blocks(title="roomestim — 공간 음향 구성기") as demo:
+        gr.Markdown("## roomestim · 공간 음향 구성기")
         gr.Markdown(
-            "Upload a room scan (`.usdz`, `.obj`, `.gltf`, `.glb`, or `.ply`),"
-            " configure the sidebar, then press **Run**."
+            "방 스캔 파일 (`.usdz`, `.obj`, `.gltf`, `.glb`, `.ply`)을 업로드하고"
+            " 좌측 사이드바에서 알고리즘·스피커·반경·고도각을 설정한 뒤 **실행** 버튼을 누르세요.\n\n"
+            "결과는 우측 탭에서 3D 뷰어, 음향 리포트, 설치 안내 PDF, 바이노럴 데모,"
+            " 원본 YAML 압축 파일로 제공됩니다."
         )
 
         with gr.Row():
             # ── Sidebar ──────────────────────────────────────────────────────
             with gr.Column(scale=1, min_width=240):
-                gr.Markdown("### Configuration")
+                gr.Markdown("### 설정")
 
                 algorithm = gr.Radio(
                     ["vbap", "dbap", "wfs"],
-                    label="Algorithm",
+                    label="알고리즘",
                     value="vbap",
+                    info=(
+                        "VBAP: 3-스피커 vector-based amplitude panning, 가장 표준."
+                        " DBAP: distance-based, 비대칭 배치 허용."
+                        " WFS: wave field synthesis, 직선·곡선 어레이용."
+                    ),
                 )
                 n_speakers = gr.Radio(
                     ["4", "6", "8", "12", "16"],
-                    label="N speakers",
+                    label="스피커 개수",
                     value="8",
+                    info="레이아웃에 사용할 스피커 개수. VBAP/DBAP는 4–16, WFS는 8–16 권장.",
                 )
                 radius = gr.Slider(
                     minimum=0.5,
                     maximum=3.0,
                     value=2.0,
                     step=0.1,
-                    label="Layout radius (m)",
+                    label="레이아웃 반경 (m)",
+                    info="청취자 중심에서 스피커까지 거리 (미터). 일반 거실 1.5–2.5m, 스튜디오 0.5–1.5m.",
                 )
                 elevation = gr.Slider(
                     minimum=-30.0,
                     maximum=60.0,
                     value=0.0,
                     step=1.0,
-                    label="Elevation (deg)",
+                    label="고도각 (도)",
+                    info="스피커 고도각 (도). 0=귀 높이, +30=천장 방향, –20=바닥 방향. 대부분 0 또는 ±15.",
                 )
                 octave_band = gr.Checkbox(
                     value=True,
-                    label="Octave-band absorption",
+                    label="옥타브 밴드 흡음",
+                    info="6-밴드 (125/250/500/1k/2k/4k Hz) 옥타브 흡음 계산. 끄면 단일-밴드 500 Hz Sabine만 사용.",
                 )
 
                 scan_file = gr.File(
                     file_types=[".usdz", ".obj", ".gltf", ".glb", ".ply"],
-                    label="Room scan (.usdz / .obj / .gltf / .glb / .ply)",
+                    label="방 스캔 (.usdz / .obj / .gltf / .glb / .ply)",
                 )
 
-                submit_btn = gr.Button("Run", variant="primary")
+                submit_btn = gr.Button("실행", variant="primary")
 
             # ── Output tabs ──────────────────────────────────────────────────
             with gr.Column(scale=3):
                 with gr.Tabs():
-                    with gr.Tab("3D viewer"):
+                    with gr.Tab("3D 뷰어"):
                         viewer_plot = gr.Plot()
 
-                    with gr.Tab("Acoustic report"):
+                    with gr.Tab("음향 리포트"):
                         report_plot = gr.Plot()
                         report_json = gr.JSON()
 
-                    with gr.Tab("Setup PDF"):
+                    with gr.Tab("설치 안내 PDF"):
                         pdf_file = gr.File()
 
-                    with gr.Tab("Binaural demo"):
+                    with gr.Tab("바이노럴 데모"):
                         binaural_audio = gr.Audio()
 
-                    with gr.Tab("Raw downloads"):
-                        raw_file = gr.File(label="YAML zip")
+                    with gr.Tab("원본 다운로드"):
+                        raw_file = gr.File(label="YAML 압축 파일")
 
         gr.Markdown(
-            "**HRTF & Source Attribution.** Default binaural rendering uses the"
+            "**HRTF 및 음원 출처.** 기본 바이노럴 렌더링은"
             " [HUTUBS HRTF Dataset](https://depositonce.tu-berlin.de/items/dc8c5bff-3a6a-471e-9d6c-bce4ed7d9ae6)"
-            " (Brinkmann et al., TU Berlin, CC BY 4.0). Fallback HRTF uses the"
-            " MIT KEMAR Head-Related Impulse Response Database (public domain)."
-            " Sample mono speech sources are from [LibriVox](https://librivox.org/)"
-            " (public domain). See `docs/adr/0025` and `docs/adr/0026` for licence"
-            " conditions and ADR 0026 §\"Attribution\" for the required citation"
-            " text.",
+            " (Brinkmann et al., TU Berlin, CC BY 4.0)을 사용합니다."
+            " fallback HRTF는 MIT KEMAR Head-Related Impulse Response Database"
+            " (퍼블릭 도메인)이며, 샘플 모노 음성은 [LibriVox](https://librivox.org/)"
+            " (퍼블릭 도메인)입니다. 라이선스 조건과 인용 의무 텍스트는"
+            " `docs/adr/0025` 및 `docs/adr/0026` §\"Attribution\"을 참고하세요.",
             elem_id="hrtf-attribution-footer",
         )
 
