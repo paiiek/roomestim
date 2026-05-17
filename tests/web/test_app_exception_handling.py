@@ -30,7 +30,7 @@ def test_on_submit_returns_all_none_on_pipeline_failure(
             },
         ):
             with caplog.at_level(logging.ERROR, logger="roomestim_web"):
-                result = _on_submit(mock_file, "vbap", "8", 2.0, 0.0, False)
+                result = _on_submit(mock_file, "vbap", "8", 2.0, 0.0, False, 8000.0)
 
     assert result == (None,) * 6, f"Expected (None,)*6 but got {result!r}"
 

@@ -16,12 +16,12 @@ from math import gcd
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Sequence
 
-_LOG = logging.getLogger("roomestim_web.binaural")
-
 import numpy as np
 import pyroomacoustics as pra  # type: ignore[import-untyped]
 import soundfile as sf  # type: ignore[import-untyped]
 from scipy.signal import fftconvolve, resample_poly  # type: ignore[import-untyped]
+
+_LOG = logging.getLogger("roomestim_web.binaural")
 
 # VBAP ring placement default puts speakers at y=0 (floor plane). The binaural
 # renderer treats any speaker below this threshold as "no explicit elevation"
@@ -78,17 +78,20 @@ def _image_inside_floor(
 
 
 def _resolve_damping_scalar(damping: Any) -> Any:
-    """Collapse multi-band damping array to 500 Hz reference band (index 2).
+    """Collapse multi-band damping array to a scalar-per-image.
 
-    Raises ValueError for unexpected band counts (not 1 or 6).
+    1-band → broadband; 6-band → 500 Hz reference (idx 2); arbitrary band count
+    (e.g. pyroomacoustics 8-band default) → geometric mean across bands.
     """
     if damping.ndim == 1:
-        damp_scalar = damping
-    elif damping.ndim == 2 and damping.shape[0] in (1, 6):
-        damp_scalar = damping[2] if damping.shape[0] == 6 else damping[0]
-    else:
-        raise ValueError(f"unexpected damping band count {damping.shape}")
-    return damp_scalar
+        return damping
+    if damping.ndim == 2 and damping.shape[0] == 6:
+        return damping[2]
+    if damping.ndim == 2 and damping.shape[0] == 1:
+        return damping[0]
+    if damping.ndim == 2:
+        return np.exp(np.mean(np.log(np.clip(damping, 1e-12, None)), axis=0))
+    raise ValueError(f"unexpected damping shape {damping.shape}")
 
 
 def _is_rectilinear_shoebox(floor_polygon: Sequence["Point2"]) -> bool:

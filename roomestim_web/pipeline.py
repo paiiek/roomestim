@@ -25,6 +25,7 @@ def run_pipeline(
     el_deg: float,
     octave_band: bool,
     out_dir: str | Path,
+    wfs_f_max_hz: float = 8000.0,
 ) -> PipelineResult:
     """Run full parse → place → export pipeline.
 
@@ -71,7 +72,7 @@ def run_pipeline(
     )
 
     from roomestim.place.dispatch import run_placement
-    layout = run_placement(room, algorithm, n_speakers, layout_radius_m, el_deg)
+    layout = run_placement(room, algorithm, n_speakers, layout_radius_m, el_deg, wfs_f_max_hz=wfs_f_max_hz)
 
     room_yaml_path = out_dir / "room.yaml"
     layout_yaml_path = out_dir / "layout.yaml"

@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import shutil
 import tempfile
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -53,6 +55,76 @@ def _reap_stale_tempdirs(max_age_seconds: int = 4 * 3600) -> None:
 atexit.register(_reap_stale_tempdirs)
 
 
+# ---------------------------------------------------------------------------
+# Background auto-fetch for binaural demo data (Phase 3 / ADR 0029)
+# ---------------------------------------------------------------------------
+
+_BINAURAL_DATA_ROOT = Path(
+    os.environ.get("ROOMESTIM_WEB_DATA_ROOT") or (Path(__file__).parent / "data")
+)
+_BINAURAL_FETCH_STARTED = False
+_BINAURAL_FETCH_LOCK = threading.Lock()
+
+
+def _cleanup_stale_download_tmps() -> None:
+    """Remove leftover ``.tmp`` files from prior interrupted downloads.
+
+    Daemon thread may be killed mid-`urlretrieve` at process shutdown, leaving
+    `<name>.tmp` files in the data dirs. Clear them before starting a new fetch
+    so retries don't accumulate. (MAJOR-1 follow-up, code-review 2026-05-17.)
+    """
+    for sub in ("hrtf", "audio"):
+        d = _BINAURAL_DATA_ROOT / sub
+        if not d.exists():
+            continue
+        for tmp in d.glob("*.tmp"):
+            try:
+                tmp.unlink()
+            except OSError:
+                continue
+
+
+def _ensure_web_data() -> None:
+    """Start a background daemon thread to fetch KEMAR + LibriVox if missing.
+
+    Respects ROOMESTIM_WEB_AUTO_FETCH=0 env opt-out (ADR 0029).
+    Safe to call multiple times — only one fetch thread is ever started.
+
+    Race-safety: file-existence checks AND the `_BINAURAL_FETCH_STARTED` flag
+    update happen inside `_BINAURAL_FETCH_LOCK` so two concurrent callers cannot
+    both decide to spawn a fetch thread when data is half-present.
+    """
+    global _BINAURAL_FETCH_STARTED
+    if os.environ.get("ROOMESTIM_WEB_AUTO_FETCH", "1") == "0":
+        return
+
+    hrtf_dir = _BINAURAL_DATA_ROOT / "hrtf"
+    audio_dir = _BINAURAL_DATA_ROOT / "audio"
+
+    with _BINAURAL_FETCH_LOCK:
+        if _BINAURAL_FETCH_STARTED:
+            return
+        kemar_ok = (hrtf_dir / "kemar.sofa").exists()
+        hutubs_ok = (hrtf_dir / "hutubs_pp1.sofa").exists()
+        wav_ok = (audio_dir / "source.wav").exists()
+        if (kemar_ok or hutubs_ok) and wav_ok:
+            return  # all data present; nothing to do
+        _BINAURAL_FETCH_STARTED = True
+
+    _cleanup_stale_download_tmps()
+
+    def _bg_fetch() -> None:
+        try:
+            from scripts.fetch_web_data import auto_fetch
+            auto_fetch(data_root=_BINAURAL_DATA_ROOT)
+        except Exception:
+            _LOG.exception("Background auto-fetch failed; binaural demo will use fallback.")
+
+    t = threading.Thread(target=_bg_fetch, daemon=True, name="roomestim-web-data-fetch")
+    t.start()
+    _LOG.info("Background data fetch started (daemon thread).")
+
+
 def _on_submit(
     file: Any,
     algorithm: str,
@@ -60,6 +132,7 @@ def _on_submit(
     radius: float,
     elevation: float,
     octave_band: bool,
+    wfs_f_max_hz: float,
 ) -> tuple[Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
@@ -87,7 +160,17 @@ def _on_submit(
             el_deg=elevation,
             octave_band=octave_band,
             out_dir=out_dir,
+            wfs_f_max_hz=wfs_f_max_hz,
         )
+    except ValueError as exc:
+        _LOG.warning("run_pipeline ValueError (WFS or validation): %s", exc)
+        try:
+            _TEMP_REAPER.remove(td)
+        except ValueError:
+            pass
+        td.cleanup()
+        error_report: Any = {"error": str(exc), "algorithm": algorithm}
+        return (None, None, error_report, None, None, None)
     except Exception:
         _LOG.exception("run_pipeline failed; returning all-None tuple")
         try:
@@ -132,12 +215,16 @@ def _on_submit(
         pdf_str = None
 
     # Build binaural demo
+    _binaural_status: str | None = None
     try:
         from roomestim_web.binaural import render_binaural_demo
         from roomestim_web.hrtf_io import load_default_hrtf
 
-        source_wav = Path("roomestim_web/data/audio/source.wav")
-        if source_wav.exists():
+        source_wav = _BINAURAL_DATA_ROOT / "audio" / "source.wav"
+        hrtf_dir = _BINAURAL_DATA_ROOT / "hrtf"
+        hrtf_present = (hrtf_dir / "hutubs_pp1.sofa").exists() or (hrtf_dir / "kemar.sofa").exists()
+
+        if source_wav.exists() and hrtf_present:
             binaural_path = render_binaural_demo(
                 result.room,  # type: ignore[arg-type]
                 result.layout,  # type: ignore[arg-type]
@@ -150,9 +237,21 @@ def _on_submit(
             binaural_str: Any = str(binaural_path)
         else:
             binaural_str = None
+            _binaural_status = (
+                "바이노럴 데모 미준비 — 데이터 파일이 없습니다. "
+                "`python scripts/fetch_web_data.py --auto` 를 실행하거나 "
+                "잠시 후 다시 시도하세요 (자동 다운로드 진행 중일 수 있습니다)."
+            )
     except Exception:
         _LOG.exception("render_binaural_demo failed")
         binaural_str = None
+        _binaural_status = "바이노럴 렌더링 중 오류가 발생했습니다. 로그를 확인하세요."
+
+    # Expose binaural status in report_json if available
+    if _binaural_status is not None and isinstance(report_json, dict):
+        report_json["binaural_status"] = _binaural_status
+    elif _binaural_status is not None:
+        report_json = {"binaural_status": _binaural_status}
 
     # Path A: wrap archive build in try/except — build_result_archive requires
     # room_yaml and layout_yaml to be non-None; build_provenance_readme may also
@@ -186,6 +285,7 @@ def _on_submit(
 
 def build_demo() -> gr.Blocks:
     """Build and return the Gradio Blocks app shell."""
+    _ensure_web_data()  # kick off background fetch if data is missing (ADR 0029)
     with gr.Blocks(title="roomestim — 공간 음향 구성기") as demo:
         gr.Markdown("## roomestim · 공간 음향 구성기")
         gr.Markdown(
@@ -237,6 +337,16 @@ def build_demo() -> gr.Blocks:
                     label="옥타브 밴드 흡음",
                     info="6-밴드 (125/250/500/1k/2k/4k Hz) 옥타브 흡음 계산. 끄면 단일-밴드 500 Hz Sabine만 사용.",
                 )
+                wfs_f_max_hz = gr.Slider(
+                    minimum=500,
+                    maximum=8000,
+                    value=1500,
+                    step=100,
+                    label="WFS f_max (Hz)",
+                    info="WFS 공간 앨리어싱 상한 주파수. 스피커 간격이 좁을수록 높은 값 허용.",
+                    visible=False,
+                    interactive=True,
+                )
 
                 scan_file = gr.File(
                     file_types=[".usdz", ".obj", ".gltf", ".glb", ".ply"],
@@ -260,6 +370,11 @@ def build_demo() -> gr.Blocks:
 
                     with gr.Tab("바이노럴 데모"):
                         binaural_audio = gr.Audio()
+                        gr.Markdown(
+                            value="",
+                            visible=False,
+                            elem_id="binaural-status",
+                        )
 
                     with gr.Tab("원본 다운로드"):
                         raw_file = gr.File(label="YAML 압축 파일")
@@ -275,10 +390,17 @@ def build_demo() -> gr.Blocks:
             elem_id="hrtf-attribution-footer",
         )
 
+        # Toggle WFS f_max slider visibility based on algorithm selection
+        algorithm.change(
+            fn=lambda alg: gr.update(visible=(alg == "wfs")),
+            inputs=[algorithm],
+            outputs=[wfs_f_max_hz],
+        )
+
         # Wire submit button — outputs mapped by component reference
         submit_btn.click(
             fn=_on_submit,
-            inputs=[scan_file, algorithm, n_speakers, radius, elevation, octave_band],
+            inputs=[scan_file, algorithm, n_speakers, radius, elevation, octave_band, wfs_f_max_hz],
             outputs=[viewer_plot, report_plot, report_json, pdf_file, binaural_audio, raw_file],
         )
 

@@ -1345,3 +1345,22 @@ Additionally, v0.14-design.md §10.1 ADR-supersession reverse-criterion's "ADR 0
 - OQs: OQ-13a (CLOSED at v0.14 via path γ HARD-WALL CLOSURE — flip `[ ]` → `[x]` landed at Item A + B executor pass), OQ-16 (CLOSED at v0.14 — path γ default locked).
 - Plan: `.omc/plans/v0.14-design.md` (§0.0 row "Item A", §2.A detailed design, §0.4 STOP rule #7, §5.5 lab A11 PASS-gate preservation gate, §5.7 ADR presence checks, §10.1 ADR 0028 framing); architect re-validation memo: `.omc/plans/v0.14-architect-revalidation-2026-05-16.md` (verdict YELLOW; §2.2 STOP rule #7 NOT FIRED verification at architect pass; re-confirmed at Item A executor pass).
 - Release: `RELEASE_NOTES_v0.14.0.md` (Item A "What v0.14 ships" §HARD-WALL CLOSURE entry).
+
+
+## D36 NEW — Web data bundle prohibited; fetch-script + opt-out background (v0.12-web.4)
+
+**Date**: 2026-05-17 (v0.12-web.4 executor pass)
+
+**Context**: ADR 0026 §Reverse-criterion deferred SOFA bundle to "download-on-first-use via
+`scripts/fetch_web_data.py`" once the combined bundle exceeded 10 MB. HUTUBS (1.36 GB zip)
+exceeds HF Spaces cold-boot budget; KEMAR (2.5 MB) and LibriVox trimmed WAV do not.
+
+**Decision**: HUTUBS is never auto-downloaded. KEMAR SOFA + LibriVox WAV are auto-fetched
+via a daemon background thread (`_ensure_web_data()` in `roomestim_web/app.py`) at
+`build_demo()` call time. Env `ROOMESTIM_WEB_AUTO_FETCH=0` disables all auto-fetch for
+CI / air-gapped environments.
+
+**Reverse**: If HF Spaces cold-boot timeout (<60 s) is exceeded due to KEMAR download → switch
+to pre-bundled stub HRTF or accept no binaural demo on first boot (v0.12-web.5).
+
+**Cross-refs**: ADR 0029 NEW, ADR 0026 §Status-update-2026-05-17, D31, D32, OQ-26.

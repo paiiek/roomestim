@@ -27,3 +27,9 @@ tests/fixtures/soundcam_synthesized/**/mesh.ply
 .omc/sessions/
 .omc/notepad.md
 .omc/project-memory.json
+
+# roomestim_web 데이터 (auto-fetch, 절대 commit 금지 — D36/ADR 0029)
+/roomestim_web/data/hrtf/*.sofa
+/roomestim_web/data/hrtf/*.wav
+/roomestim_web/data/audio/*.wav
+/roomestim_web/data/audio/*.mp3

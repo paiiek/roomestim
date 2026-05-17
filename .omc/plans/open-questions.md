@@ -264,3 +264,49 @@ candidate: if OQ-18 measurement (cold-start budget) revealed containers cycle < 
 to 30 min at v0.12-web.2 or v0.13-web.0.
 
 Cross-refs: §3-P4; D32.
+
+
+## OQ-26 — HUTUBS URL long-term stability + GitHub mirror backup (v0.12-web.4)
+
+Is the TU Berlin DepositOnce bitstream URL for HUTUBS zip stable long-term?
+Is there a GitHub mirror of the pp1 SOFA that could serve as a fallback?
+
+**Context**: ADR 0029 §A documents that HUTUBS is NOT auto-downloaded (1.36 GB).
+The manual extraction path via `--extract-hutubs` depends on the TU Berlin URL.
+
+Resolution candidate: if TU Berlin URL rotates (v0.12-web.x), update URL constant in
+`scripts/fetch_web_data.py:HUTUBS_ZIP_URL` + append §Status-update to ADR 0029.
+A GitHub mirror of only pp1 SOFA (~10 MB) would allow auto-download at v0.13-web.0.
+
+**Reverse**: if HUTUBS URL is confirmed stable over ≥2 years, close OQ-26 with
+"URL stable; no mirror needed". If pp1 SOFA appears on sofaconventions.org or a
+public GitHub, add auto-download at v0.12-web.5.
+
+**Cross-refs**: ADR 0029 §A, ADR 0026 §OQ-17, D36.
+
+
+## OQ-27 — Auto-fetch SHA-256 pin missing for KEMAR + LibriVox (v0.12-web.4)
+
+`scripts/fetch_web_data.py` ships `_download_file(expected_sha256=...)` infrastructure
+but `fetch_kemar` / `fetch_librivox` pass `expected_sha256=None`, triggering only a
+WARNING log (`fetch_web_data.py:86-89`). Production downloads are therefore not
+integrity-verified — a compromised upstream or MITM-capable network could deliver
+modified SOFA/MP3 bytes that the demo would silently accept.
+
+**Context**: ADR 0029 §A originally implied "SHA-256 검증" but v0.12-web.4 ships
+without pinned digests. Code-review 2026-05-17 (MAJOR-2) flagged the ADR↔code gap.
+ADR 0029 §A was patched 2026-05-17 to note "pin deferred to v0.12-web.5 per OQ-27"
+to restore honesty (per ADR 0018 honesty discipline + D35).
+
+Resolution candidate at v0.12-web.5:
+1. Run `curl -L $KEMAR_SOFA_URL | sha256sum` and `curl -L $LIBRIVOX_MP3_URL | sha256sum`
+   from a trusted environment, paste digests into `KEMAR_SOFA_SHA256` /
+   `LIBRIVOX_MP3_SHA256` constants.
+2. Wire `expected_sha256=` into `fetch_kemar` + `fetch_librivox`.
+3. Remove the WARNING-only branch in `_download_file:86-89`.
+4. Update ADR 0029 §A §Status-update-v0.12-web.5 to "pin landed".
+
+**Reverse**: if upstream digests rotate frequently (e.g. LibriVox transcoding) the pin
+becomes brittle — revisit OQ-27 with a per-release manifest file instead.
+
+**Cross-refs**: ADR 0029 §A, ADR 0018 (honesty discipline), D35, code-review 2026-05-17 MAJOR-2.
