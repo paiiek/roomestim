@@ -46,6 +46,16 @@ LibriVox MP3 (12.9 MB → trimmed WAV ≈ 5 MB) do not.
   `expected_sha256=`. Mismatch raises `RuntimeError` and unlinks the partial download.
   OQ-27 closed at v0.12-web.5. The WARNING-only branch in `_download_file:86-89`
   remains for callers that intentionally skip verification (only `extract_hutubs` path).
+- **System deps + boot-time UX (Status-update-v0.12-web.6 / 2026-05-17 evening)**:
+  `packages.txt` NEW at repo root declares `ffmpeg` for HF Spaces auto-detection
+  (system-level dep required by `fetch_librivox`). `_ensure_web_data()` now returns
+  `bool` so `build_demo()` can set the binaural-status Markdown's INITIAL value to
+  "데이터 다운로드 중" (fetch started) or "데이터 미준비" (auto-fetch disabled / data
+  absent) at boot, eliminating the "empty tab before first click" gap. DRY helper
+  `scripts.fetch_web_data.auto_fetch_enabled()` centralises the env-gate
+  interpretation. `_progress_quiet()` + `ROOMESTIM_WEB_QUIET_FETCH=1` suppresses
+  per-block stdout progress in daemon mode (auto-set by the background thread).
+  URL availability monitoring (separate from SHA pin) deferred to OQ-28 NEW.
 
 ### B. Background thread strategy (ADR 0029 §B)
 

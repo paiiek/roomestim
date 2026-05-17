@@ -74,6 +74,36 @@ def test_download_file_sha256_mismatch_raises_and_unlinks(tmp_path: Path) -> Non
     assert not dest.exists()
 
 
+def test_fetch_kemar_integration_sha_mismatch_raises_and_unlinks(tmp_path: Path) -> None:
+    """End-to-end: fetch_kemar against mismatched bytes → RuntimeError + no kemar.sofa.
+
+    Closes v0.12-web.5 MINOR-1 (code-review 2026-05-17 PM): verifies the OQ-27
+    SHA pin works in production path, not just at the helper level.
+    """
+    from scripts import fetch_web_data as fwd
+
+    hrtf_dir = tmp_path / "hrtf"
+    hrtf_dir.mkdir()
+    wrong_bytes = b"NOT THE REAL KEMAR SOFA DATA"
+
+    def _fake_urlretrieve(url: str, dest: str, reporthook: object = None) -> tuple[str, object]:
+        Path(dest).write_bytes(wrong_bytes)  # SHA-256 will mismatch pinned digest
+        return dest, {}
+
+    with patch("urllib.request.urlretrieve", side_effect=_fake_urlretrieve):
+        with pytest.raises(RuntimeError, match="SHA-256 mismatch"):
+            fwd.fetch_kemar(hrtf_dir)
+
+    # Destination must not exist after a failed verification
+    assert not (hrtf_dir / "kemar.sofa").exists(), (
+        "kemar.sofa should not be left behind after SHA-256 mismatch"
+    )
+    # And no .tmp leftover (atomic rename gate)
+    assert list(hrtf_dir.glob("*.tmp")) == [], (
+        f"No .tmp files should remain, got {list(hrtf_dir.glob('*.tmp'))}"
+    )
+
+
 def test_fetch_kemar_passes_sha256_pin(tmp_path: Path) -> None:
     """fetch_kemar forwards KEMAR_SOFA_SHA256 to _download_file (OQ-27 pin landed)."""
     from scripts import fetch_web_data as fwd

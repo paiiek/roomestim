@@ -1,4 +1,4 @@
-"""fetch_web_data.py — Data population script for roomestim-web (v0.12-web.4).
+"""fetch_web_data.py — Data population script for roomestim-web (v0.12-web.6).
 
 Downloads KEMAR SOFA (2.5 MB, CC BY 4.0) and LibriVox MP3 (12.9 MB, Public Domain),
 then trims the audio to 30s mono 48kHz WAV using ffmpeg.
@@ -51,6 +51,20 @@ _HRTF_DIR_NAME = "hrtf"
 _AUDIO_DIR_NAME = "audio"
 
 
+def auto_fetch_enabled() -> bool:
+    """Return True iff `ROOMESTIM_WEB_AUTO_FETCH` is not set to "0".
+
+    Centralised env-gate so callers (app.py, auto_fetch, main CLI) share one
+    interpretation. v0.12-web.6 (MINOR-4 / code-review 2026-05-17 DRY).
+    """
+    return os.environ.get("ROOMESTIM_WEB_AUTO_FETCH", "1") != "0"
+
+
+def _progress_quiet() -> bool:
+    """True when running in background daemon mode (suppress stdout progress)."""
+    return os.environ.get("ROOMESTIM_WEB_QUIET_FETCH") == "1"
+
+
 # ---------------------------------------------------------------------------
 # SHA-256 helpers
 # ---------------------------------------------------------------------------
@@ -94,15 +108,18 @@ def _download_file(
         )
 
     tmp_path = dest.parent / (dest.name + ".tmp")
+    quiet = _progress_quiet()
     try:
         def _reporthook(block_num: int, block_size: int, total_size: int) -> None:
-            if total_size > 0:
-                pct = min(100, block_num * block_size * 100 // total_size)
-                print(f"\r  {label}: {pct}%", end="", flush=True)
+            if quiet or total_size <= 0:
+                return
+            pct = min(100, block_num * block_size * 100 // total_size)
+            print(f"\r  {label}: {pct}%", end="", flush=True)
 
         _LOG.info("Downloading %s → %s", url, dest)
         urllib.request.urlretrieve(url, tmp_path, reporthook=_reporthook)
-        print()  # newline after progress
+        if not quiet:
+            print()  # newline after progress
 
         if expected_sha256 is not None:
             actual = _sha256(tmp_path)
@@ -243,6 +260,12 @@ def extract_hutubs(zip_path: Path, hrtf_dir: Path) -> Path:
 
     Searches the zip for a file matching '*pp1*.sofa' (case-insensitive)
     and extracts it to hrtf_dir/hutubs_pp1.sofa.
+
+    Zip-slip note: the output path (``hrtf_dir / 'hutubs_pp1.sofa'``) does NOT
+    depend on the zip entry's internal name — only on the local `hrtf_dir`
+    argument. A malicious zip cannot escape `hrtf_dir` via crafted internal
+    paths (e.g. `../../etc/passwd`) because we always rewrite the destination
+    name. (MINOR-5 / code-review 2026-05-17.)
     """
     hrtf_dir.mkdir(parents=True, exist_ok=True)
     dest = hrtf_dir / "hutubs_pp1.sofa"
@@ -276,7 +299,7 @@ def auto_fetch(data_root: Path | None = None) -> None:
     Respects ROOMESTIM_WEB_AUTO_FETCH=0 env opt-out.
     Silently swallows errors (background thread; must not crash the UI).
     """
-    if os.environ.get("ROOMESTIM_WEB_AUTO_FETCH", "1") == "0":
+    if not auto_fetch_enabled():
         _LOG.info("ROOMESTIM_WEB_AUTO_FETCH=0; skipping auto-fetch.")
         return
 
@@ -365,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
         _print_guide(hrtf_dir, audio_dir)
         return 0
 
-    if os.environ.get("ROOMESTIM_WEB_AUTO_FETCH", "1") == "0":
+    if not auto_fetch_enabled():
         print("ROOMESTIM_WEB_AUTO_FETCH=0 — skipping download.")
         return 0
 

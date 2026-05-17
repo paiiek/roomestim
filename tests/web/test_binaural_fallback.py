@@ -54,8 +54,9 @@ def test_binaural_fallback_when_source_missing(tmp_path: Path) -> None:
         f"Unexpected binaural_status message: {status_msg}"
     )
     # binaural_status_md must surface the same message in the Markdown component
-    md_value = binaural_status_md.get("value") if isinstance(binaural_status_md, dict) else getattr(binaural_status_md, "value", None)
-    md_visible = binaural_status_md.get("visible") if isinstance(binaural_status_md, dict) else getattr(binaural_status_md, "visible", None)
+    from tests.web._md_helpers import get_md_payload
+
+    md_value, md_visible = get_md_payload(binaural_status_md)
     assert md_visible is True, f"Expected binaural_status_md visible=True, got {md_visible}"
     assert md_value and ("미준비" in md_value or "없습니다" in md_value), (
         f"Expected Markdown to surface fallback message, got value={md_value!r}"

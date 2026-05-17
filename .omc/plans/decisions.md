@@ -1364,3 +1364,30 @@ CI / air-gapped environments.
 to pre-bundled stub HRTF or accept no binaural demo on first boot (v0.12-web.5).
 
 **Cross-refs**: ADR 0029 NEW, ADR 0026 §Status-update-2026-05-17, D31, D32, OQ-26.
+
+
+## D37 NEW — HF Spaces system deps via `packages.txt` + boot-time UX (v0.12-web.6)
+
+**Decision**: HF Spaces system packages (notably `ffmpeg` required by
+`scripts.fetch_web_data.fetch_librivox`) are declared in `packages.txt` at repo root
+(HF Spaces auto-detects). Boot-time binaural-status Markdown shows "데이터 다운로드 중"
+or "데이터 미준비" anchored to `_ensure_web_data()` return value, eliminating the
+"empty tab before first click" UX hole observed in v0.12-web.4/5 review.
+
+**Why**: HF Spaces does not provide `ffmpeg` in the default Python image; without
+`packages.txt`, `fetch_librivox()` fails with `ffmpeg not found in PATH` and the
+binaural demo silently never populates. UX gap: the binaural-status Markdown was
+only updated on first `_on_submit` click — before that, the tab was blank with no
+indication of why.
+
+**How to apply**: any new system-level deps go into `packages.txt`; any new
+boot-time prep status goes through `_ensure_web_data()` return + `build_demo()`
+initial-value branch (do NOT introduce a parallel status mechanism).
+
+**Reverse**: if HF Spaces switches to a base image with ffmpeg pre-installed,
+`packages.txt` can be removed (no harm if kept). If `_ensure_web_data()` becomes
+async-only (e.g. lazy on-demand fetch), the boot-time branch in `build_demo()`
+becomes vestigial — remove with v0.12-web.x.
+
+**Cross-refs**: ADR 0029 §B (background fetch), packages.txt NEW, OQ-28 NEW
+(URL monitoring), code-review 2026-05-17 위험 list item 1 + 3.

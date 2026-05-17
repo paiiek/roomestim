@@ -84,7 +84,17 @@ def _cleanup_stale_download_tmps() -> None:
                 continue
 
 
-def _ensure_web_data() -> None:
+def _binaural_data_present() -> bool:
+    """True iff (KEMAR or HUTUBS) AND source.wav both exist on disk."""
+    hrtf_dir = _BINAURAL_DATA_ROOT / "hrtf"
+    audio_dir = _BINAURAL_DATA_ROOT / "audio"
+    kemar_ok = (hrtf_dir / "kemar.sofa").exists()
+    hutubs_ok = (hrtf_dir / "hutubs_pp1.sofa").exists()
+    wav_ok = (audio_dir / "source.wav").exists()
+    return (kemar_ok or hutubs_ok) and wav_ok
+
+
+def _ensure_web_data() -> bool:
     """Start a background daemon thread to fetch KEMAR + LibriVox if missing.
 
     Respects ROOMESTIM_WEB_AUTO_FETCH=0 env opt-out (ADR 0029).
@@ -93,25 +103,29 @@ def _ensure_web_data() -> None:
     Race-safety: file-existence checks AND the `_BINAURAL_FETCH_STARTED` flag
     update happen inside `_BINAURAL_FETCH_LOCK` so two concurrent callers cannot
     both decide to spawn a fetch thread when data is half-present.
+
+    Returns:
+        True if a background fetch was started (data missing + auto-fetch enabled),
+        False otherwise. v0.12-web.6 (MINOR-3 /code-review 2026-05-17): used by
+        `build_demo()` to set the initial binaural-status Markdown message.
     """
     global _BINAURAL_FETCH_STARTED
-    if os.environ.get("ROOMESTIM_WEB_AUTO_FETCH", "1") == "0":
-        return
+    from scripts.fetch_web_data import auto_fetch_enabled
 
-    hrtf_dir = _BINAURAL_DATA_ROOT / "hrtf"
-    audio_dir = _BINAURAL_DATA_ROOT / "audio"
+    if not auto_fetch_enabled():
+        return False
 
     with _BINAURAL_FETCH_LOCK:
         if _BINAURAL_FETCH_STARTED:
-            return
-        kemar_ok = (hrtf_dir / "kemar.sofa").exists()
-        hutubs_ok = (hrtf_dir / "hutubs_pp1.sofa").exists()
-        wav_ok = (audio_dir / "source.wav").exists()
-        if (kemar_ok or hutubs_ok) and wav_ok:
-            return  # all data present; nothing to do
+            return False
+        if _binaural_data_present():
+            return False  # all data present; nothing to do
         _BINAURAL_FETCH_STARTED = True
 
     _cleanup_stale_download_tmps()
+    # Suppress per-block stdout progress in daemon mode to avoid log noise.
+    # Set BEFORE thread start so the contract is explicit (LOW-1 / code-review web.6).
+    os.environ.setdefault("ROOMESTIM_WEB_QUIET_FETCH", "1")
 
     def _bg_fetch() -> None:
         try:
@@ -123,6 +137,7 @@ def _ensure_web_data() -> None:
     t = threading.Thread(target=_bg_fetch, daemon=True, name="roomestim-web-data-fetch")
     t.start()
     _LOG.info("Background data fetch started (daemon thread).")
+    return True
 
 
 def _binaural_status_update(msg: str | None) -> Any:
@@ -302,7 +317,22 @@ def _on_submit(
 
 def build_demo() -> gr.Blocks:
     """Build and return the Gradio Blocks app shell."""
-    _ensure_web_data()  # kick off background fetch if data is missing (ADR 0029)
+    fetch_started = _ensure_web_data()  # kick off background fetch if data is missing (ADR 0029)
+    # Initial binaural-status message: tell the user data is being prepared so the
+    # binaural tab is never blank at boot (v0.12-web.6 / HF Spaces cold-boot UX).
+    if fetch_started:
+        initial_binaural_status = (
+            "바이노럴 데모 데이터 다운로드 중 — 약 30 초 후 첫 실행 시 사용 가능합니다."
+        )
+        initial_binaural_visible = True
+    elif not _binaural_data_present():
+        initial_binaural_status = (
+            "바이노럴 데모 데이터 미준비 — `python scripts/fetch_web_data.py --auto` 를 실행하세요."
+        )
+        initial_binaural_visible = True
+    else:
+        initial_binaural_status = ""
+        initial_binaural_visible = False
     with gr.Blocks(title="roomestim — 공간 음향 구성기") as demo:
         gr.Markdown("## roomestim · 공간 음향 구성기")
         gr.Markdown(
@@ -390,9 +420,14 @@ def build_demo() -> gr.Blocks:
 
                     with gr.Tab("바이노럴 데모"):
                         binaural_audio = gr.Audio()
+                        # Value is cleared on every successful submit via
+                        # `_binaural_status_update(None)`. Do not optimize the
+                        # helper to skip the None branch — a stale failure
+                        # message must not persist after a successful retry.
+                        # (v0.12-web.5 MINOR-2 follow-up.)
                         binaural_status_md = gr.Markdown(
-                            value="",
-                            visible=False,
+                            value=initial_binaural_status,
+                            visible=initial_binaural_visible,
                             elem_id="binaural-status",
                         )
 

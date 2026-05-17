@@ -319,3 +319,39 @@ Resolution candidate at v0.12-web.5:
 becomes brittle — revisit OQ-27 with a per-release manifest file instead.
 
 **Cross-refs**: ADR 0029 §A, ADR 0018 (honesty discipline), D35, code-review 2026-05-17 MAJOR-2.
+
+
+## OQ-28 — Upstream URL stability monitoring (KEMAR + LibriVox + HUTUBS) (v0.12-web.6)
+
+KEMAR (github.com/spatialaudio), LibriVox (archive.org), HUTUBS (api-depositonce.tu-berlin.de)
+URLs는 SHA-256 pin이 있더라도 URL 자체가 rotate / 404 되면 auto-fetch 영구 실패.
+현재 v0.12-web.6에서 모니터링 메커니즘 없음.
+
+**Context**: v0.12-web.5에서 SHA pin landed (OQ-27 closed)이지만 URL availability는
+별도 위험. v0.12-web.5 평가의 P3 (제품 완성도) 항목.
+
+Resolution candidate at v0.12-web.7 또는 그 이후:
+1. `.github/workflows/url-monitor.yml` NEW — 주 1회 cron으로 3 URL에 HEAD 요청 + SHA 재계산
+2. mismatch / 404 시 GitHub Issue 자동 생성 또는 Slack 노티
+3. CI 실패 → ADR 0029 §Status-update + URL rotation patch 사이클 트리거
+
+**Reverse**: URL rotation 빈도가 < 1회/년이면 모니터링 ROI 낮음 → cron 주기 분기별로
+완화하거나 OQ-28 close. > 1회/분기면 위 actionizer 우선순위 P1로 격상.
+
+**Cross-refs**: ADR 0029 §A, OQ-26 (HUTUBS URL specific), OQ-27 (SHA pin closed).
+
+
+## OQ-29 — HUTUBS pp1 SOFA GitHub mirror (v0.12-web.6 follow-up to OQ-26)
+
+OQ-26 의 일부 — pp1 SOFA만 (10 MB)을 GitHub releases / Hugging Face Datasets 등에
+미러로 호스팅하면 1.36 GB HUTUBS zip 다운로드 우회 + cold-boot에 사용 가능.
+
+**Context**: ADR 0029 §A가 HUTUBS를 manual-only로 분류한 주된 이유가 1.36 GB 크기.
+pp1 SOFA만 별도 미러하면 KEMAR과 같은 auto-fetch 경로에 추가 가능.
+
+Resolution candidate:
+1. Brinkmann et al. (TU Berlin)에 mirror 요청 (CC BY 4.0 라이선스 명시) — author 컨택 필요.
+2. 자체 mirror — license 검토 후 GitHub Release / HF Datasets / SoundCam GitHub 등에 호스팅.
+3. v0.12-web.x 패치에 mirror URL + SHA pin landed.
+
+**Cross-refs**: ADR 0029 §A, OQ-26, OQ-28.
