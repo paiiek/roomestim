@@ -535,3 +535,33 @@ user-requested in-release switch). Default lock at v0.14 = DEFER.
 - **Cross-ref**: code-review memo
   `.omc/plans/v0.14-code-review-2026-05-16.md` §2.2 (verifier-blockable: NO
   per reviewer §6 Block 2 — "planner accepts the violation as characterised").
+
+## §Status-update-v0.15.0 (2026-05-17 evening) — Item D landed
+
+§Reverse-criterion item 2 closure: **ADR 0030 NEW** (predictor-default switch)
+landed at v0.15.0 per D26 forbidden-indefinite-deferral clause. The Office_1
+ISM/Sabine = 2.0059 + conference ISM/Sabine = 5.0537 signature confirmed across
+≥ 2 glass-heavy rooms (>1.15 trigger) → switch MUST land at v0.15+ → switch
+landed at v0.15.0. D26 honored, not turned into a dead letter.
+
+**Concretely**:
+- `roomestim/reconstruct/predictor.py` NEW: `predict_rt60_default` + per-band
+  wrapper select ISM (rectilinear shoebox) > Eyring (non-shoebox) cascade.
+- `roomestim_web/report.py` `AcousticReport`: adds `default_rt60_500hz_s` +
+  `default_rt60_per_band_s` + `default_predictor_name` + `default_predictor_rationale`.
+- `build_rt60_bar_chart`: headline annotation switched from Sabine to default
+  predictor cascade ("ISM (default)" or "Eyring (default fallback)"); ISM
+  per-band bars added when shoebox.
+- Sabine + Eyring fields/bars remain backward-compatible (side-by-side comparison).
+- 9 NEW tests in `tests/test_predict_rt60_default.py`; ISM/Eyring runtime
+  invariant (ADR 0009 `ism ≥ eyring - 1e-6`) re-asserted for the cascade.
+
+**D27 / D28-P2 cadence status**: HARD WALL CLOSED at v0.14.0 was real; v0.15.0
+Item D landing demonstrates the v0.14 trigger machinery (Office_1 + conference
+characterisation → §Reverse-criterion item 2 → v0.15+ MUST land) functions
+end-to-end. The "v0.14 was cycle 3 HARD WALL CLOSURE" and "v0.15 lands Item D
+follow-up" framings are NOT in tension — they are sequential cadence beats
+working as designed.
+
+**Out-of-scope at v0.15.0**: per-wall α decomposition for mixed-material walls
+(OQ-30 NEW); polygon ISM for non-shoebox rooms (OQ-23, still deferred).

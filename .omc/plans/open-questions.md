@@ -355,3 +355,32 @@ Resolution candidate:
 3. v0.12-web.x 패치에 mirror URL + SHA pin landed.
 
 **Cross-refs**: ADR 0029 §A, OQ-26, OQ-28.
+
+
+## OQ-30 — Per-wall α decomposition for ISM mixed-material walls (v0.15.0)
+
+`predict_rt60_default()` at v0.15.0 collapses all `kind == "wall"` surfaces into
+one area-weighted-average α before feeding the 6-tuple `absorption_coeffs` to
+`image_source_rt60`. Mixed-material walls (e.g., one glass wall + three painted
+walls) lose specular vs diffuse information at the ISM boundary.
+
+**Context**: ADR 0030 §Trade-off acknowledges this simplification. The ISM library
+itself supports per-surface α at the API level (6-tuple per shoebox), but the
+default-wrapper layer averages — extending requires a wall-direction mapping
+(which surface goes to wall_x_neg vs wall_x_pos etc).
+
+Resolution candidate at v0.15.x or v0.16.0:
+1. Extend `_shoebox_surface_areas_and_alphas()` to map each `kind == "wall"` to
+   the nearest cardinal direction by surface-normal vector (Newell's method).
+2. If unique mapping is ambiguous (e.g., 5 walls in a 4-wall shoebox), fall back
+   to area-weighted average + emit WARNING.
+3. Re-run lab A11 + ACE Office_1 + conference characterisation; ratios must
+   stay within ±15% of v0.15.0 baseline (otherwise ADR 0028 §Decision sub-item 2
+   `ism ≥ eyring - 1e-6` invariant must be re-validated).
+
+**Reverse**: if measured-room characterisation shows < 5% improvement vs
+area-weighted average across ≥ 3 mixed-wall rooms, close OQ-30 as "ROI
+insufficient".
+
+**Cross-refs**: ADR 0030 §Trade-off, ADR 0028 §Decision sub-item 2,
+`roomestim/reconstruct/predictor.py:_shoebox_surface_areas_and_alphas`, D38.

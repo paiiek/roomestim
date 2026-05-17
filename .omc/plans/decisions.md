@@ -1391,3 +1391,30 @@ becomes vestigial — remove with v0.12-web.x.
 
 **Cross-refs**: ADR 0029 §B (background fetch), packages.txt NEW, OQ-28 NEW
 (URL monitoring), code-review 2026-05-17 위험 list item 1 + 3.
+
+
+## D38 NEW — Predictor-default cascade ISM > Eyring (v0.15.0)
+
+**Decision**: The default RT60 predictor cascade at v0.15.0 is
+`predict_rt60_default(room, area_dict)`:
+1. If `is_rectilinear_shoebox(room)` AND `prefer_ism=True` (default) →
+   `image_source_rt60(...)` (ISM).
+2. Else → `eyring_rt60(...)` (Eyring fallback).
+3. Sabine is **not** the default; it remains side-by-side for comparison.
+
+**Why**: ADR 0028 §Reverse-criterion item 2 + D26 forbidden-indefinite-deferral.
+Office_1 (ratio 2.0059) + conference (ratio 5.0537) both > 1.15 confirmed
+signature → switch MUST land at v0.15+. Failing to land would have made D26
+a dead letter.
+
+**How to apply**: any new acoustic surface that reports a single "headline"
+RT60 should query `default_rt60_500hz_s` / `default_predictor_name`, NOT
+`sabine_rt60_500hz_s`. Sabine remains valid as a comparison metric.
+
+**Reverse**: if ISM produces clearly-wrong RT60 (Sabine/Eyring ≤ ISM invariant
+violated, or > 3-room user feedback complaining "ISM too high") → expose
+`prefer_ism` UI toggle and/or supersede ADR 0030 with ADR 0031 (would require
+fresh measured-room evidence).
+
+**Cross-refs**: ADR 0030 NEW, ADR 0028 §Reverse-criterion item 2, ADR 0028
+§Status-update-v0.15.0, ADR 0009 (Eyring runtime invariant), D26, D27, OQ-30.

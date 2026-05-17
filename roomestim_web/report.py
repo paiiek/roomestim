@@ -75,7 +75,13 @@ def _surface_areas_by_material(room: RoomModel) -> dict[MaterialLabel, float]:
 
 @dataclass(frozen=True)
 class AcousticReport:
-    """Frozen dataclass carrying all acoustic analysis results."""
+    """Frozen dataclass carrying all acoustic analysis results.
+
+    v0.15.0 (ADR 0030): adds ``default_*`` fields surfacing the ISM-preferred
+    predictor cascade per :func:`roomestim.reconstruct.predict_rt60_default`.
+    ``sabine_*`` + ``eyring_*`` fields remain for backwards compatibility and
+    side-by-side comparison; default selection now uses ``default_*``.
+    """
 
     sabine_rt60_500hz_s: float
     sabine_rt60_per_band_s: dict[int, float]
@@ -84,6 +90,11 @@ class AcousticReport:
     surface_absorption_500hz: list[tuple[int, MaterialLabel, float, float]]
     volume_m3: float
     total_surface_area_m2: float
+    # v0.15.0 / ADR 0030: default predictor cascade (ISM shoebox > Eyring fallback)
+    default_rt60_500hz_s: float = 0.0
+    default_rt60_per_band_s: dict[int, float] | None = None
+    default_predictor_name: str = "eyring"
+    default_predictor_rationale: str = ""
 
     def to_json_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict suitable for gr.JSON."""
@@ -96,6 +107,14 @@ class AcousticReport:
             "eyring_rt60_per_band_s": {
                 str(k): v for k, v in self.eyring_rt60_per_band_s.items()
             },
+            # ADR 0030 default cascade (v0.15.0): consumers should prefer these
+            # over the per-method fields when displaying a single "headline" RT60.
+            "default_rt60_500hz_s": self.default_rt60_500hz_s,
+            "default_rt60_per_band_s": (
+                {str(k): v for k, v in (self.default_rt60_per_band_s or {}).items()}
+            ),
+            "default_predictor_name": self.default_predictor_name,
+            "default_predictor_rationale": self.default_predictor_rationale,
             "volume_m3": self.volume_m3,
             "total_surface_area_m2": self.total_surface_area_m2,
             "surface_absorption_500hz": [
@@ -149,6 +168,29 @@ def build_acoustic_report(room: RoomModel) -> AcousticReport:
         sabins = area * surf.absorption_500hz
         surface_absorption.append((idx, surf.material, area, sabins))
 
+    # ADR 0030 (v0.15.0) — default predictor cascade (ISM shoebox > Eyring).
+    # Errors from the ISM branch are caught + falls back to Eyring so a single
+    # bad ISM run cannot break the acoustic report tab.
+    try:
+        from roomestim.reconstruct import (
+            predict_rt60_default,
+            predict_rt60_default_per_band,
+        )
+
+        pred_500 = predict_rt60_default(room, agg_areas)
+        pred_bands = predict_rt60_default_per_band(room, agg_areas)
+        default_500 = pred_500.rt60_s
+        default_bands = pred_bands.rt60_per_band_s
+        default_name = pred_bands.predictor_name
+        default_rationale = pred_bands.rationale
+    except Exception as exc:
+        # Eyring-fallback degradation: surface the failure in the rationale
+        # rather than crashing the entire report.
+        default_500 = eyr_500
+        default_bands = eyr_bands
+        default_name = "eyring"
+        default_rationale = f"ISM predictor unavailable ({type(exc).__name__}); Eyring fallback"
+
     return AcousticReport(
         sabine_rt60_500hz_s=sab_500,
         sabine_rt60_per_band_s=sab_bands,
@@ -157,6 +199,10 @@ def build_acoustic_report(room: RoomModel) -> AcousticReport:
         surface_absorption_500hz=surface_absorption,
         volume_m3=volume_m3,
         total_surface_area_m2=total_surface_area_m2,
+        default_rt60_500hz_s=default_500,
+        default_rt60_per_band_s=default_bands,
+        default_predictor_name=default_name,
+        default_predictor_rationale=default_rationale,
     )
 
 
@@ -166,9 +212,11 @@ def build_acoustic_report(room: RoomModel) -> AcousticReport:
 
 
 def build_rt60_bar_chart(report: AcousticReport) -> "go.Figure":
-    """Plotly grouped bar chart: octave bands × Sabine/Eyring.
+    """Plotly grouped bar chart: octave bands × Sabine/Eyring/(ISM default).
 
-    Adds a horizontal reference line for the Sabine 500 Hz single-band value.
+    v0.15.0 / ADR 0030: the headline reference line is now the DEFAULT predictor
+    (ISM for shoebox, Eyring fallback otherwise) per ADR 0028 §Reverse-criterion
+    item 2. Sabine + Eyring bars remain side-by-side for comparison.
     Lazy-imports plotly; call site should catch ImportError.
     """
     import plotly.graph_objects as go  # type: ignore[import]
@@ -185,11 +233,26 @@ def build_rt60_bar_chart(report: AcousticReport) -> "go.Figure":
     fig.add_trace(
         go.Bar(name="Eyring", x=labels, y=eyring_vals, marker_color="#DD8452")
     )
+    # Per-band ISM bars when the default predictor fired ISM (shoebox path).
+    if (
+        report.default_predictor_name == "image_source"
+        and report.default_rt60_per_band_s
+    ):
+        ism_vals = [report.default_rt60_per_band_s.get(b, 0.0) for b in bands]
+        fig.add_trace(
+            go.Bar(name="ISM (default)", x=labels, y=ism_vals, marker_color="#55A868")
+        )
+
+    # ADR 0030 headline: default predictor 500 Hz reference line.
+    headline_label = {
+        "image_source": "ISM (default)",
+        "eyring": "Eyring (default fallback)",
+    }.get(report.default_predictor_name, "default")
     fig.add_hline(
-        y=report.sabine_rt60_500hz_s,
+        y=report.default_rt60_500hz_s,
         line_dash="dot",
         line_color="gray",
-        annotation_text=f"Sabine 500 Hz = {report.sabine_rt60_500hz_s:.2f} s",
+        annotation_text=f"{headline_label} 500 Hz = {report.default_rt60_500hz_s:.2f} s",
         annotation_position="top right",
     )
     fig.update_layout(
