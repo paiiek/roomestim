@@ -41,10 +41,10 @@ def test_binaural_fallback_when_source_missing(tmp_path: Path) -> None:
             1500.0,  # wfs_f_max_hz (unused for vbap)
         )
 
-    viewer, report_chart, report_json, pdf, binaural, raw = result
+    viewer, report_chart, report_json, pdf, binaural, binaural_status_md, raw = result
     # binaural audio must be None (no data)
     assert binaural is None, f"Expected binaural=None, got {binaural}"
-    # report_json must contain binaural_status explaining missing data
+    # report_json must contain binaural_status explaining missing data (legacy key)
     assert isinstance(report_json, dict), f"Expected dict report_json, got {type(report_json)}"
     assert "binaural_status" in report_json, (
         f"Expected 'binaural_status' key in report_json: {report_json}"
@@ -52,4 +52,11 @@ def test_binaural_fallback_when_source_missing(tmp_path: Path) -> None:
     status_msg = report_json["binaural_status"]
     assert "미준비" in status_msg or "없습니다" in status_msg or "data" in status_msg.lower(), (
         f"Unexpected binaural_status message: {status_msg}"
+    )
+    # binaural_status_md must surface the same message in the Markdown component
+    md_value = binaural_status_md.get("value") if isinstance(binaural_status_md, dict) else getattr(binaural_status_md, "value", None)
+    md_visible = binaural_status_md.get("visible") if isinstance(binaural_status_md, dict) else getattr(binaural_status_md, "visible", None)
+    assert md_visible is True, f"Expected binaural_status_md visible=True, got {md_visible}"
+    assert md_value and ("미준비" in md_value or "없습니다" in md_value), (
+        f"Expected Markdown to surface fallback message, got value={md_value!r}"
     )

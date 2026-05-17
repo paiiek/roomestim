@@ -1,7 +1,7 @@
 """roomestim web demo — parallel-track v0.12-web.0 (sibling package)."""
 from __future__ import annotations
 
-__version__ = "0.12-web.4"
+__version__ = "0.12-web.5"
 
 try:
     from roomestim import __schema_version__

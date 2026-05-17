@@ -38,6 +38,14 @@ LibriVox MP3 (12.9 MB → trimmed WAV ≈ 5 MB) do not.
   OQ-27**. Per ADR 0018 honesty discipline + D35, this gap is recorded here rather
   than papered over. A compromised upstream or MITM-capable network could deliver
   modified bytes; mitigations are HTTPS transport (system CA trust) + OQ-27 follow-up.
+- **SHA-256 integrity gate (Status-update-v0.12-web.5 / 2026-05-17 PM)**: real KEMAR +
+  LibriVox digests computed from upstream downloads and pinned as
+  `KEMAR_SOFA_SHA256 = "2c531e26b225435aabec05024c125ed96d55ced0a63d16b89f34e249d0dc4fd9"` and
+  `LIBRIVOX_MP3_SHA256 = "b3053bbc683f76b676e1c2233479e7254c701af95a42e4a614d68756f4fffa72"`
+  in `scripts/fetch_web_data.py`; both `fetch_kemar` and `fetch_librivox` now forward
+  `expected_sha256=`. Mismatch raises `RuntimeError` and unlinks the partial download.
+  OQ-27 closed at v0.12-web.5. The WARNING-only branch in `_download_file:86-89`
+  remains for callers that intentionally skip verification (only `extract_hutubs` path).
 
 ### B. Background thread strategy (ADR 0029 §B)
 

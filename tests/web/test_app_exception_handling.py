@@ -32,7 +32,12 @@ def test_on_submit_returns_all_none_on_pipeline_failure(
             with caplog.at_level(logging.ERROR, logger="roomestim_web"):
                 result = _on_submit(mock_file, "vbap", "8", 2.0, 0.0, False, 8000.0)
 
-    assert result == (None,) * 6, f"Expected (None,)*6 but got {result!r}"
+    # 7-tuple: positions 0-4 + 6 are None; position 5 is binaural_status_md (gr.update / dict)
+    assert len(result) == 7, f"Expected 7-tuple, got {len(result)}: {result!r}"
+    assert result[:5] == (None,) * 5, f"Expected first 5 None, got {result[:5]!r}"
+    assert result[6] is None, f"Expected last element None, got {result[6]!r}"
+    # binaural_status_md (index 5) is hidden update — not strict-None
+    assert result[5] is not None, "Expected binaural_status_md to be a gr.update / dict"
 
     error_records = [
         r for r in caplog.records

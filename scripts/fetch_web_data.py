@@ -40,6 +40,11 @@ KEMAR_SOFA_URL = "https://raw.githubusercontent.com/spatialaudio/lf-corrected-ke
 LIBRIVOX_MP3_URL = "https://archive.org/download/stories_001_librivox/black_cat_poe_ty_64kb.mp3"
 HUTUBS_ZIP_URL = "https://api-depositonce.tu-berlin.de/server/api/core/bitstreams/9f8b8874-c567-43fa-9085-eac010599a66/content"
 
+# SHA-256 digests pinned at v0.12-web.5 (computed from real downloads 2026-05-17).
+# Closes OQ-27 (code-review 2026-05-17 MAJOR-2). If upstream rotates, rotate here.
+KEMAR_SOFA_SHA256 = "2c531e26b225435aabec05024c125ed96d55ced0a63d16b89f34e249d0dc4fd9"
+LIBRIVOX_MP3_SHA256 = "b3053bbc683f76b676e1c2233479e7254c701af95a42e4a614d68756f4fffa72"
+
 # Default data directories (relative to repo root)
 _DEFAULT_DATA_ROOT = Path("roomestim_web/data")
 _HRTF_DIR_NAME = "hrtf"
@@ -131,7 +136,11 @@ def fetch_kemar(hrtf_dir: Path, *, force: bool = False) -> Path:
     if dest.exists() and not force:
         _LOG.info("KEMAR SOFA already present at %s — skipping.", dest)
         return dest
-    _download_file(KEMAR_SOFA_URL, dest, desc="KEMAR SOFA (CC BY 4.0)")
+    _download_file(
+        KEMAR_SOFA_URL, dest,
+        desc="KEMAR SOFA (CC BY 4.0)",
+        expected_sha256=KEMAR_SOFA_SHA256,
+    )
     digest = _sha256(dest)
     _LOG.info("KEMAR SOFA SHA-256: %s", digest)
     return dest
@@ -160,7 +169,11 @@ def fetch_librivox(audio_dir: Path, *, force: bool = False) -> Path:
         tmp_mp3 = Path(tmp.name)
 
     try:
-        _download_file(LIBRIVOX_MP3_URL, tmp_mp3, desc="LibriVox MP3 (Public Domain)")
+        _download_file(
+            LIBRIVOX_MP3_URL, tmp_mp3,
+            desc="LibriVox MP3 (Public Domain)",
+            expected_sha256=LIBRIVOX_MP3_SHA256,
+        )
 
         # Trim with ffmpeg: skip 60s intro, take 30s, mono, 48kHz
         ffmpeg = shutil.which("ffmpeg")

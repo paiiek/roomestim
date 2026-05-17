@@ -33,7 +33,7 @@ def test_wfs_error_surfaces_in_report_json(tmp_path: Path) -> None:
         False,
         300.0,  # wfs_f_max_hz — triggers spatial aliasing error
     )
-    viewer, report_chart, report_json, pdf, binaural, raw = result
+    viewer, report_chart, report_json, pdf, binaural, binaural_status_md, raw = result
     assert viewer is None
     assert report_chart is None
     assert pdf is None
@@ -42,6 +42,8 @@ def test_wfs_error_surfaces_in_report_json(tmp_path: Path) -> None:
     assert isinstance(report_json, dict), f"Expected dict, got {type(report_json)}"
     assert "error" in report_json, f"Expected 'error' key in {report_json}"
     assert report_json.get("algorithm") == "wfs"
+    # binaural_status_md is gr.update / dict fallback; on ValueError path it's hidden.
+    assert binaural_status_md is not None
 
 
 def test_wfs_error_message_contains_aliasing_info() -> None:

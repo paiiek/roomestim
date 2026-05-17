@@ -125,6 +125,19 @@ def _ensure_web_data() -> None:
     _LOG.info("Background data fetch started (daemon thread).")
 
 
+def _binaural_status_update(msg: str | None) -> Any:
+    """Build a `gr.update(...)` for the binaural-status Markdown component.
+
+    Returns visible=False / value="" when *msg* is None, else visible=True with the
+    Korean message. Wraps in a try/except so unit tests that import this without
+    Gradio still work — those receive a plain dict fallback.
+    """
+    try:
+        return gr.update(value=msg or "", visible=msg is not None)
+    except Exception:
+        return {"value": msg or "", "visible": msg is not None}
+
+
 def _on_submit(
     file: Any,
     algorithm: str,
@@ -133,14 +146,15 @@ def _on_submit(
     elevation: float,
     octave_band: bool,
     wfs_f_max_hz: float,
-) -> tuple[Any, Any, Any, Any, Any, Any]:
+) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
-    Returns a 6-tuple matching the output component order:
-        (viewer_plot, report_plot, report_json, pdf_file, binaural_audio, raw_file)
+    Returns a 7-tuple matching the output component order:
+        (viewer_plot, report_plot, report_json, pdf_file, binaural_audio,
+         binaural_status_md, raw_file)
     """
     if file is None:
-        return (None, None, None, None, None, None)
+        return (None, None, None, None, None, _binaural_status_update(None), None)
 
     from roomestim_web.archive import ArchiveArtefacts, build_result_archive
     from roomestim_web.pipeline import run_pipeline
@@ -170,7 +184,7 @@ def _on_submit(
             pass
         td.cleanup()
         error_report: Any = {"error": str(exc), "algorithm": algorithm}
-        return (None, None, error_report, None, None, None)
+        return (None, None, error_report, None, None, _binaural_status_update(None), None)
     except Exception:
         _LOG.exception("run_pipeline failed; returning all-None tuple")
         try:
@@ -178,7 +192,7 @@ def _on_submit(
         except ValueError:
             pass  # already evicted by another submit
         td.cleanup()
-        return (None,) * 6
+        return (None, None, None, None, None, _binaural_status_update(None), None)
 
     # Build 3D figure (requires plotly; returns None if unavailable)
     try:
@@ -280,7 +294,10 @@ def _on_submit(
         _LOG.exception("archive build failed; returning None for archive tier")
         archive_str = None
 
-    return (figure, rt60_chart, report_json, pdf_str, binaural_str, archive_str)
+    return (
+        figure, rt60_chart, report_json, pdf_str, binaural_str,
+        _binaural_status_update(_binaural_status), archive_str,
+    )
 
 
 def build_demo() -> gr.Blocks:
@@ -337,6 +354,9 @@ def build_demo() -> gr.Blocks:
                     label="옥타브 밴드 흡음",
                     info="6-밴드 (125/250/500/1k/2k/4k Hz) 옥타브 흡음 계산. 끄면 단일-밴드 500 Hz Sabine만 사용.",
                 )
+                # Slider default 1500 Hz differs from dispatch.run_placement default
+                # (8000 Hz). When algorithm != "wfs" this value is still passed but
+                # ignored by VBAP/DBAP; only the WFS dispatch branch reads it.
                 wfs_f_max_hz = gr.Slider(
                     minimum=500,
                     maximum=8000,
@@ -370,7 +390,7 @@ def build_demo() -> gr.Blocks:
 
                     with gr.Tab("바이노럴 데모"):
                         binaural_audio = gr.Audio()
-                        gr.Markdown(
+                        binaural_status_md = gr.Markdown(
                             value="",
                             visible=False,
                             elem_id="binaural-status",
@@ -401,7 +421,10 @@ def build_demo() -> gr.Blocks:
         submit_btn.click(
             fn=_on_submit,
             inputs=[scan_file, algorithm, n_speakers, radius, elevation, octave_band, wfs_f_max_hz],
-            outputs=[viewer_plot, report_plot, report_json, pdf_file, binaural_audio, raw_file],
+            outputs=[
+                viewer_plot, report_plot, report_json, pdf_file,
+                binaural_audio, binaural_status_md, raw_file,
+            ],
         )
 
     return demo

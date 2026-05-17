@@ -74,6 +74,23 @@ def test_download_file_sha256_mismatch_raises_and_unlinks(tmp_path: Path) -> Non
     assert not dest.exists()
 
 
+def test_fetch_kemar_passes_sha256_pin(tmp_path: Path) -> None:
+    """fetch_kemar forwards KEMAR_SOFA_SHA256 to _download_file (OQ-27 pin landed)."""
+    from scripts import fetch_web_data as fwd
+
+    hrtf_dir = tmp_path / "hrtf"
+    hrtf_dir.mkdir()
+    # Ensure no existing file so the idempotent skip-branch doesn't fire
+    with patch("scripts.fetch_web_data._download_file") as mock_dl, \
+            patch("scripts.fetch_web_data._sha256", return_value=fwd.KEMAR_SOFA_SHA256):
+        fwd.fetch_kemar(hrtf_dir)
+        mock_dl.assert_called_once()
+        _, kwargs = mock_dl.call_args
+        assert kwargs.get("expected_sha256") == fwd.KEMAR_SOFA_SHA256, (
+            f"Expected KEMAR pin to be forwarded, got kwargs={kwargs!r}"
+        )
+
+
 def test_extract_hutubs_finds_pp1(tmp_path: Path) -> None:
     """extract_hutubs extracts a pp1*.sofa from a zip archive."""
     from scripts.fetch_web_data import extract_hutubs

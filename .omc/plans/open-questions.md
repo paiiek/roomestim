@@ -285,7 +285,16 @@ public GitHub, add auto-download at v0.12-web.5.
 **Cross-refs**: ADR 0029 §A, ADR 0026 §OQ-17, D36.
 
 
-## OQ-27 — Auto-fetch SHA-256 pin missing for KEMAR + LibriVox (v0.12-web.4)
+## OQ-27 — Auto-fetch SHA-256 pin missing for KEMAR + LibriVox (v0.12-web.4) [CLOSED v0.12-web.5]
+
+**Status**: CLOSED at v0.12-web.5 — real digests pinned (KEMAR + LibriVox),
+`fetch_kemar`/`fetch_librivox` forward `expected_sha256=`, ADR 0029 §A
+Status-update-v0.12-web.5 records closure. Test `test_fetch_kemar_passes_sha256_pin`
+asserts the pin is forwarded. See `scripts/fetch_web_data.py:KEMAR_SOFA_SHA256` /
+`LIBRIVOX_MP3_SHA256` for the actual digests.
+
+---
+
 
 `scripts/fetch_web_data.py` ships `_download_file(expected_sha256=...)` infrastructure
 but `fetch_kemar` / `fetch_librivox` pass `expected_sha256=None`, triggering only a
