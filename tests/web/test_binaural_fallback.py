@@ -41,7 +41,7 @@ def test_binaural_fallback_when_source_missing(tmp_path: Path) -> None:
             1500.0,  # wfs_f_max_hz (unused for vbap)
         )
 
-    viewer, report_chart, report_json, pdf, binaural, binaural_status_md, raw = result
+    viewer, report_chart, report_json, pdf, binaural, binaural_status_md, raw, *_extra = result
     # binaural audio must be None (no data)
     assert binaural is None, f"Expected binaural=None, got {binaural}"
     # report_json must contain binaural_status explaining missing data (legacy key)

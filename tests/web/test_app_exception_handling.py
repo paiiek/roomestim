@@ -32,10 +32,15 @@ def test_on_submit_returns_all_none_on_pipeline_failure(
             with caplog.at_level(logging.ERROR, logger="roomestim_web"):
                 result = _on_submit(mock_file, "vbap", "8", 2.0, 0.0, False, 8000.0)
 
-    # 7-tuple: positions 0-4 + 6 are None; position 5 is binaural_status_md (gr.update / dict)
-    assert len(result) == 7, f"Expected 7-tuple, got {len(result)}: {result!r}"
+    # v0.16.0 HIGH-1 fix: 11-tuple (added room_state at index 10).
+    # Positions: 0-4 None, 5 binaural_status_md (gr.update/dict), 6-10 None.
+    assert len(result) == 11, f"Expected 11-tuple, got {len(result)}: {result!r}"
     assert result[:5] == (None,) * 5, f"Expected first 5 None, got {result[:5]!r}"
-    assert result[6] is None, f"Expected last element None, got {result[6]!r}"
+    assert result[6] is None, f"Expected position 6 (raw_file) None, got {result[6]!r}"
+    assert result[7] is None, f"Expected position 7 (material_table) None, got {result[7]!r}"
+    assert result[8] is None, f"Expected position 8 (blueprint_png) None, got {result[8]!r}"
+    assert result[9] is None, f"Expected position 9 (blueprint_svg) None, got {result[9]!r}"
+    assert result[10] is None, f"Expected position 10 (room_state) None, got {result[10]!r}"
     # binaural_status_md (index 5) is hidden update — not strict-None
     assert result[5] is not None, "Expected binaural_status_md to be a gr.update / dict"
 

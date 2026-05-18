@@ -110,6 +110,28 @@ def _add_export_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         metavar="DIR",
         help="Output directory (default: cwd).",
     )
+    # Engine validation toggle (D42 / ADR 0033): CLI flag > ENV var > default ON.
+    engine_grp = p.add_mutually_exclusive_group()
+    engine_grp.add_argument(
+        "--validate-engine",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to the spatial_engine repository directory. "
+            "Uses SPATIAL_ENGINE_REPO_DIR env var or the hardcoded default when omitted. "
+            "Mutually exclusive with --no-engine-validation."
+        ),
+    )
+    engine_grp.add_argument(
+        "--no-engine-validation",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip engine schema validation. A WARNING comment is prepended to the "
+            "output YAML for audit-trail purposes (ADR 0033 §C). "
+            "Mutually exclusive with --validate-engine."
+        ),
+    )
 
 
 def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -295,7 +317,16 @@ def _cmd_export(args: argparse.Namespace) -> int:
     layout_out = out_dir / "layout.yaml"
 
     write_room_yaml(room, room_out)
-    write_layout_yaml(placement, layout_out)
+
+    # D42 precedence: CLI flag > ENV var > default ON (backward-compat).
+    no_validation: bool = getattr(args, "no_engine_validation", False)
+    cli_engine_path: str | None = getattr(args, "validate_engine", None)
+    write_layout_yaml(
+        placement,
+        layout_out,
+        validate=not no_validation,
+        schema_path_override=cli_engine_path,
+    )
 
     print(f"wrote {room_out}")
     print(f"wrote {layout_out}")

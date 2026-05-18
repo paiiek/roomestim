@@ -194,7 +194,13 @@ def _sweep_finite(node: Any, *, path: str) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def write_layout_yaml(result: PlacementResult, out_path: Path | str) -> None:
+def write_layout_yaml(
+    result: PlacementResult,
+    out_path: Path | str,
+    *,
+    validate: bool = True,
+    schema_path_override: str | None = None,
+) -> None:
     """Serialize ``result`` to ``out_path`` as a layout.yaml file.
 
     Order of operations (any failure aborts BEFORE any write):
@@ -202,8 +208,27 @@ def write_layout_yaml(result: PlacementResult, out_path: Path | str) -> None:
       2. Build dict via :func:`placement_to_dict` (raises if WFS without
          ``wfs_f_alias_hz``).
       3. R11 finite-sweep over every numeric leaf.
-      4. Validate against ``geometry_schema.json`` (Draft 2020-12).
+      4. Validate against ``geometry_schema.json`` (Draft 2020-12) — skipped
+         when ``validate=False`` (D42 / ADR 0033 §C: ``--no-engine-validation``).
+         When skipped a ``# WARNING: schema validation skipped`` header comment
+         is prepended to the YAML output for audit-trail purposes.
       5. ``yaml.safe_dump`` with ``sort_keys=False``.
+
+    Parameters
+    ----------
+    result:
+        Placement result to serialise.
+    out_path:
+        Destination file path.
+    validate:
+        When ``False``, skip engine schema validation (D42 opt-out). A
+        ``# WARNING`` header comment is prepended to the output file so that
+        downstream consumers are clearly notified. Default ``True`` preserves
+        v0.15.2 backward-compatible behaviour.
+    schema_path_override:
+        Explicit path to the engine repo directory. When provided it overrides
+        the ``SPATIAL_ENGINE_REPO_DIR`` env var and the hardcoded default path.
+        Ignored when ``validate=False``.
     """
     # Step 1 — R10 pre-flight.
     min_n = _min_speaker_count(result.regularity_hint)
@@ -219,15 +244,32 @@ def write_layout_yaml(result: PlacementResult, out_path: Path | str) -> None:
     # Step 3 — R11 finite-sweep BEFORE validation and BEFORE write.
     _sweep_finite(data, path="")
 
-    # Step 4 — schema validation against the engine-side schema (read at write
-    # time, never vendored).
-    schema = _load_engine_schema()
-    Draft202012Validator(schema).validate(data)
-
-    # Step 5 — write.
     out_path = Path(out_path)
-    with out_path.open("w", encoding="utf-8") as fh:
-        yaml.safe_dump(data, fh, sort_keys=False)
+
+    if validate:
+        # Step 4a — schema validation (default ON, backward-compat).
+        if schema_path_override is not None:
+            schema_file = Path(schema_path_override) / "proto" / "geometry_schema.json"
+        else:
+            schema_file = _engine_schema_path()
+        with schema_file.open("r", encoding="utf-8") as fh:
+            schema = json.load(fh)
+        Draft202012Validator(schema).validate(data)
+
+        # Step 5a — write without warning header.
+        with out_path.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(data, fh, sort_keys=False)
+    else:
+        # Step 4b — validation skipped (ADR 0033 §C opt-out).
+        yaml_body = yaml.safe_dump(data, sort_keys=False)
+        warning_header = (
+            "# WARNING: schema validation skipped (--no-engine-validation)\n"
+            "# This file has NOT been validated against the spatial_engine schema.\n"
+            "# Use with caution; engine compatibility is the caller's responsibility.\n"
+        )
+        with out_path.open("w", encoding="utf-8") as fh:
+            fh.write(warning_header)
+            fh.write(yaml_body)
 
 
 __all__ = [

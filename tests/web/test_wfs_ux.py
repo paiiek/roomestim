@@ -33,7 +33,7 @@ def test_wfs_error_surfaces_in_report_json(tmp_path: Path) -> None:
         False,
         300.0,  # wfs_f_max_hz — triggers spatial aliasing error
     )
-    viewer, report_chart, report_json, pdf, binaural, binaural_status_md, raw = result
+    viewer, report_chart, report_json, pdf, binaural, binaural_status_md, raw, *_extra = result
     assert viewer is None
     assert report_chart is None
     assert pdf is None

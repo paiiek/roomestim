@@ -20,6 +20,7 @@ import gradio as gr
 
 import roomestim_web
 from roomestim import __version__ as ROOMESTIM_CORE_VERSION
+from roomestim_web.material_override import build_material_override_tab, on_apply_overrides
 
 _LOG = logging.getLogger("roomestim_web")
 
@@ -161,15 +162,17 @@ def _on_submit(
     elevation: float,
     octave_band: bool,
     wfs_f_max_hz: float,
-) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+    skip_engine_validation: bool = False,
+) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
-    Returns a 7-tuple matching the output component order:
+    Returns an 11-tuple matching the output component order:
         (viewer_plot, report_plot, report_json, pdf_file, binaural_audio,
-         binaural_status_md, raw_file)
+         binaural_status_md, raw_file, material_table, blueprint_png,
+         blueprint_svg, room_state)
     """
     if file is None:
-        return (None, None, None, None, None, _binaural_status_update(None), None)
+        return (None, None, None, None, None, _binaural_status_update(None), None, None, None, None, None)
 
     from roomestim_web.archive import ArchiveArtefacts, build_result_archive
     from roomestim_web.pipeline import run_pipeline
@@ -190,6 +193,7 @@ def _on_submit(
             octave_band=octave_band,
             out_dir=out_dir,
             wfs_f_max_hz=wfs_f_max_hz,
+            skip_engine_validation=skip_engine_validation,
         )
     except ValueError as exc:
         _LOG.warning("run_pipeline ValueError (WFS or validation): %s", exc)
@@ -199,7 +203,7 @@ def _on_submit(
             pass
         td.cleanup()
         error_report: Any = {"error": str(exc), "algorithm": algorithm}
-        return (None, None, error_report, None, None, _binaural_status_update(None), None)
+        return (None, None, error_report, None, None, _binaural_status_update(None), None, None, None, None, None)
     except Exception:
         _LOG.exception("run_pipeline failed; returning all-None tuple")
         try:
@@ -207,7 +211,7 @@ def _on_submit(
         except ValueError:
             pass  # already evicted by another submit
         td.cleanup()
-        return (None, None, None, None, None, _binaural_status_update(None), None)
+        return (None, None, None, None, None, _binaural_status_update(None), None, None, None, None, None)
 
     # Build 3D figure (requires plotly; returns None if unavailable)
     try:
@@ -309,9 +313,33 @@ def _on_submit(
         _LOG.exception("archive build failed; returning None for archive tier")
         archive_str = None
 
+    # Build material surface table
+    try:
+        from roomestim_web.material_override import _build_surface_table
+        material_table: Any = _build_surface_table(result.room)  # type: ignore[arg-type]
+    except Exception:
+        _LOG.exception("_build_surface_table failed")
+        material_table = None
+
+    # Build blueprint PNG + SVG
+    blueprint_png_str: Any = None
+    blueprint_svg_str: Any = None
+    try:
+        from roomestim.viz.blueprint import render_blueprint
+        bp_png = out_dir / "blueprint.png"
+        bp_svg = out_dir / "blueprint.svg"
+        render_blueprint(result.room, result.layout, bp_png, fmt="png", dpi=300)  # type: ignore[arg-type]
+        render_blueprint(result.room, result.layout, bp_svg, fmt="svg")  # type: ignore[arg-type]
+        blueprint_png_str = str(bp_png)
+        blueprint_svg_str = str(bp_svg)
+    except Exception:
+        _LOG.exception("render_blueprint failed")
+
     return (
         figure, rt60_chart, report_json, pdf_str, binaural_str,
         _binaural_status_update(_binaural_status), archive_str,
+        material_table, blueprint_png_str, blueprint_svg_str,
+        result.room,  # room_state — feeds Material Override Tab Apply button
     )
 
 
@@ -403,10 +431,31 @@ def build_demo() -> gr.Blocks:
                     label="방 스캔 (.usdz / .obj / .gltf / .glb / .ply)",
                 )
 
+                # Engine validation toggle (D42 / ADR 0033).
+                # Unchecked (default) = validation ON (backward-compat).
+                # Checked = standalone YAML mode, schema check skipped.
+                skip_engine_validation = gr.Checkbox(
+                    value=False,
+                    label="Standalone YAML (skip engine schema check)",
+                    info=(
+                        "체크하면 spatial_engine 스키마 검증을 건너뜁니다. "
+                        "출력 YAML에 WARNING 코멘트가 추가됩니다 (ADR 0033 §C)."
+                    ),
+                )
+
                 submit_btn = gr.Button("실행", variant="primary")
 
             # ── Output tabs ──────────────────────────────────────────────────
             with gr.Column(scale=3):
+                # State holding the current RoomModel for the Material Override
+                # Tab Apply button. Populated by _on_submit (index 7 in the
+                # 11-tuple). None before first submit.
+                room_state: gr.State = gr.State(value=None)
+                # State holding pending material changes as a JSON string
+                # {"surface_index": "material_value", ...}. Reset to "{}" on
+                # each new submit so stale changes don't carry over.
+                changes_state: gr.State = gr.State(value="{}")
+
                 with gr.Tabs():
                     with gr.Tab("3D 뷰어"):
                         viewer_plot = gr.Plot()
@@ -434,6 +483,21 @@ def build_demo() -> gr.Blocks:
                     with gr.Tab("원본 다운로드"):
                         raw_file = gr.File(label="YAML 압축 파일")
 
+                    # Material Override Tab — built by helper (HIGH-1 fix).
+                    _mat_comps = build_material_override_tab()
+                    material_table = _mat_comps.get("dataframe") if _mat_comps else None
+                    _apply_btn = _mat_comps.get("apply_btn") if _mat_comps else None
+                    _override_status_md = _mat_comps.get("status_md") if _mat_comps else None
+
+                    with gr.Tab("2D 블루프린트"):
+                        gr.Markdown(
+                            "### 2D 블루프린트\n"
+                            "룸 평면도 (top-down view). **실행** 후 자동 생성됩니다.\n\n"
+                            "좌표계: x = 우측 (m), z = 전방/북쪽 (m) per D41."
+                        )
+                        blueprint_image = gr.Image(label="PNG (300 dpi)")
+                        blueprint_file = gr.File(label="SVG 벡터 다운로드")
+
         gr.Markdown(
             "**HRTF 및 음원 출처.** 기본 바이노럴 렌더링은"
             " [HUTUBS HRTF Dataset](https://depositonce.tu-berlin.de/items/dc8c5bff-3a6a-471e-9d6c-bce4ed7d9ae6)"
@@ -455,12 +519,58 @@ def build_demo() -> gr.Blocks:
         # Wire submit button — outputs mapped by component reference
         submit_btn.click(
             fn=_on_submit,
-            inputs=[scan_file, algorithm, n_speakers, radius, elevation, octave_band, wfs_f_max_hz],
+            inputs=[
+                scan_file, algorithm, n_speakers, radius, elevation,
+                octave_band, wfs_f_max_hz, skip_engine_validation,
+            ],
             outputs=[
                 viewer_plot, report_plot, report_json, pdf_file,
                 binaural_audio, binaural_status_md, raw_file,
+                material_table, blueprint_image, blueprint_file,
+                room_state,  # index 10 — feeds Material Override Apply button
             ],
         )
+
+        # Wire Material Override Apply button (HIGH-1 fix).
+        # _apply_btn is None if build_material_override_tab() returned {} (no Gradio).
+        if _apply_btn is not None:
+            def _on_apply_overrides_wrapper(
+                room: Any,
+                changes_json: Any,
+            ) -> tuple[Any, Any, Any, Any, Any]:
+                """Wrap on_apply_overrides for Gradio output shape.
+
+                Returns (room_state, report_plot, report_json, override_status_md, changes_state_reset).
+                """
+                if room is None:
+                    status = gr.update(value="오류: 먼저 방 스캔 파일을 실행하세요.", visible=True)
+                    return room, None, None, status, "{}"
+                try:
+                    from roomestim_web.report import build_rt60_bar_chart
+                    changes_str = changes_json if isinstance(changes_json, str) else "{}"
+                    new_room, new_report, errors = on_apply_overrides(room, changes_str)
+                    new_rt60_chart = build_rt60_bar_chart(new_report)
+                    new_report_json: Any = new_report.to_json_dict()
+                    if errors:
+                        msg = "⚠ 일부 재질 값 오류:\n" + "\n".join(f"• {e}" for e in errors)
+                    else:
+                        n = len([k for k in (
+                            {} if not changes_str.strip() else
+                            __import__("json").loads(changes_str)
+                        )])
+                        msg = f"정정 적용됨: {n} surface(s)"
+                    status_update = gr.update(value=msg, visible=True)
+                    return new_room, new_rt60_chart, new_report_json, status_update, "{}"
+                except Exception as exc:
+                    _LOG.exception("_on_apply_overrides_wrapper failed")
+                    status_update = gr.update(value=f"오류: {exc}", visible=True)
+                    return room, None, None, status_update, "{}"
+
+            _apply_btn.click(
+                fn=_on_apply_overrides_wrapper,
+                inputs=[room_state, changes_state],
+                outputs=[room_state, report_plot, report_json, _override_status_md, changes_state],
+            )
 
     return demo
 

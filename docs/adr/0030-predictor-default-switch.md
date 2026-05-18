@@ -210,3 +210,41 @@ shim: `from roomestim.geom.polygon import room_volume as _room_volume` in the
 caller. This ADR block serves as the audit trail for that decision.
 
 D22 audit-trail-discipline: this block follows the v0.10.1 / v0.15.1 precedent.
+
+## §Status-update-v0.16 (2026-05-18)
+
+v0.16.0 lands three new policy surfaces per the ADR 0030 audit-trail cadence.
+
+**Item I — Material Override UI land (D39 + D40 + D43 + ADR 0031)**
+`roomestim/edit.py` NEW: `evolve_room` / `evolve_surface` / `evolve_room_material` /
+`evolve_room_materials_bulk` helpers. All mutations via `dataclasses.replace`
+chain; `Surface` frozen invariant (ADR 0002) preserved throughout. Web Material
+Override Tab + Apply button (D40 manual trigger) land in `roomestim_web/app.py`.
+ADR 0009 ISM ≥ Eyring invariant verified on 50 evolved rooms (D43 regression
+lock: `tests/test_edit_room.py::test_evolve_room_material_shuffle_adr_0009_invariant`).
+
+**Item J — 2D Blueprint export land (D41 + ADR 0032)**
+`roomestim/viz/blueprint.py` NEW: `render_blueprint()` PNG (300 dpi) + SVG
+export. Coordinate convention: x=right, z=north-up per D41. Content layers:
+floor outline, wall labels, listener area, speaker positions, dimension arrow,
+north arrow, 1 m scale bar. Byte-equal PNG determinism lock under matplotlib
+Agg backend (`tests/test_viz_blueprint.py::test_render_blueprint_determinism_png_byte_equal`).
+Web Blueprint Tab added.
+
+**Item K — Engine validation toggle land (D42 + ADR 0033)**
+`write_layout_yaml` gains `validate: bool = True` + `schema_path_override`
+kwargs (backward-compat default ON). CLI `export` subcommand: mutually exclusive
+`--validate-engine PATH` / `--no-engine-validation` flags. Precedence: CLI >
+ENV > default hardcoded path (D42 regression lock:
+`tests/test_engine_toggle.py::test_cli_export_cli_overrides_env`). WARNING
+header prepended to YAML when validation skipped (ADR 0033 §C audit trail).
+Web sidebar Checkbox "Standalone YAML (skip engine schema check)" default OFF.
+
+**Honesty note**: v0.16 provides "scan → material correction → blueprint"
+workflow. The root-cause phone-scan material-estimation accuracy gap (RoomPlan
+assigns `WALL_PAINTED` to all walls) remains an upstream limitation outside
+roomestim's scope. v0.16 provides the correction path, not the estimation fix.
+
+**Versions**: `roomestim.__version__` `0.15.2` → `0.16.0` (MINOR bump — 4 new
+public API symbols + 1 new viz entry + 2 new CLI flags). `roomestim_web.__version__`
+`0.12-web.7` → `0.13-web.0` (web MINOR bump — 2 new UI tabs + sidebar checkbox).

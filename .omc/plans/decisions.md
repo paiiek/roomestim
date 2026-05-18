@@ -1418,3 +1418,32 @@ fresh measured-room evidence).
 
 **Cross-refs**: ADR 0030 NEW, ADR 0028 §Reverse-criterion item 2, ADR 0028
 §Status-update-v0.15.0, ADR 0009 (Eyring runtime invariant), D26, D27, OQ-30.
+
+## v0.16.0 D-decision allocation (2026-05-18)
+
+**D39** — `roomestim/edit.py` placement (RoomModel evolve helper API).
+`evolve_room` / `evolve_surface` / `evolve_room_material` / `evolve_room_materials_bulk`
+live in `roomestim/edit.py` (not model.py — shape-only; not reconstruct — RT60
+prediction). D39 rationale: edit = shape-transition lane, natural home for v0.17
+`add_obstacle()` / `remove_speaker()` additions.
+
+**D40** — Manual Apply button (acoustic recompute trigger, not auto-debounce).
+ISM cascade ~1.9 s × 5 rapid changes = ~9.5 s queue; manual button = single commit
+point. Implementation: `_on_apply_overrides` in `roomestim_web/material_override.py`.
+
+**D41** — Blueprint y-down screen ⇔ z-up world coordinate convention.
+Blueprint x = RoomModel x (right), blueprint y = RoomModel z (forward, north-up).
+Architectural drawing standard. `ax.set_ylabel("z (forward, m, north-up)")`.
+
+**D42** — Engine validation precedence: CLI flag > ENV var > default ON.
+`--validate-engine PATH` > `SPATIAL_ENGINE_REPO_DIR` > hardcoded default.
+`--no-engine-validation` is mutually exclusive with `--validate-engine`. Default
+backward-compat (validation ON).
+
+**D43** — ADR 0009 invariant on evolved rooms. Material change → absorption
+change → ISM + Eyring both change. Invariant `ism_rt60 ≥ eyring_rt60 - 1e-6`
+must hold on ALL evolved rooms. Regression lock: 50 random seeds × 10 materials.
+
+**New ADRs this cycle**: ADR 0031 (material override policy), ADR 0032 (blueprint
+2D export), ADR 0033 (engine validation toggle). ADR 0030 §Status-update-v0.16
+added (Items I/J/K). OQ-31 NEW (multi-engine schema target deferral, v0.18+).

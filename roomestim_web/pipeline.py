@@ -26,6 +26,7 @@ def run_pipeline(
     octave_band: bool,
     out_dir: str | Path,
     wfs_f_max_hz: float = 8000.0,
+    skip_engine_validation: bool = False,
 ) -> PipelineResult:
     """Run full parse → place → export pipeline.
 
@@ -81,7 +82,7 @@ def run_pipeline(
     write_room_yaml(room, room_yaml_path)
 
     from roomestim.export.layout_yaml import write_layout_yaml
-    write_layout_yaml(layout, layout_yaml_path)
+    write_layout_yaml(layout, layout_yaml_path, validate=not skip_engine_validation)
 
     return PipelineResult(
         room=room,

@@ -384,3 +384,31 @@ insufficient".
 
 **Cross-refs**: ADR 0030 §Trade-off, ADR 0028 §Decision sub-item 2,
 `roomestim/reconstruct/predictor.py:_shoebox_surface_areas_and_alphas`, D38.
+
+## OQ-31 — Multi-engine schema target support (v0.18+, 2026-05-18)
+
+**Question**: Current `--validate-engine PATH` validates against a single
+`spatial_engine/proto/geometry_schema.json`. If users need to target different
+audio engines (SPARTA, IEM Plugin Suite, custom engine), how should multiple
+schema targets be supported?
+
+**Current state**: `write_layout_yaml` accepts `schema_path_override: str | None`
+pointing to a single engine repo directory. No multi-target support.
+
+**Deferral reason**: No user request yet. Single engine (spatial_engine) covers
+all current known use-cases. Multi-target adds complexity (plugin loader, target
+name registry) with unclear ROI.
+
+**Trigger conditions** (D26 forbidden-indefinite-deferral applied):
+- ≥ 1 user reports need for a non-spatial_engine schema target, OR
+- spatial_engine schema has a breaking change requiring side-by-side validation.
+
+**Evaluation cadence**: v0.17 cycle end — must decide by v0.18 (hard wall per D26).
+
+**Resolution candidates**:
+1. `--validate-engine PATH:target_name` syntax with a target registry in
+   `roomestim/export/engine_registry.py`.
+2. Plugin loader: `--validate-engine-plugin my_engine_plugin.py`.
+3. Close as WONTFIX if only spatial_engine is ever targeted.
+
+**Cross-refs**: ADR 0033 §E, D42.
