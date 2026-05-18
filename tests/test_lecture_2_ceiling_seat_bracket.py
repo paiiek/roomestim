@@ -46,10 +46,10 @@ import pytest
 from roomestim.adapters.ace_challenge import (
     _RoomBuildOverrides,
     _build_room_model,
-    _room_volume,
     _surface_areas_by_material,
     ACE_ROOM_GEOMETRY,
 )
+from roomestim.geom.polygon import room_volume
 from roomestim.model import MaterialLabel, OCTAVE_BANDS_HZ
 from roomestim.reconstruct.materials import (
     eyring_rt60_per_band,
@@ -179,7 +179,7 @@ def _predict_per_band(
     geom = ACE_ROOM_GEOMETRY[room_id]
     room = _build_room_model(room_id, geom, overrides=overrides)
     areas = _surface_areas_by_material(room)
-    volume = _room_volume(room)
+    volume = room_volume(room)
     return sabine_rt60_per_band(volume, areas), eyring_rt60_per_band(volume, areas)
 
 

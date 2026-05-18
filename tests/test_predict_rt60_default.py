@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 
 from roomestim.adapters.roomplan import RoomPlanAdapter
+from roomestim.geom.polygon import polygon_area_3d
 from roomestim.reconstruct.predictor import (
-    _polygon_area_3d,
     is_rectilinear_shoebox,
     predict_rt60_default,
     predict_rt60_default_per_band,
@@ -36,7 +36,7 @@ def area_dict(lab_room: object) -> dict[object, float]:
     from collections import defaultdict
     areas: dict[object, float] = defaultdict(float)
     for s in lab_room.surfaces:  # type: ignore[attr-defined]
-        areas[s.material] += _polygon_area_3d(s.polygon)
+        areas[s.material] += polygon_area_3d(s.polygon)
     return dict(areas)
 
 
@@ -121,6 +121,39 @@ def test_rt60_prediction_dataclass_is_frozen() -> None:
     )
     with pytest.raises(Exception):  # FrozenInstanceError
         p.rt60_s = 1.0  # type: ignore[misc]
+
+
+def test_per_band_fallback_surfaces_in_rationale(lab_room: object, area_dict: dict[object, float]) -> None:
+    """v0.15.1 MEDIUM-1: fallback surface names appear in per-band rationale.
+
+    Positive case: patch wall_0 absorption_bands to None → rationale must
+    contain 'per-band α fallback used for surfaces:' and 'wall_0'.
+
+    Negative case: unmodified lab_room (all surfaces have absorption_bands) →
+    rationale must NOT contain fallback substring.
+    """
+    import copy
+
+    # --- negative case (no fallback) ---
+    pred_clean = predict_rt60_default_per_band(lab_room, area_dict)
+    assert "per-band α fallback" not in pred_clean.rationale, (
+        "Unmodified lab_room should have no fallback surfaces in rationale"
+    )
+
+    # --- positive case (wall_0 missing absorption_bands) ---
+    room_copy = copy.deepcopy(lab_room)
+    walls = [s for s in room_copy.surfaces if s.kind == "wall"]  # type: ignore[union-attr]
+    assert walls, "lab_room must have at least one wall surface"
+    # Remove absorption_bands from first wall to trigger fallback
+    object.__setattr__(walls[0], "absorption_bands", None)
+
+    pred_fallback = predict_rt60_default_per_band(room_copy, area_dict)
+    assert "per-band α fallback used for surfaces:" in pred_fallback.rationale, (
+        f"Expected fallback substring in rationale, got: {pred_fallback.rationale!r}"
+    )
+    assert "wall_0" in pred_fallback.rationale, (
+        f"Expected 'wall_0' in rationale, got: {pred_fallback.rationale!r}"
+    )
 
 
 def test_predictor_name_literal_only_two_values() -> None:

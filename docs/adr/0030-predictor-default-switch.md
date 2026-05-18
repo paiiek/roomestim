@@ -129,3 +129,45 @@ the whole acoustic report tab.
 - `roomestim_web/report.py` — surface + chart wiring.
 - `tests/test_predict_rt60_default.py` — 9 NEW tests.
 - `RELEASE_NOTES_v0.15.0.md` — release notes.
+
+## §Status-update-v0.15.1
+
+**Patch release** — v0.15.0 code-review unabsorbed follow-ups MEDIUM-1 + LOW-1
+closed. No policy change, no new invariant, no web lane change.
+
+**Item E (MEDIUM-1 closure) — Per-band fallback rationale append**
+`_shoebox_per_band_alphas` now returns a third element `fallback_surfaces:
+tuple[str, ...]` (sorted surface names where `absorption_bands is None` and
+the 500 Hz scalar was broadcast). `predict_rt60_default_per_band` appends
+`"; per-band α fallback used for surfaces: [<names>]"` to the rationale string
+when the set is non-empty. The frozen `RT60Prediction` dataclass gains no new
+field (backward-compat: external serialisers that inspect only existing fields
+are unaffected). Single-band `predict_rt60_default` is unaffected (uses 500 Hz
+scalars throughout; cannot trigger per-band fallback path).
+
+**Item F (LOW-1 closure) — `roomestim/geom/polygon.py` shared util**
+`roomestim/geom/__init__.py` NEW + `roomestim/geom/polygon.py` NEW (~80 LoC):
+`polygon_area_3d`, `room_volume`, `shoelace_2d` extracted from the duplicate
+definitions in `predictor.py` and `ace_challenge.py`.
+
+- `predictor.py`: both internal callsites (`_polygon_area_3d`, `_room_volume`)
+  migrated to `from roomestim.geom.polygon import polygon_area_3d, room_volume`;
+  duplicate definitions deleted.
+- `ace_challenge.py`: duplicate `_room_volume` definition deleted. The adapter
+  itself never had an internal callsite (the helper was consumed only by tests
+  via `from roomestim.adapters.ace_challenge import _room_volume`). The 3
+  affected test modules (`tests/test_e2e_ace_challenge_rt60.py`,
+  `tests/test_per_band_mae_ex_bl_snapshot.py`,
+  `tests/test_lecture_2_ceiling_seat_bracket.py`) now import directly via
+  `from roomestim.geom.polygon import room_volume`. No `room_volume` import is
+  added to `ace_challenge.py` itself — it would be dead code.
+
+D29 lane separation is web↔core; this extraction is core-internal and does not
+touch `roomestim_web/` (D30 byte-equal confirmed — `git diff 63ae18a --
+roomestim_web/` is empty). `roomestim_web/report.py` retains its own private
+`_polygon_area_3d` / `_shoelace_2d` / `_room_volume` duplicates per D29 lane
+separation; consolidating those would cross the lane boundary and is
+intentionally out of scope for v0.15.1.
+
+D22 audit-trail-discipline: this block follows the v0.10.1 precedent of
+appending §Status-update without retroactively editing prior content.

@@ -30,10 +30,10 @@ from pathlib import Path
 
 from roomestim.adapters.ace_challenge import (
     _build_room_model,
-    _room_volume,
     _surface_areas_by_material,
     ACE_ROOM_GEOMETRY,
 )
+from roomestim.geom.polygon import room_volume
 from roomestim.model import OCTAVE_BANDS_HZ
 from roomestim.reconstruct.materials import (
     eyring_rt60_per_band,
@@ -104,7 +104,7 @@ def _recompute_per_band_mae() -> dict[str, dict[int, float]]:
             continue
         room = _build_room_model(room_id, ACE_ROOM_GEOMETRY[room_id])
         areas = _surface_areas_by_material(room)
-        volume = _room_volume(room)
+        volume = room_volume(room)
         sabine_pb = sabine_rt60_per_band(volume, areas)
         eyring_pb = eyring_rt60_per_band(volume, areas)
         for band in OCTAVE_BANDS_HZ:

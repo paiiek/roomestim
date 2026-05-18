@@ -25,12 +25,12 @@ from pathlib import Path
 import pytest
 
 from roomestim.adapters.ace_challenge import (
-    _room_volume,
     _surface_areas_by_material,
     dataset_name,
     list_rooms,
     load_room,
 )
+from roomestim.geom.polygon import room_volume
 from roomestim.model import OCTAVE_BANDS_HZ
 from roomestim.reconstruct.materials import (
     eyring_rt60,
@@ -85,7 +85,7 @@ def test_e2e_rt60_characterisation(capsys):
     for room_id in room_ids:
         case = load_room(dataset_dir, room_id)
         areas = _surface_areas_by_material(case.room)
-        volume = _room_volume(case.room)
+        volume = room_volume(case.room)
 
         sabine_500hz = sabine_rt60(volume, areas)
         eyring_500hz = eyring_rt60(volume, areas)
@@ -257,7 +257,7 @@ def test_ace_adapter_with_sample_fixture():
 
     # Verify roomestim can compute predicted RT60 from this synthesised room
     areas = _surface_areas_by_material(case.room)
-    volume = _room_volume(case.room)
+    volume = room_volume(case.room)
     assert volume > 0.0, "room volume must be positive"
     assert len(areas) > 0, "must have ≥1 material"
 

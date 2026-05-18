@@ -914,19 +914,3 @@ def _surface_areas_by_material(room: RoomModel) -> dict[MaterialLabel, float]:
         area = 0.5 * math.sqrt(nx * nx + ny * ny + nz * nz)
         areas[surf.material] += area
     return dict(areas)
-
-
-def _room_volume(room: RoomModel) -> float:
-    """Compute volume as floor_area × ceiling_height_m.
-
-    Uses :class:`shapely.geometry.Polygon` for the floor area so the result
-    is correct for arbitrary 2D floor polygons (not just axis-aligned
-    shoeboxes). The ACE adapter only emits shoeboxes today, but exposing a
-    bounding-box-only helper would silently lie if a future caller passes an
-    L-shape or convex non-rectangle.
-    """
-    from shapely.geometry import Polygon as ShapelyPolygon
-
-    coords = [(p.x, p.z) for p in room.floor_polygon]
-    floor_area = ShapelyPolygon(coords).area
-    return floor_area * room.ceiling_height_m

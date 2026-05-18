@@ -18,26 +18,25 @@ unchanged. Callers that want the v0.14.0 Sabine default explicitly should
 call those directly.
 
 Layering: this module is core (no web dependency). Geometry helpers
-:func:`_polygon_area_3d` and :func:`_room_volume` are duplicated here so the
-core predictor does not import from ``roomestim_web``. The web report
+:func:`polygon_area_3d` and :func:`room_volume` are imported from
+``roomestim.geom.polygon`` (v0.15.1). The web report
 (:mod:`roomestim_web.report`) calls into this module via the public wrappers.
 
 Per-band data fallbacks: when a surface lacks ``absorption_bands`` data, the
 per-band path silently falls back to that surface's ``absorption_500hz`` scalar
 broadcast across all 6 bands. This matches
-:func:`roomestim.reconstruct.materials.eyring_rt60_per_band` behaviour but
-means missing per-band data on a single wall does NOT surface in the returned
-``rationale`` string (only the ISM-vs-Eyring branch decision does). Callers
-that need per-surface fallback diagnostics should pre-validate the room's
-``Surface.absorption_bands`` fields before calling. v0.15.x MEDIUM follow-up
-per code-review 2026-05-17.
+:func:`roomestim.reconstruct.materials.eyring_rt60_per_band` behaviour.
+v0.15.1부터 fallback 발동 시 surface 이름이 ``RT60Prediction.rationale``에
+누적된다 (``predict_rt60_default_per_band`` only; single-band
+``predict_rt60_default`` uses 500 Hz scalars throughout and cannot trigger
+per-band fallback).
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Literal
 
+from roomestim.geom.polygon import polygon_area_3d, room_volume
 from roomestim.model import MaterialLabel, RoomModel
 from roomestim.reconstruct.image_source import image_source_rt60
 from roomestim.reconstruct.materials import (
@@ -79,47 +78,6 @@ class RT60Prediction:
     rt60_per_band_s: dict[int, float]
     predictor_name: PredictorName
     rationale: str
-
-
-# --------------------------------------------------------------------------- #
-# Geometry helpers (duplicated to avoid web dependency from core; v0.15.0)
-# --------------------------------------------------------------------------- #
-
-
-def _shoelace_2d(coords: list[tuple[float, float]]) -> float:
-    """Signed-area shoelace; returns absolute area."""
-    n = len(coords)
-    if n < 3:
-        return 0.0
-    acc = 0.0
-    for i in range(n):
-        j = (i + 1) % n
-        acc += coords[i][0] * coords[j][1]
-        acc -= coords[j][0] * coords[i][1]
-    return abs(acc) * 0.5
-
-
-def _polygon_area_3d(polygon: object) -> float:
-    """Area of a 3-D polygon via Newell's normal-vector method."""
-    pts = list(polygon)  # type: ignore[call-overload]
-    n = len(pts)
-    if n < 3:
-        return 0.0
-    nx = ny = nz = 0.0
-    for i in range(n):
-        j = (i + 1) % n
-        a = pts[i]
-        b = pts[j]
-        nx += (a.y - b.y) * (a.z + b.z)
-        ny += (a.z - b.z) * (a.x + b.x)
-        nz += (a.x - b.x) * (a.y + b.y)
-    return 0.5 * math.sqrt(nx * nx + ny * ny + nz * nz)
-
-
-def _room_volume(room: RoomModel) -> float:
-    """Floor-area × ceiling-height (assumes prismatic / extruded room)."""
-    floor_coords = [(p.x, p.z) for p in room.floor_polygon]
-    return _shoelace_2d(floor_coords) * float(room.ceiling_height_m)
 
 
 # --------------------------------------------------------------------------- #
@@ -177,10 +135,10 @@ def _shoebox_surface_areas_and_alphas(
     floor_alpha = float(floor_surf.absorption_500hz) if floor_surf else 0.10
     ceil_alpha = float(ceil_surf.absorption_500hz) if ceil_surf else 0.10
     if walls:
-        total_area = sum(_polygon_area_3d(w.polygon) for w in walls)
+        total_area = sum(polygon_area_3d(w.polygon) for w in walls)
         if total_area > 0.0:
             wall_alpha = sum(
-                float(w.absorption_500hz) * _polygon_area_3d(w.polygon) for w in walls
+                float(w.absorption_500hz) * polygon_area_3d(w.polygon) for w in walls
             ) / total_area
         else:
             wall_alpha = 0.10
@@ -193,12 +151,16 @@ def _shoebox_surface_areas_and_alphas(
 
 def _shoebox_per_band_alphas(
     room: RoomModel,
-) -> tuple[tuple[float, ...], dict[int, tuple[float, ...]]]:
-    """Return (areas_6, {band_hz: alphas_6}) for per-band ISM.
+) -> tuple[tuple[float, ...], dict[int, tuple[float, ...]], tuple[str, ...]]:
+    """Return (areas_6, {band_hz: alphas_6}, fallback_surfaces) for per-band ISM.
 
     Bands without per-band data on a surface fall back to that surface's
     500 Hz scalar (broadcast across bands), matching
     :func:`roomestim.reconstruct.materials.eyring_rt60_per_band` behavior.
+
+    The third element is a sorted tuple of surface names (e.g. ``"floor"``,
+    ``"ceiling"``, ``"wall_0"``) where the 500 Hz fallback fired for at least
+    one band. Empty tuple when all surfaces have full per-band data.
     """
     from roomestim.model import OCTAVE_BANDS_HZ
 
@@ -207,32 +169,40 @@ def _shoebox_per_band_alphas(
 
     floor_surf = next((s for s in room.surfaces if s.kind == "floor"), None)
     ceil_surf = next((s for s in room.surfaces if s.kind == "ceiling"), None)
+    # Wall index in fallback names ("wall_0", "wall_1", …) is positional within
+    # this filtered list, not a stable surface ID. Stable per call; not stable
+    # across mutations of room.surfaces ordering. See v0.15.1 code-review
+    # MEDIUM-1 — promotion to a stable surf.id is OQ-31 follow-up if needed.
     walls = [s for s in room.surfaces if s.kind == "wall"]
 
-    def _band_alpha(surf: object, band_idx: int) -> float:
+    fallback_set: set[str] = set()
+
+    def _band_alpha(surf: object, name: str, band_idx: int) -> float:
         if surf is None:
             return 0.10
         bands = getattr(surf, "absorption_bands", None)
         if bands is not None:
             return float(bands[band_idx])
+        fallback_set.add(name)
         return float(getattr(surf, "absorption_500hz", 0.10))
 
     out: dict[int, tuple[float, ...]] = {}
     for band_idx, band_hz in enumerate(OCTAVE_BANDS_HZ):
-        f_a = _band_alpha(floor_surf, band_idx)
-        c_a = _band_alpha(ceil_surf, band_idx)
+        f_a = _band_alpha(floor_surf, "floor", band_idx)
+        c_a = _band_alpha(ceil_surf, "ceiling", band_idx)
         if walls:
-            total_area = sum(_polygon_area_3d(w.polygon) for w in walls)
+            total_area = sum(polygon_area_3d(w.polygon) for w in walls)
             if total_area > 0.0:
                 w_a = sum(
-                    _band_alpha(w, band_idx) * _polygon_area_3d(w.polygon) for w in walls
+                    _band_alpha(w, f"wall_{i}", band_idx) * polygon_area_3d(w.polygon)
+                    for i, w in enumerate(walls)
                 ) / total_area
             else:
                 w_a = 0.10
         else:
             w_a = 0.10
         out[band_hz] = (f_a, c_a, w_a, w_a, w_a, w_a)
-    return areas, out
+    return areas, out, tuple(sorted(fallback_set))
 
 
 def predict_rt60_default(
@@ -263,7 +233,7 @@ def predict_rt60_default(
         else ``"eyring"``. ``rt60_per_band_s`` is empty for this single-band
         variant (use :func:`predict_rt60_default_per_band`).
     """
-    volume_m3 = _room_volume(room)
+    volume_m3 = room_volume(room)
 
     if prefer_ism and is_rectilinear_shoebox(room):
         dims = _shoebox_dimensions_m(room)
@@ -299,11 +269,11 @@ def predict_rt60_default_per_band(
     max_order: int = 50,
 ) -> RT60Prediction:
     """Per-octave-band variant of :func:`predict_rt60_default`."""
-    volume_m3 = _room_volume(room)
+    volume_m3 = room_volume(room)
 
     if prefer_ism and is_rectilinear_shoebox(room):
         dims = _shoebox_dimensions_m(room)
-        areas, per_band_alphas = _shoebox_per_band_alphas(room)
+        areas, per_band_alphas, fallback_surfaces = _shoebox_per_band_alphas(room)
         rt60_band: dict[int, float] = {}
         for band_hz, alphas in per_band_alphas.items():
             rt60_band[band_hz] = image_source_rt60(
@@ -313,11 +283,14 @@ def predict_rt60_default_per_band(
                 absorption_coeffs=alphas,
                 max_order=max_order,
             )
+        rationale = f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: per-band ISM (max_order={max_order})"
+        if fallback_surfaces:
+            rationale += f"; per-band α fallback used for surfaces: [{', '.join(fallback_surfaces)}]"
         return RT60Prediction(
             rt60_s=rt60_band.get(500, 0.0),
             rt60_per_band_s=rt60_band,
             predictor_name="image_source",
-            rationale=f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: per-band ISM (max_order={max_order})",
+            rationale=rationale,
         )
 
     rt60_band = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
