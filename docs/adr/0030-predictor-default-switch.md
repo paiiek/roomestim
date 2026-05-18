@@ -248,3 +248,55 @@ roomestim's scope. v0.16 provides the correction path, not the estimation fix.
 **Versions**: `roomestim.__version__` `0.15.2` → `0.16.0` (MINOR bump — 4 new
 public API symbols + 1 new viz entry + 2 new CLI flags). `roomestim_web.__version__`
 `0.12-web.7` → `0.13-web.0` (web MINOR bump — 2 new UI tabs + sidebar checkbox).
+
+## §Status-update-v0.16.1 (2026-05-18)
+
+D22 audit-trail-discipline pattern (v0.10.1 / v0.15.1 / v0.15.2 / v0.16 precedent).
+Existing §Status-update-v0.16 本文 위에 append; retroactive 수정 X.
+
+**Item L (MEDIUM-2 closure)** — `roomestim/viz/blueprint.py` module-level
+`matplotlib.use("Agg", force=True)` guard 추가 (import 시점 backend lock-in).
+기존 `render_blueprint` 함수 본체 내부 `matplotlib.use("Agg")` 제거 (중복).
+`try/except ImportError: pass` 로 graceful degradation 보존 (`[viz]` extra 미설치
+환경). 근거: PNG byte-equal 결정성 회귀 lock 강건성 — 다른 모듈이 non-Agg backend을
+process 내 먼저 초기화해도 blueprint import 시 Agg 강제 보장.
+테스트: `test_blueprint_module_locks_agg_backend` +1 케이스 (모듈 import 후
+`matplotlib.get_backend().lower() == "agg"` 회귀 lock).
+
+**Item M (MEDIUM-3 closure)** — `tests/test_engine_toggle.py`에
+`test_cli_export_cli_overrides_env_positive_success` positive integration variant 추가
+(기존 6 → 7 케이스). ENV = anti-permissive schema (required: `__MUST_NOT_EXIST_PROP__`)
+/ CLI = permissive schema (`{"type": "object"}`) → exit 0 + layout.yaml 생성 + WARNING
+부재 증명. 기존 negative variant (`test_cli_export_cli_overrides_env`) 유지 —
+두 케이스가 다른 각도에서 D42 CLI > ENV precedence 회귀 lock.
+
+**Item N (LOW-1 closure)** — `roomestim_web/app.py` inline `__import__("json")`
+제거. module top-level `import json` 추가 + `_count_changes(changes_json: str) -> int`
+module-level named helper 추출. helper는 empty/invalid/non-dict 입력 시 0 반환
+(exception confinement: `JSONDecodeError`, `ValueError`, `TypeError`). 테스트:
+`test_count_changes_helper` +1 케이스 (5 입력 → 0/0/1/0/0 회귀 lock).
+
+**Item O (LOW-2 + LOW-3 묶음 closure)** — Material Override Tab Dataframe wiring 보강.
+`build_material_override_tab()`: Dataframe `interactive=False` → `interactive=True` +
+label 업데이트. `changes_textbox: gr.Textbox` 신규 추가 (JSON 직접 입력 fallback +
+Dataframe 변경 시 자동 갱신 표시). `_dataframe_to_changes_json(rows, initial_room) -> str`
+helper 신규 (~30 LoC): baseline material 비교 후 변경된 행만 JSON으로 반환. `app.py`:
+Dataframe `change` 이벤트 → `_changes_textbox` → `changes_state` wiring 추가
+(try/except fallback 포함). `_dataframe_to_changes_json` import 추가. 테스트:
+`test_dataframe_changes_to_json_helper` + `test_dataframe_changes_to_json_no_change`
++2 케이스.
+
+**Item P (OQ-32 CLOSED)** — 3D viewer Plotly Mesh3d color 갱신 on Apply.
+`layout_state: gr.State = gr.State(value=None)` 신규 추가 (`room_state` 동일 패턴).
+`_on_submit` 반환 11-tuple → 12-tuple 확장 (마지막 `result.layout` 추가); 4 반환
+경로 모두 12-tuple 일관. `submit_btn.click outputs` 12요소로 확장 (`layout_state`
+추가). `_on_apply_overrides_wrapper` 시그니처 2-인자 → 3-인자 (layout 추가);
+반환 5-tuple → 6-tuple (`viewer_plot` 추가); 정상 분기에서 `build_room_figure(new_room,
+layout)` 재호출 → Plotly figure with updated `MATERIAL_PALETTE[surface.material]` 색상.
+`_apply_btn.click` inputs 3개 / outputs 6개로 확장. `roomestim_web/viewer.py` 본체
+byte-equal. 테스트: `test_apply_returns_viewer_figure` +1 케이스 (6-tuple +
+`result[1]` non-None 회귀 lock). OQ-32 CLOSED.
+
+**Versions**: `roomestim.__version__` `0.16.0` → `0.16.1` (PATCH). `roomestim_web.__version__`
+`0.13-web.0` → `0.13-web.1` (PATCH per D30 — wiring 보강 + viewer 색 갱신).
+`__schema_version__` `"0.1-draft"` 불변. ADR 0030/0031/0032/0033 본문 byte-equal.

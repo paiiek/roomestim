@@ -121,18 +121,77 @@ def test_on_apply_overrides_invalid_material_surfaces_errors(lab_room: RoomModel
     )
 
 
+def test_dataframe_changes_to_json_helper(lab_room: RoomModel) -> None:
+    """_dataframe_to_changes_json: changing surface 0 → glass produces {"0": "glass"}."""
+    from roomestim_web.material_override import _build_surface_table, _dataframe_to_changes_json
+
+    rows = _build_surface_table(lab_room)
+    # Mutate a copy of rows to simulate Dataframe edit
+    rows_changed = [list(r) for r in rows]
+    rows_changed[0][2] = "glass"  # change surface 0 material
+
+    result = _dataframe_to_changes_json(rows_changed, lab_room)
+    parsed = json.loads(result)
+    assert "0" in parsed, f"Expected surface 0 in changes; got {result}"
+    assert parsed["0"] == "glass", f"Expected glass for surface 0; got {parsed['0']}"
+    # Unchanged rows must not appear
+    for i in range(1, len(rows)):
+        assert str(i) not in parsed, f"Surface {i} should not appear (unchanged)"
+
+
+def test_dataframe_changes_to_json_no_change(lab_room: RoomModel) -> None:
+    """_dataframe_to_changes_json: unchanged rows → '{}'."""
+    from roomestim_web.material_override import _build_surface_table, _dataframe_to_changes_json
+
+    rows = _build_surface_table(lab_room)
+    result = _dataframe_to_changes_json(rows, lab_room)
+    assert result == "{}", f"Expected '{{}}' for unchanged rows; got {result!r}"
+
+
+@pytest.mark.web
+def test_apply_returns_viewer_figure(lab_room: RoomModel) -> None:
+    """_on_apply_overrides_wrapper returns 6-tuple with non-None viewer figure (OQ-32)."""
+    pytest.importorskip("gradio")
+    pytest.importorskip("plotly")
+    from roomestim.place.dispatch import run_placement
+    from roomestim_web.app import _on_apply_overrides_wrapper
+
+    layout = run_placement(lab_room, "vbap", 5, 2.0, 0.0)
+    result = _on_apply_overrides_wrapper(lab_room, layout, '{"0": "glass"}')
+
+    assert len(result) == 6, f"Expected 6-tuple; got {len(result)}-tuple"
+    viewer_fig = result[1]
+    assert viewer_fig is not None, "Expected non-None viewer figure after Apply (OQ-32)"
+
+
+@pytest.mark.web
+def test_count_changes_helper() -> None:
+    """_count_changes: empty/empty-dict/single/invalid/non-dict → 0/0/1/0/0 (LOW-1 regression lock)."""
+    pytest.importorskip("gradio")
+    from roomestim_web.app import _count_changes
+
+    assert _count_changes("") == 0, "empty string → 0"
+    assert _count_changes("{}") == 0, "empty dict → 0"
+    assert _count_changes('{"0": "glass"}') == 1, "single entry → 1"
+    assert _count_changes("not-json") == 0, "invalid JSON → 0"
+    assert _count_changes('[]') == 0, "non-dict (list) → 0"
+
+
 @pytest.mark.web
 def test_apply_button_wired_to_handler() -> None:
     """Apply button in Material Override Tab has a click handler bound (HIGH-1)."""
+    import gradio as gr
     from roomestim_web.material_override import build_material_override_tab
 
-    comps = build_material_override_tab()
+    # gr.Tab requires gr.Blocks → gr.Tabs() context chain (Gradio 6.x rendering rule).
+    with gr.Blocks():
+        with gr.Tabs():
+            comps = build_material_override_tab()
+
     assert comps, "build_material_override_tab() must return non-empty dict"
     apply_btn = comps.get("apply_btn")
     assert apply_btn is not None, "apply_btn must be present in returned dict"
 
-    # Verify the Apply button exists and is a Gradio Button component
-    import gradio as gr
     assert isinstance(apply_btn, gr.Button), (
         f"apply_btn must be a gr.Button; got {type(apply_btn)}"
     )

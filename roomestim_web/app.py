@@ -6,6 +6,7 @@ file upload, and output tabs. Pipeline logic is wired in P13c–P13f.
 from __future__ import annotations
 
 import atexit
+import json
 import logging
 import os
 import shutil
@@ -20,7 +21,11 @@ import gradio as gr
 
 import roomestim_web
 from roomestim import __version__ as ROOMESTIM_CORE_VERSION
-from roomestim_web.material_override import build_material_override_tab, on_apply_overrides
+from roomestim_web.material_override import (
+    _dataframe_to_changes_json,
+    build_material_override_tab,
+    on_apply_overrides,
+)
 
 _LOG = logging.getLogger("roomestim_web")
 
@@ -163,16 +168,16 @@ def _on_submit(
     octave_band: bool,
     wfs_f_max_hz: float,
     skip_engine_validation: bool = False,
-) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
+) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
-    Returns an 11-tuple matching the output component order:
+    Returns a 12-tuple matching the output component order:
         (viewer_plot, report_plot, report_json, pdf_file, binaural_audio,
          binaural_status_md, raw_file, material_table, blueprint_png,
-         blueprint_svg, room_state)
+         blueprint_svg, room_state, layout_state)
     """
     if file is None:
-        return (None, None, None, None, None, _binaural_status_update(None), None, None, None, None, None)
+        return (None, None, None, None, None, _binaural_status_update(None), None, None, None, None, None, None)
 
     from roomestim_web.archive import ArchiveArtefacts, build_result_archive
     from roomestim_web.pipeline import run_pipeline
@@ -203,7 +208,7 @@ def _on_submit(
             pass
         td.cleanup()
         error_report: Any = {"error": str(exc), "algorithm": algorithm}
-        return (None, None, error_report, None, None, _binaural_status_update(None), None, None, None, None, None)
+        return (None, None, error_report, None, None, _binaural_status_update(None), None, None, None, None, None, None)
     except Exception:
         _LOG.exception("run_pipeline failed; returning all-None tuple")
         try:
@@ -211,7 +216,7 @@ def _on_submit(
         except ValueError:
             pass  # already evicted by another submit
         td.cleanup()
-        return (None, None, None, None, None, _binaural_status_update(None), None, None, None, None, None)
+        return (None, None, None, None, None, _binaural_status_update(None), None, None, None, None, None, None)
 
     # Build 3D figure (requires plotly; returns None if unavailable)
     try:
@@ -339,8 +344,65 @@ def _on_submit(
         figure, rt60_chart, report_json, pdf_str, binaural_str,
         _binaural_status_update(_binaural_status), archive_str,
         material_table, blueprint_png_str, blueprint_svg_str,
-        result.room,  # room_state — feeds Material Override Tab Apply button
+        result.room,    # room_state — feeds Material Override Tab Apply button
+        result.layout,  # layout_state — feeds OQ-32 viewer rebuild on Apply (v0.16.1)
     )
+
+
+def _on_apply_overrides_wrapper(
+    room: Any,
+    layout: Any,
+    changes_json: Any,
+) -> tuple[Any, Any, Any, Any, Any, Any]:
+    """Apply material overrides and return updated Gradio component values.
+
+    Returns (room_state, viewer_plot, report_plot, report_json,
+             override_status_md, changes_state_reset).
+
+    Factored to module-level for testability (v0.16.1 verifier fix).
+    v0.16.1: layout arg added for OQ-32 viewer rebuild.
+    """
+    if room is None:
+        status = gr.update(value="오류: 먼저 방 스캔 파일을 실행하세요.", visible=True)
+        return room, None, None, None, status, "{}"
+    try:
+        from roomestim_web.report import build_rt60_bar_chart  # noqa: PLC0415
+        changes_str = changes_json if isinstance(changes_json, str) else "{}"
+        new_room, new_report, errors = on_apply_overrides(room, changes_str)
+        new_rt60_chart = build_rt60_bar_chart(new_report)
+        new_report_json: Any = new_report.to_json_dict()
+        if errors:
+            msg = "⚠ 일부 재질 값 오류:\n" + "\n".join(f"• {e}" for e in errors)
+        else:
+            n = _count_changes(changes_str)
+            msg = f"정정 적용됨: {n} surface(s)"
+        status_update = gr.update(value=msg, visible=True)
+        # OQ-32: rebuild 3D viewer with new room colors.
+        try:
+            from roomestim_web.viewer import build_room_figure  # noqa: PLC0415
+            new_figure = build_room_figure(new_room, layout) if layout is not None else None
+        except Exception:
+            _LOG.exception("build_room_figure failed in _on_apply_overrides_wrapper")
+            new_figure = None
+        return new_room, new_figure, new_rt60_chart, new_report_json, status_update, "{}"
+    except Exception as exc:
+        _LOG.exception("_on_apply_overrides_wrapper failed")
+        status_update = gr.update(value=f"오류: {exc}", visible=True)
+        return room, None, None, None, status_update, "{}"
+
+
+def _count_changes(changes_json: str) -> int:
+    """Return number of entries in a JSON-encoded {idx: material} mapping; 0 on parse error.
+
+    v0.16.1 LOW-1: extracted from inline __import__("json") in _on_apply_overrides_wrapper.
+    """
+    if not changes_json.strip():
+        return 0
+    try:
+        parsed = json.loads(changes_json)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return 0
+    return len(parsed) if isinstance(parsed, dict) else 0
 
 
 def build_demo() -> gr.Blocks:
@@ -448,9 +510,12 @@ def build_demo() -> gr.Blocks:
             # ── Output tabs ──────────────────────────────────────────────────
             with gr.Column(scale=3):
                 # State holding the current RoomModel for the Material Override
-                # Tab Apply button. Populated by _on_submit (index 7 in the
-                # 11-tuple). None before first submit.
+                # Tab Apply button. Populated by _on_submit (index 10 in the
+                # 12-tuple; layout_state index 11 — v0.16.1 OQ-32 closure).
+                # None before first submit.
                 room_state: gr.State = gr.State(value=None)
+                # layout_state: holds PlacementResult for OQ-32 viewer rebuild on Apply (v0.16.1).
+                layout_state: gr.State = gr.State(value=None)
                 # State holding pending material changes as a JSON string
                 # {"surface_index": "material_value", ...}. Reset to "{}" on
                 # each new submit so stale changes don't carry over.
@@ -488,6 +553,7 @@ def build_demo() -> gr.Blocks:
                     material_table = _mat_comps.get("dataframe") if _mat_comps else None
                     _apply_btn = _mat_comps.get("apply_btn") if _mat_comps else None
                     _override_status_md = _mat_comps.get("status_md") if _mat_comps else None
+                    _changes_textbox = _mat_comps.get("changes_textbox") if _mat_comps else None
 
                     with gr.Tab("2D 블루프린트"):
                         gr.Markdown(
@@ -527,49 +593,37 @@ def build_demo() -> gr.Blocks:
                 viewer_plot, report_plot, report_json, pdf_file,
                 binaural_audio, binaural_status_md, raw_file,
                 material_table, blueprint_image, blueprint_file,
-                room_state,  # index 10 — feeds Material Override Apply button
+                room_state,    # index 10 — feeds Material Override Apply button
+                layout_state,  # index 11 — feeds OQ-32 viewer rebuild on Apply (v0.16.1)
             ],
         )
 
         # Wire Material Override Apply button (HIGH-1 fix).
         # _apply_btn is None if build_material_override_tab() returned {} (no Gradio).
+        # Wire Dataframe change event → changes_textbox → changes_state (LOW-2 + LOW-3).
+        if material_table is not None and _changes_textbox is not None:
+            try:
+                material_table.change(
+                    fn=lambda rows, room: (
+                        _dataframe_to_changes_json(rows, room)
+                        if room is not None else "{}"
+                    ),
+                    inputs=[material_table, room_state],
+                    outputs=[_changes_textbox],
+                )
+                _changes_textbox.change(
+                    fn=lambda s: s,  # mirror textbox value into changes_state
+                    inputs=[_changes_textbox],
+                    outputs=[changes_state],
+                )
+            except Exception:
+                _LOG.warning("Dataframe change event wiring failed; fallback to manual JSON input")
+
         if _apply_btn is not None:
-            def _on_apply_overrides_wrapper(
-                room: Any,
-                changes_json: Any,
-            ) -> tuple[Any, Any, Any, Any, Any]:
-                """Wrap on_apply_overrides for Gradio output shape.
-
-                Returns (room_state, report_plot, report_json, override_status_md, changes_state_reset).
-                """
-                if room is None:
-                    status = gr.update(value="오류: 먼저 방 스캔 파일을 실행하세요.", visible=True)
-                    return room, None, None, status, "{}"
-                try:
-                    from roomestim_web.report import build_rt60_bar_chart
-                    changes_str = changes_json if isinstance(changes_json, str) else "{}"
-                    new_room, new_report, errors = on_apply_overrides(room, changes_str)
-                    new_rt60_chart = build_rt60_bar_chart(new_report)
-                    new_report_json: Any = new_report.to_json_dict()
-                    if errors:
-                        msg = "⚠ 일부 재질 값 오류:\n" + "\n".join(f"• {e}" for e in errors)
-                    else:
-                        n = len([k for k in (
-                            {} if not changes_str.strip() else
-                            __import__("json").loads(changes_str)
-                        )])
-                        msg = f"정정 적용됨: {n} surface(s)"
-                    status_update = gr.update(value=msg, visible=True)
-                    return new_room, new_rt60_chart, new_report_json, status_update, "{}"
-                except Exception as exc:
-                    _LOG.exception("_on_apply_overrides_wrapper failed")
-                    status_update = gr.update(value=f"오류: {exc}", visible=True)
-                    return room, None, None, status_update, "{}"
-
             _apply_btn.click(
                 fn=_on_apply_overrides_wrapper,
-                inputs=[room_state, changes_state],
-                outputs=[room_state, report_plot, report_json, _override_status_md, changes_state],
+                inputs=[room_state, layout_state, changes_state],
+                outputs=[room_state, viewer_plot, report_plot, report_json, _override_status_md, changes_state],
             )
 
     return demo

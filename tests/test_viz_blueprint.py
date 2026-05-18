@@ -87,6 +87,21 @@ def test_render_blueprint_determinism_png_byte_equal(
     )
 
 
+def test_blueprint_module_locks_agg_backend() -> None:
+    """Importing roomestim.viz.blueprint forces matplotlib Agg backend (MEDIUM-2 regression lock).
+
+    v0.16.1: module-level guard ensures PNG byte-equal determinism even if
+    another module initialised a non-Agg backend before this import.
+    """
+    import matplotlib  # noqa: PLC0415
+    import roomestim.viz.blueprint  # noqa: F401 (side-effect import)
+
+    assert matplotlib.get_backend().lower() == "agg", (
+        f"Expected 'agg' backend after importing roomestim.viz.blueprint, "
+        f"got {matplotlib.get_backend()!r}"
+    )
+
+
 def test_render_blueprint_coordinate_z_up(
     lab_room: object, tmp_path: Path
 ) -> None:

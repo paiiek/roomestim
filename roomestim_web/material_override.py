@@ -129,6 +129,41 @@ def on_apply_overrides(
 
 
 # --------------------------------------------------------------------------- #
+# Dataframe → JSON helper
+# --------------------------------------------------------------------------- #
+
+
+def _dataframe_to_changes_json(rows: list[list[str]], initial_room: RoomModel) -> str:
+    """Convert Dataframe rows to a JSON changes string, including only changed materials.
+
+    Parameters
+    ----------
+    rows:
+        Current Dataframe rows as returned by Gradio (list of [index, kind, material, poly_summary]).
+    initial_room:
+        Baseline RoomModel; surfaces whose material matches baseline are excluded from output.
+
+    Returns
+    -------
+    str
+        JSON string ``{"idx": "material_value", ...}`` for changed surfaces only.
+        Returns ``"{}"`` when no changes are detected or rows is empty.
+    """
+    if not rows:
+        return "{}"
+    changes: dict[str, str] = {}
+    for i, row in enumerate(rows):
+        if len(row) < 3:
+            continue
+        new_mat = str(row[2])
+        if i < len(initial_room.surfaces):
+            baseline_mat = initial_room.surfaces[i].material.value
+            if new_mat != baseline_mat:
+                changes[str(i)] = new_mat
+    return json.dumps(changes) if changes else "{}"
+
+
+# --------------------------------------------------------------------------- #
 # Gradio tab builder
 # --------------------------------------------------------------------------- #
 
@@ -159,8 +194,17 @@ def build_material_override_tab(  # type: ignore[return]
             headers=["index", "kind", "material", "polygon_summary"],
             datatype=["str", "str", "str", "str"],
             col_count=(4, "fixed"),
-            interactive=False,
-            label="표면 목록",
+            interactive=True,
+            label="표면 목록 (material 열 클릭하여 재질 정정)",
+        )
+        changes_textbox = gr.Textbox(
+            label="변경 사항 (JSON)",
+            value="{}",
+            lines=2,
+            info=(
+                'surface index → material 매핑. 예: `{"0": "glass", "3": "carpet"}`. '
+                '재질 열에서 값 변경 시 자동 갱신됩니다.'
+            ),
         )
         apply_btn = gr.Button("적용 (Apply)", variant="primary")
         status_md = gr.Markdown(
@@ -174,6 +218,7 @@ def build_material_override_tab(  # type: ignore[return]
         "dataframe": dataframe,
         "apply_btn": apply_btn,
         "status_md": status_md,
+        "changes_textbox": changes_textbox,
     }
 
 
@@ -181,5 +226,6 @@ __all__ = [
     "build_material_override_tab",
     "on_apply_overrides",
     "_build_surface_table",
+    "_dataframe_to_changes_json",
     "_MATERIAL_CHOICES",
 ]

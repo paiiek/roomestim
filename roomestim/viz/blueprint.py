@@ -30,6 +30,17 @@ References: D41, ADR 0032.
 
 from __future__ import annotations
 
+# ADR 0032 §D + v0.16.1 MEDIUM-2 closure: force Agg backend at IMPORT time
+# so that even import-only consumers cannot break PNG byte-equal determinism.
+# `force=True` is required when another module has already initialised a
+# non-Agg backend in the same process (e.g., test runners with `--mpl`).
+try:
+    import matplotlib  # noqa: PLC0415
+    if matplotlib.get_backend().lower() != "agg":
+        matplotlib.use("Agg", force=True)
+except ImportError:
+    pass  # matplotlib is a [viz] extra; render_blueprint() will surface later
+
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -292,9 +303,6 @@ def render_blueprint(
     show_scale_bar:
         Draw 1 m scale bar in bottom-right corner.
     """
-    import matplotlib  # noqa: PLC0415
-
-    matplotlib.use("Agg")  # deterministic headless backend (ADR 0032 §D)
     import matplotlib.pyplot as plt  # noqa: PLC0415
 
     xmin, zmin, xmax, zmax = _bbox_from_floor(room)

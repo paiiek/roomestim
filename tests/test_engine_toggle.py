@@ -242,6 +242,73 @@ def test_cli_export_cli_overrides_env(
     )
 
 
+def test_cli_export_cli_overrides_env_positive_success(
+    room_and_layout_yaml: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """CLI --validate-engine points at valid schema; ENV points at anti-permissive schema.
+
+    Setup:
+      ENV engine: anti-permissive schema (required: [__MUST_NOT_EXIST_PROP__]) → would fail.
+      CLI engine: permissive schema (type: object) → succeeds.
+
+    Expected: exit 0 + layout.yaml created + no WARNING header.
+    Proof that CLI path is used: if ENV were used, required-prop validation would
+    reject the layout YAML and exit non-zero.
+
+    Note: `__MUST_NOT_EXIST_PROP__` is intentionally absurd; do not add to layout schema.
+    """
+    import json as _json
+
+    room_yaml, layout_yaml = room_and_layout_yaml
+    out_dir = tmp_path / "out_cli_positive"
+    out_dir.mkdir()
+
+    # ENV engine: anti-permissive — layout must have a property that never exists
+    env_engine = tmp_path / "env_engine"
+    env_proto = env_engine / "proto"
+    env_proto.mkdir(parents=True)
+    (env_proto / "geometry_schema.json").write_text(
+        _json.dumps({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "required": ["__MUST_NOT_EXIST_PROP__"],
+        }),
+        encoding="utf-8",
+    )
+
+    # CLI engine: permissive — accepts any object → validation succeeds
+    cli_engine = tmp_path / "cli_engine"
+    cli_proto = cli_engine / "proto"
+    cli_proto.mkdir(parents=True)
+    (cli_proto / "geometry_schema.json").write_text(
+        _json.dumps({"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"}),
+        encoding="utf-8",
+    )
+
+    env = {**os.environ, "SPATIAL_ENGINE_REPO_DIR": str(env_engine)}
+    result = subprocess.run(
+        [_PYTHON, "-m", "roomestim", "export",
+         "--in-room", str(room_yaml),
+         "--in-placement", str(layout_yaml),
+         "--out-dir", str(out_dir),
+         "--validate-engine", str(cli_engine)],
+        capture_output=True, text=True,
+        env=env,
+    )
+    # CLI permissive schema → should succeed
+    assert result.returncode == 0, (
+        f"Expected exit 0 (CLI permissive schema used, not ENV anti-permissive). "
+        f"If ENV were used, required prop check would reject the YAML. "
+        f"returncode={result.returncode}\nstderr: {result.stderr}"
+    )
+    layout_out = out_dir / "layout.yaml"
+    assert layout_out.exists(), "layout.yaml not written after CLI-path success"
+    content = layout_out.read_text(encoding="utf-8")
+    assert "# WARNING" not in content, (
+        "WARNING header must not appear when validation is ON (CLI permissive path)"
+    )
+
+
 def test_cli_export_help_shows_validation_flags() -> None:
     """--help shows --validate-engine and --no-engine-validation flags."""
     result = subprocess.run(
