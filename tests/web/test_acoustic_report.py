@@ -43,3 +43,34 @@ def test_eyring_lessthan_or_equal_sabine(fixture_room: object) -> None:
             report.eyring_rt60_per_band_s[band]
             <= report.sabine_rt60_per_band_s[band] + 1e-9
         )
+
+
+@pytest.mark.web
+def test_report_geom_helpers_imported_from_core() -> None:
+    """ADR 0029 §Cross-lane-geom-amendment regression lock (v0.15.2).
+
+    Verifies that the three private geometry helpers were removed from
+    roomestim_web.report and that polygon_area_3d / room_volume are now
+    sourced directly from roomestim.geom.polygon (identity check).
+    Fails if anyone re-introduces the duplicates.
+    """
+    import roomestim_web.report as wr
+    from roomestim.geom.polygon import polygon_area_3d, room_volume
+
+    assert not hasattr(wr, "_polygon_area_3d"), (
+        "_polygon_area_3d duplicate must not exist in roomestim_web.report"
+    )
+    assert not hasattr(wr, "_shoelace_2d"), (
+        "_shoelace_2d duplicate must not exist in roomestim_web.report"
+    )
+    assert not hasattr(wr, "_room_volume"), (
+        "_room_volume duplicate must not exist in roomestim_web.report"
+    )
+    assert wr.polygon_area_3d is polygon_area_3d, (
+        "roomestim_web.report.polygon_area_3d must be the same object as "
+        "roomestim.geom.polygon.polygon_area_3d (import identity)"
+    )
+    assert wr.room_volume is room_volume, (
+        "roomestim_web.report.room_volume must be the same object as "
+        "roomestim.geom.polygon.room_volume (import identity)"
+    )

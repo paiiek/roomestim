@@ -171,3 +171,42 @@ intentionally out of scope for v0.15.1.
 
 D22 audit-trail-discipline: this block follows the v0.10.1 precedent of
 appending §Status-update without retroactively editing prior content.
+
+## §Status-update-v0.15.2 (2026-05-18)
+
+**Patch release** — v0.15.1 code-review LOW retention items closed (Item G +
+Item H). No policy change to the predictor cascade (ADR 0030 §A–§E byte-equal).
+
+**Item G — web report geom dedup land**
+`roomestim_web/report.py` `_polygon_area_3d` / `_shoelace_2d` / `_room_volume`
+three private duplicate functions removed (~24 LoC). Replaced with:
+
+```python
+from roomestim.geom.polygon import polygon_area_3d, room_volume
+```
+
+Callsites updated: `_surface_areas_by_material` inner loop, `build_acoustic_report`
+volume calculation, and per-surface area loop. Decision basis: ADR 0029
+§Cross-lane-geom-amendment (web → core stable public util import permitted;
+core → web direction remains forbidden). `roomestim_web/__init__.py` bumped to
+`0.12-web.7` (web lane touched per D30).
+
+**Item H — LOW-2 clean-close (ace_challenge._room_volume deprecation shim)**
+v0.15.1 removed `_room_volume` from `roomestim/adapters/ace_challenge.py`
+without adding a deprecation shim. v0.15.2 records the **intentional decision
+not to add a shim**:
+
+- `_room_volume` carried an underscore prefix (module-private convention).
+- `ace_challenge.py` defines no `__all__`; underscore-prefixed symbols are
+  excluded from wildcard imports by Python convention.
+- External consumer search `grep -rn "ace_challenge.*_room_volume"` returns 0
+  hits across the entire repo tree.
+- PATCH-range removal of an internal (underscore-prefix, `__all__`-unexposed)
+  symbol is within semver PATCH scope. A shim would permanently dead-code the
+  alias and confuse future `grep` audits.
+
+If an external fork reports an `ImportError`, the remediation is a one-line
+shim: `from roomestim.geom.polygon import room_volume as _room_volume` in the
+caller. This ADR block serves as the audit trail for that decision.
+
+D22 audit-trail-discipline: this block follows the v0.10.1 / v0.15.1 precedent.

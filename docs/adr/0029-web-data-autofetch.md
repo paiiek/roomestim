@@ -121,3 +121,50 @@ This is a clarification of ADR 0026 §Reverse-criterion, not a structural source
 - `scripts/fetch_web_data.py` — download implementation.
 - `roomestim_web/app.py:_ensure_web_data()` — background thread entry point.
 - `RELEASE_NOTES_v0.12-web.4.md` — release notes.
+
+## §Cross-lane-geom-amendment (v0.15.2 / 2026-05-18)
+
+### Context
+
+v0.15.1 landed `roomestim/geom/polygon.py` as a shared util (core-internal only).
+`roomestim_web/report.py` retained its own private `_polygon_area_3d` /
+`_shoelace_2d` / `_room_volume` duplicates per a cautious reading of D29 lane
+separation. The v0.15.1 code-review LOW retention note promised:
+"web → core import cross-lane dedup in v0.15.2."
+
+### Decision
+
+D29 lane separation was designed to prevent **core → web** dependency leaks
+(i.e., `roomestim/**` must never import `roomestim_web/**`). The reverse
+direction — **web → core stable public util** — does not violate lane isolation;
+it eliminates duplicate code and is the preferred pattern for a shared leaf
+module like `roomestim.geom.polygon`.
+
+**Scope**: `roomestim_web/**` may import public symbols from
+`roomestim.geom.polygon` (`polygon_area_3d`, `room_volume`, `shoelace_2d`) and,
+by extension, any future `roomestim.geom.*` leaf module whose public API is
+stable. The amendment does NOT extend to mutable internals such as
+`roomestim.adapters.*` or `roomestim.reconstruct.*`; those boundaries are
+unchanged. Existing `roomestim.model` / `roomestim.reconstruct` imports in
+`roomestim_web` are unaffected (they predate this amendment and follow the same
+web → core direction).
+
+**Direction invariant (unchanged)**: `roomestim/**` importing `roomestim_web/**`
+remains permanently forbidden. `mypy --strict roomestim/` does not include the
+web directory, which enforces this invariant at type-check time.
+
+### Consequences
+
+- (+) `roomestim_web/report.py` duplicate 3 functions removed → ~24 LoC reduction.
+- (+) Future geom util evolution (e.g., OQ-30 per-wall α decomposition) requires
+  changes in one place only.
+- (−) `git diff` lane-isolation checks must distinguish "policy-change cycles"
+  (where web touch is intentional) from "byte-equal cycles" (D30 invariant).
+  v0.15.2 is a policy-change cycle; D30 is not violated.
+
+### References
+
+- ADR 0024 §4 (D29 routing precedent).
+- D30 (web-track versioning and byte-equal discipline).
+- v0.15.1-patch §2 decision (LOW retention note).
+- v0.15.2-design §2 (amendment rationale + option analysis).

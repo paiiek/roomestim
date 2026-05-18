@@ -3,14 +3,18 @@
 Computes RT60 (Sabine + Eyring, single-band and per-octave) from a RoomModel
 and builds Plotly charts for the Gradio UI. Plotly is lazy-imported inside
 chart-building functions so the module is importable without plotly installed.
+
+Geometry helpers (polygon_area_3d, room_volume, shoelace_2d) live in
+roomestim.geom.polygon since v0.15.2 per ADR 0029 §Cross-lane-geom-amendment.
+_surface_areas_by_material is kept web-local due to its MaterialLabel dependency.
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from roomestim.geom.polygon import polygon_area_3d, room_volume
 from roomestim.model import MaterialLabel, RoomModel
 
 if TYPE_CHECKING:
@@ -30,41 +34,12 @@ __all__ = [
 _OCTAVE_BANDS = (125, 250, 500, 1000, 2000, 4000)
 
 
-def _polygon_area_3d(pts: list[Any]) -> float:
-    """Newell's method: area of a planar polygon in 3D."""
-    n = len(pts)
-    nx = ny = nz = 0.0
-    for i in range(n):
-        j = (i + 1) % n
-        nx += (pts[i].y - pts[j].y) * (pts[i].z + pts[j].z)
-        ny += (pts[i].z - pts[j].z) * (pts[i].x + pts[j].x)
-        nz += (pts[i].x - pts[j].x) * (pts[i].y + pts[j].y)
-    return 0.5 * math.sqrt(nx * nx + ny * ny + nz * nz)
-
-
-def _shoelace_2d(coords: list[tuple[float, float]]) -> float:
-    """Signed shoelace area for 2D polygon; returns absolute value."""
-    n = len(coords)
-    acc = 0.0
-    for i in range(n):
-        j = (i + 1) % n
-        acc += coords[i][0] * coords[j][1]
-        acc -= coords[j][0] * coords[i][1]
-    return abs(acc) * 0.5
-
-
-def _room_volume(room: RoomModel) -> float:
-    floor_coords = [(p.x, p.z) for p in room.floor_polygon]
-    floor_area = _shoelace_2d(floor_coords)
-    return floor_area * room.ceiling_height_m
-
-
 def _surface_areas_by_material(room: RoomModel) -> dict[MaterialLabel, float]:
     from collections import defaultdict
 
     areas: dict[MaterialLabel, float] = defaultdict(float)
     for surf in room.surfaces:
-        areas[surf.material] += _polygon_area_3d(surf.polygon)
+        areas[surf.material] += polygon_area_3d(surf.polygon)
     return dict(areas)
 
 
@@ -147,7 +122,7 @@ def build_acoustic_report(room: RoomModel) -> AcousticReport:
         sabine_rt60_per_band,
     )
 
-    volume_m3 = _room_volume(room)
+    volume_m3 = room_volume(room)
     agg_areas = _surface_areas_by_material(room)
     total_surface_area_m2 = sum(agg_areas.values())
 
@@ -164,7 +139,7 @@ def build_acoustic_report(room: RoomModel) -> AcousticReport:
     # affect this chart-input list, not the aggregate RT60.
     surface_absorption: list[tuple[int, MaterialLabel, float, float]] = []
     for idx, surf in enumerate(room.surfaces):
-        area = _polygon_area_3d(surf.polygon)
+        area = polygon_area_3d(surf.polygon)
         sabins = area * surf.absorption_500hz
         surface_absorption.append((idx, surf.material, area, sabins))
 
