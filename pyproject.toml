@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.16.1"
+version = "0.17.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -34,7 +34,8 @@ web = [
     "soundfile>=0.12",
 ]
 viz = ["matplotlib>=3.7"]
-usd = ["pyusd"]
+usd = ["usd-core>=24.0; python_version >= '3.10'"]
+mesh-export = ["usd-core>=24.0; python_version >= '3.10'"]
 colmap = ["pycolmap>=0.6"]
 
 [project.scripts]

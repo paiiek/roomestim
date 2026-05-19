@@ -1,18 +1,30 @@
 """roomestim — capture-to-config: room scan -> RoomModel + speaker placement -> engine YAMLs."""
 
-__version__ = "0.16.1"
-__schema_version__ = "0.1-draft"
+__version__ = "0.17.0"
+__schema_version__ = "0.2-draft"
 
 from roomestim.edit import (  # noqa: E402
     evolve_room,
+    evolve_room_add_object,
     evolve_room_material,
     evolve_room_materials_bulk,
+    evolve_room_remove_object,
     evolve_surface,
+)
+from roomestim.model import (  # noqa: E402
+    DEFAULT_OBJECT_MATERIAL,
+    Object,
+    ObjectKind,
 )
 
 __all__ = [
+    "DEFAULT_OBJECT_MATERIAL",
+    "Object",
+    "ObjectKind",
     "evolve_room",
+    "evolve_room_add_object",
     "evolve_room_material",
     "evolve_room_materials_bulk",
+    "evolve_room_remove_object",
     "evolve_surface",
 ]

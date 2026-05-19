@@ -26,6 +26,12 @@ from roomestim_web.material_override import (
     build_material_override_tab,
     on_apply_overrides,
 )
+from roomestim_web.object_add import (
+    _objects_to_rows,
+    _on_add_object,
+    _on_remove_object,
+    build_object_add_tab,
+)
 
 _LOG = logging.getLogger("roomestim_web")
 
@@ -507,6 +513,21 @@ def build_demo() -> gr.Blocks:
 
                 submit_btn = gr.Button("실행", variant="primary")
 
+                # ── Export format Radio (Phase 5 / ADR 0035) ────────────────
+                export_format = gr.Radio(
+                    choices=["yaml", "usdz", "gltf"],
+                    value="yaml",
+                    label="Export 포맷",
+                    info=(
+                        "yaml = 기존 room/layout YAML 압축 (backward-compat). "
+                        "usdz = AR 호환 USDZ (extras 필요). "
+                        "gltf = GLB 바이너리 (trimesh 사용)."
+                    ),
+                )
+                export_btn = gr.Button("Export", variant="secondary")
+                export_file = gr.File(label="Export 결과 다운로드", interactive=False)
+                export_status_md = gr.Markdown(value="", visible=False)
+
             # ── Output tabs ──────────────────────────────────────────────────
             with gr.Column(scale=3):
                 # State holding the current RoomModel for the Material Override
@@ -554,6 +575,16 @@ def build_demo() -> gr.Blocks:
                     _apply_btn = _mat_comps.get("apply_btn") if _mat_comps else None
                     _override_status_md = _mat_comps.get("status_md") if _mat_comps else None
                     _changes_textbox = _mat_comps.get("changes_textbox") if _mat_comps else None
+
+                    # Object Add Tab — v0.14-web.0 (ADR 0034 §A / D39).
+                    _obj_comps = build_object_add_tab(room_state, _on_add_object, _on_remove_object)
+                    _obj_form = _obj_comps.get("form", {})
+                    _obj_kind_radio = _obj_comps.get("kind_radio")
+                    _obj_add_btn = _obj_comps.get("add_btn")
+                    _obj_table = _obj_comps.get("object_table")
+                    _obj_remove_index = _obj_comps.get("remove_index")
+                    _obj_remove_btn = _obj_comps.get("remove_btn")
+                    _obj_status_md = _obj_comps.get("status_md")
 
                     with gr.Tab("2D 블루프린트"):
                         gr.Markdown(
@@ -626,7 +657,140 @@ def build_demo() -> gr.Blocks:
                 outputs=[room_state, viewer_plot, report_plot, report_json, _override_status_md, changes_state],
             )
 
+        # ── Object Add wiring (v0.14-web.0) ──────────────────────────────────
+        if (
+            _obj_add_btn is not None
+            and _obj_kind_radio is not None
+            and _obj_table is not None
+            and _obj_status_md is not None
+        ):
+            _form_keys = ["anchor_x", "anchor_y", "anchor_z", "width_m", "height_m", "depth_m", "wall_index", "material"]
+            _form_inputs = [_obj_form[k] for k in _form_keys]
+
+            def _add_wrapper(
+                room: Any,
+                layout: Any,
+                kind: str,
+                *form_values: Any,
+            ) -> tuple[Any, Any, Any, Any, Any]:
+                form_data = dict(zip(_form_keys, form_values, strict=False))
+                new_room, status = _on_add_object(room, kind, form_data)  # type: ignore[arg-type]
+                rows = _objects_to_rows(new_room)
+                try:
+                    from roomestim_web.viewer import build_room_figure  # noqa: PLC0415
+                    new_fig = build_room_figure(new_room, layout) if (new_room is not None and layout is not None) else None
+                except Exception:
+                    _LOG.exception("build_room_figure failed after object add")
+                    new_fig = None
+                # Recompute acoustic report (objects may affect ISM via predictor).
+                try:
+                    from roomestim_web.report import build_acoustic_report, build_rt60_bar_chart  # noqa: PLC0415
+                    rep = build_acoustic_report(new_room) if new_room is not None else None
+                    chart = build_rt60_bar_chart(rep) if rep is not None else None
+                    rep_json = rep.to_json_dict() if rep is not None else None
+                except Exception:
+                    _LOG.exception("acoustic report rebuild failed after object add")
+                    chart, rep_json = None, None
+                _ = chart
+                _ = rep_json
+                return new_room, new_fig, rows, gr.update(value=status, visible=True), gr.update()
+
+            _obj_add_btn.click(
+                fn=_add_wrapper,
+                inputs=[room_state, layout_state, _obj_kind_radio, *_form_inputs],
+                outputs=[room_state, viewer_plot, _obj_table, _obj_status_md, report_plot],
+            )
+
+        if (
+            _obj_remove_btn is not None
+            and _obj_remove_index is not None
+            and _obj_table is not None
+            and _obj_status_md is not None
+        ):
+            def _remove_wrapper(
+                room: Any,
+                layout: Any,
+                idx: Any,
+            ) -> tuple[Any, Any, Any, Any]:
+                new_room, status = _on_remove_object(room, int(idx) if idx is not None else 0)
+                rows = _objects_to_rows(new_room)
+                try:
+                    from roomestim_web.viewer import build_room_figure  # noqa: PLC0415
+                    new_fig = build_room_figure(new_room, layout) if (new_room is not None and layout is not None) else None
+                except Exception:
+                    _LOG.exception("build_room_figure failed after object remove")
+                    new_fig = None
+                return new_room, new_fig, rows, gr.update(value=status, visible=True)
+
+            _obj_remove_btn.click(
+                fn=_remove_wrapper,
+                inputs=[room_state, layout_state, _obj_remove_index],
+                outputs=[room_state, viewer_plot, _obj_table, _obj_status_md],
+            )
+
+        # ── Export format dispatch (Phase 5 / ADR 0035) ──────────────────────
+        export_btn.click(
+            fn=_on_export,
+            inputs=[room_state, layout_state, export_format],
+            outputs=[export_file, export_status_md],
+        )
+
     return demo
+
+
+def _on_export(
+    room: Any,
+    layout: Any,
+    fmt: str,
+) -> tuple[Any, Any]:
+    """Dispatch Export button click by selected format.
+
+    - ``yaml``: re-use existing layout_yaml writer.
+    - ``usdz``: lazy import ``roomestim.export.write_usdz``; ImportError if
+      ``[usd]`` extras 미설치.
+    - ``gltf``: lazy import ``roomestim.export.write_gltf`` (format=``glb``).
+
+    Returns (file_path_or_None, gr.update for status_md).
+    """
+    if room is None or layout is None:
+        return None, gr.update(value="오류: 먼저 방 스캔 파일을 실행하세요.", visible=True)
+    td = tempfile.TemporaryDirectory(prefix="roomestim_export_")
+    _TEMP_REAPER.append(td)
+    out_dir = Path(td.name)
+    try:
+        if fmt == "yaml":
+            from roomestim.export import write_layout_yaml  # noqa: PLC0415
+            out_path = out_dir / "layout.yaml"
+            write_layout_yaml(layout, out_path)
+            return str(out_path), gr.update(value=f"YAML export 완료: {out_path.name}", visible=True)
+        if fmt == "usdz":
+            try:
+                from roomestim.export import write_usdz  # type: ignore[attr-defined]  # noqa: PLC0415
+            except ImportError as exc:
+                _LOG.warning("usdz export ImportError: %s", exc)
+                return None, gr.update(
+                    value="오류: USDZ extras 미설치 — `pip install roomestim[usd]` 후 다시 시도하세요.",
+                    visible=True,
+                )
+            out_path = out_dir / "room.usdz"
+            write_usdz(room, layout, out_path)
+            return str(out_path), gr.update(value=f"USDZ export 완료: {out_path.name}", visible=True)
+        if fmt == "gltf":
+            try:
+                from roomestim.export import write_gltf  # type: ignore[attr-defined]  # noqa: PLC0415
+            except ImportError as exc:
+                _LOG.warning("gltf export ImportError: %s", exc)
+                return None, gr.update(
+                    value="오류: gLTF export 의존성 미설치 (trimesh 필요).",
+                    visible=True,
+                )
+            out_path = out_dir / "room.glb"
+            write_gltf(room, layout, out_path, format="glb")
+            return str(out_path), gr.update(value=f"gLTF export 완료: {out_path.name}", visible=True)
+        return None, gr.update(value=f"오류: 알 수 없는 포맷 {fmt!r}", visible=True)
+    except Exception as exc:
+        _LOG.exception("_on_export failed for fmt=%s", fmt)
+        return None, gr.update(value=f"오류: export 실패 — {exc}", visible=True)
 
 
 if __name__ == "__main__":

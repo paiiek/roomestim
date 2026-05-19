@@ -41,12 +41,15 @@ def test_writes_valid_yaml(tmp_path: Path) -> None:
     with out.open("r", encoding="utf-8") as fh:
         loaded: dict[str, Any] = yaml.safe_load(fh)
 
-    schema = _load_schema("room_schema.draft.json")
+    # v0.17 default schema is "0.2-draft" (adds objects[]).
+    schema = _load_schema("room_schema.v0_2.draft.json")
     Draft202012Validator(schema).validate(loaded)
-    assert loaded["version"] == "0.1-draft"
+    assert loaded["version"] == "0.2-draft"
     assert loaded["name"] == "synthetic_shoebox"
     assert len(loaded["surfaces"]) == 6  # floor + ceiling + 4 walls
     assert loaded["ceiling_height_m"] == pytest.approx(2.8)
+    # objects key always emitted on 0.2-draft (possibly empty).
+    assert loaded["objects"] == []
 
 
 def test_l_shape_writes_valid_yaml(tmp_path: Path) -> None:
@@ -57,10 +60,12 @@ def test_l_shape_writes_valid_yaml(tmp_path: Path) -> None:
     with out.open("r", encoding="utf-8") as fh:
         loaded: dict[str, Any] = yaml.safe_load(fh)
 
-    schema = _load_schema("room_schema.draft.json")
+    # v0.17 default schema is "0.2-draft" (adds objects[]).
+    schema = _load_schema("room_schema.v0_2.draft.json")
     Draft202012Validator(schema).validate(loaded)
     assert len(loaded["floor_polygon"]) == 6
     assert len(loaded["surfaces"]) == 8  # floor + ceiling + 6 walls
+    assert loaded["objects"] == []
 
 
 def test_rejects_nonfinite(tmp_path: Path) -> None:

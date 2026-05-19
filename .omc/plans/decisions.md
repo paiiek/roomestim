@@ -1447,3 +1447,42 @@ must hold on ALL evolved rooms. Regression lock: 50 random seeds × 10 materials
 **New ADRs this cycle**: ADR 0031 (material override policy), ADR 0032 (blueprint
 2D export), ADR 0033 (engine validation toggle). ADR 0030 §Status-update-v0.16
 added (Items I/J/K). OQ-31 NEW (multi-engine schema target deferral, v0.18+).
+
+## v0.17.0 D-decision allocation (2026-05-19)
+
+**D44** — Object schema + backward parse 0.1-draft → 0.2-draft.
+`RoomModel.objects: list[Object] = []` 신규 필드. `room_yaml_reader.py` schema_version
+분기: `"0.1-draft"` → `objects=[]` 자동; `"0.2-draft"` → `objects` 키 파싱.
+`room_yaml.py` 항상 `"0.2-draft"` write + `objects:` 무조건 emit.
+**Scope**: core. **Reverse if**: 외부 consumer가 0.2-draft YAML unknown field로 fail
+보고 → `roomestim export --schema 0.1` flag 도입 또는 OQ-36.
+**ADR ref**: ADR 0034 §B.
+
+**D45** — USDZ backend = `usd-core` PyPI wheel (`pyusd` deprecated → rejected).
+`[project.optional-dependencies] usd = ["usd-core>=24.0; python_version >= '3.10'"]`.
+gLTF backend = `trimesh` (기존 core dep — extras 추가 없음).
+**Scope**: export. **Reverse if**: `usd-core` wheel 미제공 / numpy 충돌 발견 →
+USDZ scope drop + v0.17.1 patch 또는 USDZ self-writer (~300 LoC).
+**ADR ref**: ADR 0035 §A.
+
+**D46** — Column → ISM 5 추가 surface; door/window → wall α override.
+column: `predictor._objects_to_surfaces(objects)` → 4 측면 + 1 top surface (CCW
+polygon, ADR 0002 convention); `_shoebox_surface_areas_and_alphas`에 머지.
+door/window: `predictor._objects_to_wall_alpha_overrides(objects)` →
+`{wall_index: [(area_m2, override_material), ...]}` dict; effective α =
+`α_wall × (1 − Σfrac) + Σ(α_obj × frac)`.
+**Scope**: acoustic. **Reverse if**: ADR 0009 invariant 위반 (`ism_rt60 < eyring_rt60
+− 1e-6`) → ISM 분기 비활성 fallback.
+**ADR ref**: ADR 0034 §C, ADR 0030 §Status-update-v0.17 Item Q.
+
+**D47** — door/window α override + ADR 0009 invariant + ADR 0030 cascade 회귀 lock
+(50 random seeds × 3 object kind = 150 instance).
+`tests/test_objects_acoustic_invariant.py` NEW 6 케이스: invariant `ism_rt60 ≥
+eyring_rt60 − 1e-6` + `default_predictor_name ∈ {"image_source", "eyring"}` (D38
+cascade) 검증.
+**Scope**: acoustic test. **Reverse if**: NaN rt60 or invariant failure →
+`_objects_to_wall_alpha_overrides` override fraction clamp 추가 (frac ≤ 1.0).
+**ADR ref**: ADR 0034 §D, ADR 0030 §Status-update-v0.17 Item Q.
+
+**New ADRs this cycle**: ADR 0034 (Object schema), ADR 0035 (Mesh export policy).
+ADR 0030 §Status-update-v0.17 추가 (Items Q/R/S).

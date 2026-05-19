@@ -412,3 +412,74 @@ name registry) with unclear ROI.
 3. Close as WONTFIX if only spatial_engine is ever targeted.
 
 **Cross-refs**: ADR 0033 §E, D42.
+
+---
+
+## v0.17.0 신규 OQ (2026-05-19)
+
+**OQ-33 — Mesh / Polycam / ACEChallenge adapter object 자동 인식 (v0.18+)**
+현재 `MeshAdapter` (Polycam 등)와 `ACEChallengeAdapter`는 `objects=[]` placeholder.
+mesh segmentation 정보 없이 column/door/window 자동 추출 미지원.
+
+**Deferral reason**: BoundingBox 클러스터링 알고리즘 미안정. 사용자 보고 없음.
+RoomPlan adapter는 ARKit `RoomAnchor` segment label로 자동 인식 가능 (별도 작업).
+
+**Trigger conditions** (D26 forbidden-indefinite-deferral 적용):
+- 사용자가 RoomPlan 외 phone-scan 출처에서 객체 자동 추출 요청 ≥ 1건, OR
+- mesh-only fixture에 object ground-truth 도입.
+
+**Evaluation cadence**: v0.18 cycle 종료 시 재검토; v0.19까지 결정 강제 (D26).
+
+**Resolution candidates**:
+1. mesh segmentation API (Polycam Pro) object label 직접 소비.
+2. BoundingBox 클러스터링 + geometric heuristic (height/aspect ratio 기반 kind 추론).
+3. 사용자 수동 annotation UI (ADR 0034 evolve helper 활용).
+
+**Cross-refs**: ADR 0034 §D (Scope OUT), ADR 0030 §Status-update-v0.17 Item Q 정직성 노트.
+
+---
+
+**OQ-34 — 곡선/원형 객체 (cylinder column) 지원 (v0.19+)**
+v0.17.0 `ObjectKind` Literal은 `"column"` (rectilinear box only)만 지원.
+cylinder / arch / circular pillar는 polygonal 근사 (n=16 등) 없이 표현 불가.
+
+**Deferral reason**: 현재 shoebox ISM 모델은 rectilinear surface가 기본 단위.
+곡선 근사는 n개 삼각형 surface → ISM order 50에서 계산 비용 n배 증가.
+사용자 보고 없음.
+
+**Trigger conditions** (D26 forbidden-indefinite-deferral 적용):
+- 사용자가 cylinder/arch column 지원 요청 ≥ 1건, OR
+- acoustic 모델이 non-rectilinear surface를 지원하는 버전으로 교체.
+
+**Evaluation cadence**: v0.19 cycle 시작 시 재검토.
+
+**Resolution candidates**:
+1. polygonal 근사 (n=8~16 sided polygon) + 기존 `Object` kind="column" 확장
+   (`shape: Literal["box", "cylinder"]` 신규 필드).
+2. `ObjectKind` Literal 확장 (`"column_cylinder"`) + ADR 0034 §Status-update.
+3. 전용 `CurvedObject` dataclass (ADR 0036).
+
+**Cross-refs**: ADR 0034 §D (Scope OUT — "곡선/원형 객체").
+
+---
+
+**OQ-35 — USDZ/gLTF acoustic metadata 표준 (v0.19+)**
+v0.17.0 `--with-acoustics-sidecar` 플래그는 `<basename>.acoustics.json` sidecar를
+생성하지만, schema는 `"v0.1-internal"` (비표준).
+
+**Deferral reason**: USD `<material binding>` acoustic extension 표준 없음.
+Apple RoomPlan API acoustic metadata 포맷 미공개. Vision Pro spatial audio SDK
+acoustic import 경로 미확인.
+
+**Trigger conditions** (D26 forbidden-indefinite-deferral 적용):
+- Vision Pro / Apple RoomPlan API acoustic metadata 표준 공개, OR
+- 사용자가 외부 도구 (Unreal MetaSounds, SPARTA) acoustic import 요청 ≥ 1건.
+
+**Evaluation cadence**: v0.19 cycle 시작 시 재검토.
+
+**Resolution candidates**:
+1. USD `UsdShade.Material` acoustic custom attribute 정의 (roomestim 자체 extension).
+2. gLTF `KHR_materials_acoustic` 확장 제안 (Khronos Working Group 참여).
+3. sidecar schema `"v0.2"` 안정화 (외부 표준 없이 roomestim 자체 spec).
+
+**Cross-refs**: ADR 0035 §E (sidecar format), ADR 0035 §G (reverse-criterion).

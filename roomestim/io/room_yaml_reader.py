@@ -15,9 +15,12 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from roomestim.model import (
+    DEFAULT_OBJECT_MATERIAL,
     ListenerArea,
     MaterialAbsorption,
     MaterialLabel,
+    Object,
+    ObjectKind,
     Point2,
     Point3,
     RoomModel,
@@ -34,7 +37,12 @@ def _schema_path(schema_version: str) -> Path:
         return _proto_dir() / "room_schema.draft.json"
     if schema_version == "0.1":
         return _proto_dir() / "room_schema.json"
-    raise ValueError(f"unknown schema_version: {schema_version!r}")
+    if schema_version == "0.2-draft":
+        return _proto_dir() / "room_schema.v0_2.draft.json"
+    raise ValueError(
+        f"Unsupported schema_version: {schema_version!r} "
+        f"(supported: '0.1-draft', '0.1', '0.2-draft')"
+    )
 
 
 def _load_schema(schema_version: str) -> dict[str, Any]:
@@ -90,6 +98,28 @@ def _surface(d: dict[str, Any]) -> Surface:
     )
 
 
+def _parse_object(d: dict[str, Any]) -> Object:
+    """Parse a single object dict (column/door/window) into :class:`Object`."""
+    kind_str = str(d["kind"])
+    if kind_str not in ("column", "door", "window"):
+        raise ValueError(f"Invalid object kind: {kind_str!r}")
+    kind: ObjectKind = kind_str  # type: ignore[assignment]
+    anchor = _point3(d["anchor"])
+    default_material = DEFAULT_OBJECT_MATERIAL[kind].value
+    material = MaterialLabel(d.get("material", default_material))
+    wall_index_raw = d.get("wall_index")
+    wall_index = int(wall_index_raw) if wall_index_raw is not None else None
+    return Object(
+        kind=kind,
+        anchor=anchor,
+        width_m=float(d["width_m"]),
+        height_m=float(d["height_m"]),
+        depth_m=float(d.get("depth_m", 0.0)),
+        wall_index=wall_index,
+        material=material,
+    )
+
+
 def read_room_yaml(path: Path | str) -> RoomModel:
     """Load a ``room.yaml`` produced by :func:`write_room_yaml` into a
     :class:`RoomModel`.
@@ -123,12 +153,28 @@ def read_room_yaml(path: Path | str) -> RoomModel:
 
     surfaces = [_surface(s) for s in data.get("surfaces", [])]
 
+    # D44: objects[] is schema-versioned. 0.1-draft / 0.1 → empty list (backward
+    # parse — pre-v0.17 YAMLs have no obstacle data). 0.2-draft → parse list.
+    objects: list[Object]
+    if schema_version in ("0.1-draft", "0.1"):
+        objects = []
+    elif schema_version == "0.2-draft":
+        objects = [_parse_object(o) for o in data.get("objects", [])]
+    else:
+        # Defensive: _schema_path already rejects unknown versions, but keep
+        # this branch in sync with the supported set.
+        raise ValueError(
+            f"Unsupported schema_version: {schema_version!r} "
+            f"(supported: '0.1-draft', '0.1', '0.2-draft')"
+        )
+
     return RoomModel(
         name=name,
         floor_polygon=floor_polygon,
         ceiling_height_m=ceiling_height_m,
         surfaces=surfaces,
         listener_area=listener_area,
+        objects=objects,
         schema_version=schema_version,
     )
 

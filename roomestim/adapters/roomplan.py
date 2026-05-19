@@ -40,9 +40,12 @@ import numpy as np
 
 from roomestim.adapters.base import ScaleAnchor
 from roomestim.model import (
+    DEFAULT_OBJECT_MATERIAL,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
+    Object,
+    ObjectKind,
     Point2,
     Point3,
     RoomModel,
@@ -122,6 +125,61 @@ def _polygon_3d(points_xyz: list[list[float]]) -> list[Point3]:
 
 def _project_to_floor_polygon(points_xyz: list[list[float]]) -> list[Point2]:
     return [Point2(float(p[0]), float(p[2])) for p in points_xyz]
+
+
+def _extract_objects(scan_data: dict[str, Any]) -> list[Object]:
+    """Map RoomPlan ``CapturedRoomObject`` categories to :class:`Object`.
+
+    v0.17 ADR 0034 §C: case-insensitive substring match on ``category`` —
+    ``"column"`` / ``"pillar"`` → column; ``"door"`` → door; ``"window"`` →
+    window. Any other category (chair, table, …) is ignored.
+
+    ``transform[i][3]`` (4th column) is the anchor; ``dimensions`` is
+    ``[width_m, height_m, depth_m]`` (depth defaults to 0 for door/window).
+    Material defaults per :data:`DEFAULT_OBJECT_MATERIAL`.
+    """
+    objects: list[Object] = []
+    for entry in scan_data.get("objects", []):
+        category = str(entry.get("category", "")).lower()
+        kind: ObjectKind | None
+        if "column" in category or "pillar" in category:
+            kind = "column"
+        elif "door" in category:
+            kind = "door"
+        elif "window" in category:
+            kind = "window"
+        else:
+            continue  # ignored: chair, table, … (v0.17 scope)
+        transform = entry.get("transform")
+        if transform is None:
+            continue
+        arr = np.asarray(transform, dtype=float)
+        if arr.shape != (4, 4):
+            continue
+        anchor = Point3(float(arr[0, 3]), float(arr[1, 3]), float(arr[2, 3]))
+        dims = entry.get("dimensions", [0.0, 0.0, 0.0])
+        width_m = float(dims[0]) if len(dims) > 0 else 0.0
+        height_m = float(dims[1]) if len(dims) > 1 else 0.0
+        depth_m = float(dims[2]) if len(dims) > 2 else 0.0
+        material_hint = entry.get("material_hint")
+        if material_hint is not None:
+            material = _material_for_hint(str(material_hint))
+        else:
+            material = DEFAULT_OBJECT_MATERIAL[kind]
+        wall_index_raw = entry.get("wall_index")
+        wall_index = int(wall_index_raw) if wall_index_raw is not None else None
+        objects.append(
+            Object(
+                kind=kind,
+                anchor=anchor,
+                width_m=width_m,
+                height_m=height_m,
+                depth_m=depth_m if kind == "column" else 0.0,
+                wall_index=wall_index,
+                material=material,
+            )
+        )
+    return objects
 
 
 class RoomPlanAdapter:
@@ -246,5 +304,6 @@ class RoomPlanAdapter:
             ceiling_height_m=ceiling_height_m,
             surfaces=surfaces,
             listener_area=listener,
-            schema_version="0.1-draft",
+            objects=_extract_objects(data),
+            schema_version="0.2-draft",
         )

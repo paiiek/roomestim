@@ -16,7 +16,7 @@ per-furnishing-item physics model. See ADR 0011.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
 
@@ -130,6 +130,8 @@ class Point3:
 
 SurfaceKind = Literal["wall", "floor", "ceiling"]
 
+ObjectKind = Literal["column", "door", "window"]
+
 
 # --------------------------------------------------------------------------- #
 # Surfaces
@@ -163,6 +165,42 @@ class MountSurface:
 
 
 # --------------------------------------------------------------------------- #
+# Obstacles (columns / doors / windows) — v0.17 schema extension per ADR 0034
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Object:
+    """An obstacle (column/door/window) inside the RoomModel.
+
+    - column: standalone (wall_index=None); 5 추가 surface (4 측면 + top)
+      per ADR 0034 §C / D46.
+    - door/window: attached to wall (wall_index 필수); 벽 α override 영역.
+
+    anchor:
+        column → base center (z = floor level).
+        door/window → bottom-left corner (in wall-local coord).
+    """
+
+    kind: ObjectKind
+    anchor: Point3
+    width_m: float
+    height_m: float
+    depth_m: float = 0.0  # column only; door/window = 0
+    wall_index: int | None = None  # None for column; required for door/window
+    material: MaterialLabel = MaterialLabel.UNKNOWN  # default per kind below
+
+
+#: Default material per object kind (used by adapters and YAML reader when the
+#: source data does not provide a material hint).
+DEFAULT_OBJECT_MATERIAL: dict[ObjectKind, MaterialLabel] = {
+    "column": MaterialLabel.WALL_CONCRETE,
+    "door": MaterialLabel.WALL_PAINTED,
+    "window": MaterialLabel.GLASS,
+}
+
+
+# --------------------------------------------------------------------------- #
 # Listener area
 # --------------------------------------------------------------------------- #
 
@@ -190,7 +228,8 @@ class RoomModel:
     ceiling_height_m: float
     surfaces: list[Surface]
     listener_area: ListenerArea
-    schema_version: str = "0.1-draft"
+    objects: list[Object] = field(default_factory=list)
+    schema_version: str = "0.2-draft"
 
 
 # --------------------------------------------------------------------------- #

@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from roomestim import __version__
 
@@ -109,6 +109,25 @@ def _add_export_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         default=".",
         metavar="DIR",
         help="Output directory (default: cwd).",
+    )
+    # v0.17 (ADR 0035): export-format dispatch. "yaml" preserves the v0.16.1
+    # byte-equal room.yaml + layout.yaml path; "usdz" / "gltf" / "glb" route
+    # to the corresponding write_* function.
+    p.add_argument(
+        "--format",
+        choices=["yaml", "usdz", "gltf", "glb"],
+        default="yaml",
+        help="Export format (default: yaml — backward-compat).",
+    )
+    p.add_argument(
+        "--with-acoustics-sidecar",
+        action="store_true",
+        default=False,
+        help=(
+            "Write a <out>.acoustics.json sidecar carrying per-surface + per-"
+            "object material absorption. Meaningful for --format usdz/gltf/glb; "
+            "silently ignored for --format yaml."
+        ),
     )
     # Engine validation toggle (D42 / ADR 0033): CLI flag > ENV var > default ON.
     engine_grp = p.add_mutually_exclusive_group()
@@ -302,8 +321,6 @@ def _cmd_place(args: argparse.Namespace) -> int:
 
 
 def _cmd_export(args: argparse.Namespace) -> int:
-    from roomestim.export.layout_yaml import write_layout_yaml
-    from roomestim.export.room_yaml import write_room_yaml
     from roomestim.io.placement_yaml_reader import read_placement_yaml
     from roomestim.io.room_yaml_reader import read_room_yaml
 
@@ -313,24 +330,61 @@ def _cmd_export(args: argparse.Namespace) -> int:
     room = read_room_yaml(args.in_room)
     placement = read_placement_yaml(args.in_placement)
 
-    room_out = out_dir / "room.yaml"
-    layout_out = out_dir / "layout.yaml"
+    export_format: str = getattr(args, "format", "yaml")
+    with_acoustics_sidecar: bool = getattr(args, "with_acoustics_sidecar", False)
 
-    write_room_yaml(room, room_out)
+    if export_format == "yaml":
+        from roomestim.export.layout_yaml import write_layout_yaml
+        from roomestim.export.room_yaml import write_room_yaml
 
-    # D42 precedence: CLI flag > ENV var > default ON (backward-compat).
-    no_validation: bool = getattr(args, "no_engine_validation", False)
-    cli_engine_path: str | None = getattr(args, "validate_engine", None)
-    write_layout_yaml(
-        placement,
-        layout_out,
-        validate=not no_validation,
-        schema_path_override=cli_engine_path,
-    )
+        room_out = out_dir / "room.yaml"
+        layout_out = out_dir / "layout.yaml"
 
-    print(f"wrote {room_out}")
-    print(f"wrote {layout_out}")
-    return 0
+        write_room_yaml(room, room_out)
+
+        # D42 precedence: CLI flag > ENV var > default ON (backward-compat).
+        no_validation: bool = getattr(args, "no_engine_validation", False)
+        cli_engine_path: str | None = getattr(args, "validate_engine", None)
+        write_layout_yaml(
+            placement,
+            layout_out,
+            validate=not no_validation,
+            schema_path_override=cli_engine_path,
+        )
+
+        print(f"wrote {room_out}")
+        print(f"wrote {layout_out}")
+        return 0
+
+    if export_format == "usdz":
+        from roomestim.export.usd import write_usdz
+
+        out_path = out_dir / "room.usdz"
+        write_usdz(
+            room,
+            placement,
+            out_path,
+            with_acoustics_sidecar=with_acoustics_sidecar,
+        )
+        print(f"wrote {out_path}")
+        return 0
+
+    if export_format in ("gltf", "glb"):
+        from roomestim.export.gltf import write_gltf
+
+        out_path = out_dir / f"room.{export_format}"
+        gltf_format: Literal["gltf", "glb"] = "glb" if export_format == "glb" else "gltf"
+        write_gltf(
+            room,
+            placement,
+            out_path,
+            format=gltf_format,
+            with_acoustics_sidecar=with_acoustics_sidecar,
+        )
+        print(f"wrote {out_path}")
+        return 0
+
+    raise ValueError(f"unknown export format: {export_format!r}")
 
 
 def _cmd_run(args: argparse.Namespace) -> int:

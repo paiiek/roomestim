@@ -37,7 +37,15 @@ from dataclasses import dataclass
 from typing import Literal
 
 from roomestim.geom.polygon import polygon_area_3d, room_volume
-from roomestim.model import MaterialLabel, RoomModel
+from roomestim.model import (
+    MaterialAbsorption,
+    MaterialAbsorptionBands,
+    MaterialLabel,
+    Object,
+    Point3,
+    RoomModel,
+    Surface,
+)
 from roomestim.reconstruct.image_source import image_source_rt60
 from roomestim.reconstruct.materials import (
     eyring_rt60,
@@ -118,39 +126,194 @@ def _shoebox_dimensions_m(room: RoomModel) -> tuple[float, float, float]:
 
 def _shoebox_surface_areas_and_alphas(
     room: RoomModel,
+    *,
+    extra_surfaces: list[Surface] | None = None,
+    wall_overrides: dict[int, list[tuple[float, MaterialLabel]]] | None = None,
 ) -> tuple[tuple[float, ...], tuple[float, ...]]:
     """Return (areas_6, alphas_6) parallel arrays at 500 Hz for ISM.
 
     Index convention: ``(floor, ceiling, wall_x_neg, wall_x_pos, wall_y_neg, wall_y_pos)``.
     Wall α is the area-weighted average across all ``kind == "wall"`` surfaces
     in ``room.surfaces``. Per-wall α decomposition is OQ-30 NEW.
+
+    Parameters
+    ----------
+    extra_surfaces:
+        Additional surfaces (e.g. from :func:`_objects_to_surfaces`) folded
+        into the area-weighted wall / ceiling averages. ``kind == "wall"``
+        rows merge with the wall α; ``kind == "ceiling"`` rows merge with the
+        ceiling α. ``kind == "floor"`` rows merge with the floor α.
+    wall_overrides:
+        ``{wall_index: [(area_m2, material), ...]}`` from
+        :func:`_objects_to_wall_alpha_overrides` (door / window α patches).
+        Currently applied as a global wall-α blend (per-wall decomposition is
+        OQ-30 deferred): the override areas are pooled and the resulting α
+        blends against the area-weighted base wall α.
     """
     L, W, H = _shoebox_dimensions_m(room)
     areas = (L * W, L * W, L * H, L * H, W * H, W * H)
 
-    floor_surf = next((s for s in room.surfaces if s.kind == "floor"), None)
-    ceil_surf = next((s for s in room.surfaces if s.kind == "ceiling"), None)
+    floor_surfs = [s for s in room.surfaces if s.kind == "floor"]
+    ceil_surfs = [s for s in room.surfaces if s.kind == "ceiling"]
     walls = [s for s in room.surfaces if s.kind == "wall"]
 
-    floor_alpha = float(floor_surf.absorption_500hz) if floor_surf else 0.10
-    ceil_alpha = float(ceil_surf.absorption_500hz) if ceil_surf else 0.10
-    if walls:
-        total_area = sum(polygon_area_3d(w.polygon) for w in walls)
-        if total_area > 0.0:
-            wall_alpha = sum(
-                float(w.absorption_500hz) * polygon_area_3d(w.polygon) for w in walls
-            ) / total_area
-        else:
-            wall_alpha = 0.10
-    else:
-        wall_alpha = 0.10
+    if extra_surfaces:
+        for extra in extra_surfaces:
+            if extra.kind == "floor":
+                floor_surfs.append(extra)
+            elif extra.kind == "ceiling":
+                ceil_surfs.append(extra)
+            elif extra.kind == "wall":
+                walls.append(extra)
+
+    def _area_weighted_alpha(surfs: list[Surface], default: float = 0.10) -> float:
+        if not surfs:
+            return default
+        total = sum(polygon_area_3d(s.polygon) for s in surfs)
+        if total <= 0.0:
+            return default
+        return sum(
+            float(s.absorption_500hz) * polygon_area_3d(s.polygon) for s in surfs
+        ) / total
+
+    floor_alpha = _area_weighted_alpha(floor_surfs)
+    ceil_alpha = _area_weighted_alpha(ceil_surfs)
+    wall_alpha = _area_weighted_alpha(walls)
+
+    if wall_overrides:
+        # Pool override areas across all walls; blend with base wall α.
+        # Total wall area = L*H + L*H + W*H + W*H = 2*(L+W)*H.
+        total_wall_area = 2.0 * (L + W) * H
+        override_area_sum = 0.0
+        override_sabins = 0.0
+        for entries in wall_overrides.values():
+            for area_m2, mat in entries:
+                a = float(MaterialAbsorption[mat])
+                override_area_sum += area_m2
+                override_sabins += area_m2 * a
+        if total_wall_area > 0.0 and override_area_sum > 0.0:
+            frac = min(override_area_sum / total_wall_area, 1.0)
+            override_alpha = override_sabins / override_area_sum
+            wall_alpha = wall_alpha * (1.0 - frac) + override_alpha * frac
 
     alphas = (floor_alpha, ceil_alpha, wall_alpha, wall_alpha, wall_alpha, wall_alpha)
     return areas, alphas
 
 
+# --------------------------------------------------------------------------- #
+# v0.17 object-aware helpers (ADR 0034 §C + D46 + D47)
+# --------------------------------------------------------------------------- #
+
+
+def _objects_to_surfaces(objects: list[Object]) -> list[Surface]:
+    """Convert column objects into 5-face surface lists (4 sides + top).
+
+    Door/window objects do NOT produce new surfaces — those become wall α
+    overrides via :func:`_objects_to_wall_alpha_overrides`.
+
+    Column orientation: anchor = base center on floor; faces emitted CCW
+    when viewed from outside the column. Top face (kind=="ceiling") is
+    CCW when viewed from above. Material defaults flow through from
+    :data:`MaterialAbsorption` / :data:`MaterialAbsorptionBands`.
+    """
+    extra: list[Surface] = []
+    for obj in objects:
+        if obj.kind != "column":
+            continue
+        cx, cy, cz = obj.anchor.x, obj.anchor.y, obj.anchor.z
+        hw = obj.width_m / 2.0
+        hd = obj.depth_m / 2.0
+        # Base CCW (viewed from above): SW, SE, NE, NW
+        base_corners = [
+            Point3(cx - hw, cy, cz - hd),
+            Point3(cx + hw, cy, cz - hd),
+            Point3(cx + hw, cy, cz + hd),
+            Point3(cx - hw, cy, cz + hd),
+        ]
+        top_corners = [
+            Point3(p.x, p.y + obj.height_m, p.z) for p in base_corners
+        ]
+        alpha_500 = MaterialAbsorption[obj.material]
+        alpha_bands = MaterialAbsorptionBands[obj.material]
+        # 4 vertical side faces (kind=="wall"). CCW from outside of column =
+        # base[i] -> base[j] -> top[j] -> top[i].
+        for i in range(4):
+            j = (i + 1) % 4
+            extra.append(
+                Surface(
+                    kind="wall",
+                    polygon=[
+                        base_corners[i],
+                        base_corners[j],
+                        top_corners[j],
+                        top_corners[i],
+                    ],
+                    material=obj.material,
+                    absorption_500hz=alpha_500,
+                    absorption_bands=alpha_bands,
+                )
+            )
+        # Top face (kind=="ceiling"). CCW viewed from above (i.e. from
+        # outside-and-above the column).
+        extra.append(
+            Surface(
+                kind="ceiling",
+                polygon=list(top_corners),
+                material=obj.material,
+                absorption_500hz=alpha_500,
+                absorption_bands=alpha_bands,
+            )
+        )
+    return extra
+
+
+def _objects_to_wall_alpha_overrides(
+    objects: list[Object],
+    walls: list[Surface],
+) -> dict[int, list[tuple[float, MaterialLabel]]]:
+    """Convert door / window objects into per-wall α overrides.
+
+    Returns ``{wall_index: [(area_m2, material), ...]}``. Validates that the
+    total override area on any wall does not exceed that wall's area.
+
+    Raises
+    ------
+    ValueError
+        When ``sum(override_area) > wall_area`` on any single wall.
+    """
+    overrides: dict[int, list[tuple[float, MaterialLabel]]] = {}
+    for obj in objects:
+        if obj.kind not in ("door", "window"):
+            continue
+        if obj.wall_index is None:
+            continue
+        area = float(obj.width_m) * float(obj.height_m)
+        if area <= 0.0:
+            continue
+        overrides.setdefault(obj.wall_index, []).append((area, obj.material))
+
+    for wall_idx, entries in overrides.items():
+        if not (0 <= wall_idx < len(walls)):
+            raise ValueError(
+                f"object wall_index={wall_idx} out of range "
+                f"[0, {len(walls)}); cannot apply α override."
+            )
+        wall_area = polygon_area_3d(walls[wall_idx].polygon)
+        total_override_area = sum(a for a, _ in entries)
+        if total_override_area > wall_area + 1e-6:
+            raise ValueError(
+                f"object α overrides on wall_index={wall_idx} sum to "
+                f"{total_override_area:.4f} m^2 which exceeds wall area "
+                f"{wall_area:.4f} m^2."
+            )
+    return overrides
+
+
 def _shoebox_per_band_alphas(
     room: RoomModel,
+    *,
+    extra_surfaces: list[Surface] | None = None,
+    wall_overrides: dict[int, list[tuple[float, MaterialLabel]]] | None = None,
 ) -> tuple[tuple[float, ...], dict[int, tuple[float, ...]], tuple[str, ...]]:
     """Return (areas_6, {band_hz: alphas_6}, fallback_surfaces) for per-band ISM.
 
@@ -167,40 +330,91 @@ def _shoebox_per_band_alphas(
     L, W, H = _shoebox_dimensions_m(room)
     areas = (L * W, L * W, L * H, L * H, W * H, W * H)
 
-    floor_surf = next((s for s in room.surfaces if s.kind == "floor"), None)
-    ceil_surf = next((s for s in room.surfaces if s.kind == "ceiling"), None)
+    floor_surfs = [s for s in room.surfaces if s.kind == "floor"]
+    ceil_surfs = [s for s in room.surfaces if s.kind == "ceiling"]
     # Wall index in fallback names ("wall_0", "wall_1", …) is positional within
     # this filtered list, not a stable surface ID. Stable per call; not stable
     # across mutations of room.surfaces ordering. See v0.15.1 code-review
     # MEDIUM-1 — promotion to a stable surf.id is OQ-31 follow-up if needed.
     walls = [s for s in room.surfaces if s.kind == "wall"]
 
+    extra_floor: list[Surface] = []
+    extra_ceil: list[Surface] = []
+    extra_wall: list[Surface] = []
+    if extra_surfaces:
+        for extra in extra_surfaces:
+            if extra.kind == "floor":
+                extra_floor.append(extra)
+            elif extra.kind == "ceiling":
+                extra_ceil.append(extra)
+            elif extra.kind == "wall":
+                extra_wall.append(extra)
+
     fallback_set: set[str] = set()
 
-    def _band_alpha(surf: object, name: str, band_idx: int) -> float:
+    def _band_alpha(surf: Surface | None, name: str, band_idx: int) -> float:
         if surf is None:
             return 0.10
-        bands = getattr(surf, "absorption_bands", None)
+        bands = surf.absorption_bands
         if bands is not None:
             return float(bands[band_idx])
         fallback_set.add(name)
-        return float(getattr(surf, "absorption_500hz", 0.10))
+        return float(surf.absorption_500hz)
+
+    def _area_weighted_band(
+        surfs: list[Surface],
+        prefix: str,
+        band_idx: int,
+        *,
+        default: float = 0.10,
+    ) -> float:
+        if not surfs:
+            return default
+        total_area = sum(polygon_area_3d(s.polygon) for s in surfs)
+        if total_area <= 0.0:
+            return default
+        return sum(
+            _band_alpha(s, f"{prefix}_{i}", band_idx) * polygon_area_3d(s.polygon)
+            for i, s in enumerate(surfs)
+        ) / total_area
+
+    # Total wall area for override blending.
+    total_base_wall_area = 2.0 * (L + W) * H
+
+    # Pre-compute override band-α: blends one fractional area on every wall row.
+    def _wall_alpha_with_overrides(base: float, band_idx: int) -> float:
+        if not wall_overrides:
+            return base
+        override_area_sum = 0.0
+        # per-band sabin equivalent for the override patches
+        override_sabins = 0.0
+        for entries in wall_overrides.values():
+            for area_m2, mat in entries:
+                bands = MaterialAbsorptionBands.get(mat)
+                if bands is not None:
+                    a = float(bands[band_idx])
+                else:
+                    a = float(MaterialAbsorption[mat])
+                override_area_sum += area_m2
+                override_sabins += area_m2 * a
+        if total_base_wall_area <= 0.0 or override_area_sum <= 0.0:
+            return base
+        frac = min(override_area_sum / total_base_wall_area, 1.0)
+        override_alpha = override_sabins / override_area_sum
+        return base * (1.0 - frac) + override_alpha * frac
 
     out: dict[int, tuple[float, ...]] = {}
     for band_idx, band_hz in enumerate(OCTAVE_BANDS_HZ):
-        f_a = _band_alpha(floor_surf, "floor", band_idx)
-        c_a = _band_alpha(ceil_surf, "ceiling", band_idx)
-        if walls:
-            total_area = sum(polygon_area_3d(w.polygon) for w in walls)
-            if total_area > 0.0:
-                w_a = sum(
-                    _band_alpha(w, f"wall_{i}", band_idx) * polygon_area_3d(w.polygon)
-                    for i, w in enumerate(walls)
-                ) / total_area
-            else:
-                w_a = 0.10
-        else:
-            w_a = 0.10
+        # Floor: merge room floors with extra floor objects (none typical).
+        f_combined = floor_surfs + extra_floor
+        f_a = _area_weighted_band(f_combined, "floor", band_idx) if f_combined else 0.10
+        # Ceiling: merge room ceilings with column-top extra surfaces.
+        c_combined = ceil_surfs + extra_ceil
+        c_a = _area_weighted_band(c_combined, "ceiling", band_idx) if c_combined else 0.10
+        # Walls: merge room walls with column side-face extras + apply door/window overrides.
+        w_combined = walls + extra_wall
+        w_a_base = _area_weighted_band(w_combined, "wall", band_idx) if w_combined else 0.10
+        w_a = _wall_alpha_with_overrides(w_a_base, band_idx)
         out[band_hz] = (f_a, c_a, w_a, w_a, w_a, w_a)
     return areas, out, tuple(sorted(fallback_set))
 
@@ -237,19 +451,57 @@ def predict_rt60_default(
 
     if prefer_ism and is_rectilinear_shoebox(room):
         dims = _shoebox_dimensions_m(room)
-        areas, alphas = _shoebox_surface_areas_and_alphas(room)
-        rt60 = image_source_rt60(
-            volume_m3=volume_m3,
-            dimensions_m=dims,
-            surface_areas=areas,
-            absorption_coeffs=alphas,
-            max_order=max_order,
+        objects = list(room.objects)
+        column_count = sum(1 for o in objects if o.kind == "column")
+        override_count = sum(
+            1 for o in objects if o.kind in ("door", "window") and o.wall_index is not None
         )
+        try:
+            extras = _objects_to_surfaces(objects) if objects else None
+            base_walls = [s for s in room.surfaces if s.kind == "wall"]
+            overrides = (
+                _objects_to_wall_alpha_overrides(objects, base_walls)
+                if objects
+                else None
+            )
+            areas, alphas = _shoebox_surface_areas_and_alphas(
+                room,
+                extra_surfaces=extras,
+                wall_overrides=overrides,
+            )
+            rt60 = image_source_rt60(
+                volume_m3=volume_m3,
+                dimensions_m=dims,
+                surface_areas=areas,
+                absorption_coeffs=alphas,
+                max_order=max_order,
+            )
+        except (ValueError, IndexError) as exc:
+            # Robust guard (D47): column / override ISM mapping failed —
+            # fall back to Eyring with explanatory rationale.
+            rt60 = eyring_rt60(volume_m3, surface_areas_by_material)
+            return RT60Prediction(
+                rt60_s=rt60,
+                rt60_per_band_s={},
+                predictor_name="eyring",
+                rationale=(
+                    f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
+                    f"objects present, ISM fallback to Eyring ({type(exc).__name__})"
+                ),
+            )
+        rationale = (
+            f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
+            f"ISM (max_order={max_order})"
+        )
+        if column_count:
+            rationale += f"; objects: +{column_count * 5} column surfaces"
+        if override_count:
+            rationale += f"; objects: +{override_count} wall α overrides"
         return RT60Prediction(
             rt60_s=rt60,
             rt60_per_band_s={},
             predictor_name="image_source",
-            rationale=f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: ISM (max_order={max_order})",
+            rationale=rationale,
         )
 
     rt60 = eyring_rt60(volume_m3, surface_areas_by_material)
@@ -273,19 +525,59 @@ def predict_rt60_default_per_band(
 
     if prefer_ism and is_rectilinear_shoebox(room):
         dims = _shoebox_dimensions_m(room)
-        areas, per_band_alphas, fallback_surfaces = _shoebox_per_band_alphas(room)
-        rt60_band: dict[int, float] = {}
-        for band_hz, alphas in per_band_alphas.items():
-            rt60_band[band_hz] = image_source_rt60(
-                volume_m3=volume_m3,
-                dimensions_m=dims,
-                surface_areas=areas,
-                absorption_coeffs=alphas,
-                max_order=max_order,
+        objects = list(room.objects)
+        column_count = sum(1 for o in objects if o.kind == "column")
+        override_count = sum(
+            1 for o in objects if o.kind in ("door", "window") and o.wall_index is not None
+        )
+        try:
+            extras = _objects_to_surfaces(objects) if objects else None
+            base_walls = [s for s in room.surfaces if s.kind == "wall"]
+            overrides = (
+                _objects_to_wall_alpha_overrides(objects, base_walls)
+                if objects
+                else None
             )
-        rationale = f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: per-band ISM (max_order={max_order})"
+            areas, per_band_alphas, fallback_surfaces = _shoebox_per_band_alphas(
+                room,
+                extra_surfaces=extras,
+                wall_overrides=overrides,
+            )
+            rt60_band: dict[int, float] = {}
+            for band_hz, alphas in per_band_alphas.items():
+                rt60_band[band_hz] = image_source_rt60(
+                    volume_m3=volume_m3,
+                    dimensions_m=dims,
+                    surface_areas=areas,
+                    absorption_coeffs=alphas,
+                    max_order=max_order,
+                )
+        except (ValueError, IndexError) as exc:
+            # Robust guard (D47): column / override ISM mapping failed.
+            rt60_band_fb = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
+            return RT60Prediction(
+                rt60_s=rt60_band_fb.get(500, 0.0),
+                rt60_per_band_s=rt60_band_fb,
+                predictor_name="eyring",
+                rationale=(
+                    f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
+                    f"objects present, per-band ISM fallback to Eyring "
+                    f"({type(exc).__name__})"
+                ),
+            )
+        rationale = (
+            f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
+            f"per-band ISM (max_order={max_order})"
+        )
         if fallback_surfaces:
-            rationale += f"; per-band α fallback used for surfaces: [{', '.join(fallback_surfaces)}]"
+            rationale += (
+                f"; per-band α fallback used for surfaces: "
+                f"[{', '.join(fallback_surfaces)}]"
+            )
+        if column_count:
+            rationale += f"; objects: +{column_count * 5} column surfaces"
+        if override_count:
+            rationale += f"; objects: +{override_count} wall α overrides"
         return RT60Prediction(
             rt60_s=rt60_band.get(500, 0.0),
             rt60_per_band_s=rt60_band,

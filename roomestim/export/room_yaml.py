@@ -15,6 +15,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from roomestim.model import (
+    Object,
     Point2,
     Point3,
     RoomModel,
@@ -44,6 +45,8 @@ def _schema_path(schema_version: str) -> Path:
         return _proto_dir() / "room_schema.draft.json"
     if schema_version == "0.1":
         return _proto_dir() / "room_schema.json"
+    if schema_version == "0.2-draft":
+        return _proto_dir() / "room_schema.v0_2.draft.json"
     raise ValueError(f"unknown schema_version: {schema_version}")
 
 
@@ -87,14 +90,32 @@ def _surface_to_dict(s: Surface) -> dict[str, Any]:
     return d
 
 
-def room_model_to_dict(room: RoomModel, *, schema_version: str = "0.1-draft") -> dict[str, Any]:
-    """Return a YAML-serializable dict matching the room schema (Stage 1 by default).
+def _object_to_dict(o: Object) -> dict[str, Any]:
+    return {
+        "kind": o.kind,
+        "anchor": _point3_to_dict(o.anchor),
+        "width_m": o.width_m,
+        "height_m": o.height_m,
+        "depth_m": o.depth_m,
+        "wall_index": o.wall_index,
+        "material": o.material.value,
+    }
+
+
+def room_model_to_dict(room: RoomModel, *, schema_version: str = "0.2-draft") -> dict[str, Any]:
+    """Return a YAML-serializable dict matching the room schema.
 
     The ``schema_version`` argument selects the ``version`` field value
-    (``"0.1-draft"`` or ``"0.1"``) but does not validate; that happens in
-    :func:`write_room_yaml`.
+    (``"0.1-draft"``, ``"0.1"`` or ``"0.2-draft"``) but does not validate;
+    that happens in :func:`write_room_yaml`.
+
+    On ``"0.2-draft"`` (default since v0.17), an ``objects`` key is always
+    emitted — possibly as an empty list ``[]`` — for round-trip determinism.
+    On the legacy ``"0.1-draft"`` / ``"0.1"`` versions, ``objects`` is
+    omitted to keep byte-equal output for downstream consumers that did not
+    request the schema bump.
     """
-    if schema_version not in ("0.1-draft", "0.1"):
+    if schema_version not in ("0.1-draft", "0.1", "0.2-draft"):
         raise ValueError(f"unknown schema_version: {schema_version}")
 
     out: dict[str, Any] = {
@@ -109,6 +130,8 @@ def room_model_to_dict(room: RoomModel, *, schema_version: str = "0.1-draft") ->
         },
         "surfaces": [_surface_to_dict(s) for s in room.surfaces],
     }
+    if schema_version == "0.2-draft":
+        out["objects"] = [_object_to_dict(o) for o in room.objects]
     return out
 
 
@@ -145,7 +168,7 @@ def write_room_yaml(
     room: RoomModel,
     out_path: Path | str,
     *,
-    schema_version: str = "0.1-draft",
+    schema_version: str = "0.2-draft",
 ) -> None:
     """Serialize ``room`` to ``out_path`` as YAML, validated against the schema.
 

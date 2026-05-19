@@ -37,8 +37,24 @@ _OCTAVE_BANDS = (125, 250, 500, 1000, 2000, 4000)
 def _surface_areas_by_material(room: RoomModel) -> dict[MaterialLabel, float]:
     from collections import defaultdict
 
+    # v0.17 (D46): fold object-derived surfaces (column 5-faces) into the
+    # per-material area table so the Acoustic Report's surface aggregation
+    # reflects the obstacle inventory. Door / window α-override patches are
+    # NOT new surfaces (they patch wall α in the predictor) — they remain
+    # excluded from this aggregation.
+    extra: list[Any] = []
+    if room.objects:
+        try:
+            from roomestim.reconstruct.predictor import _objects_to_surfaces
+
+            extra = _objects_to_surfaces(list(room.objects))
+        except Exception:
+            extra = []
+
     areas: dict[MaterialLabel, float] = defaultdict(float)
     for surf in room.surfaces:
+        areas[surf.material] += polygon_area_3d(surf.polygon)
+    for surf in extra:
         areas[surf.material] += polygon_area_3d(surf.polygon)
     return dict(areas)
 

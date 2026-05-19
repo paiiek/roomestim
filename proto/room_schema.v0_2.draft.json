@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://roomestim/proto/room_schema.v0_2.draft.json",
+  "title": "RoomModel (Stage 1 DRAFT v0.2, permissive — adds objects[])",
+  "type": "object",
+  "required": ["version", "name", "ceiling_height_m", "floor_polygon", "listener_area", "surfaces", "objects"],
+  "additionalProperties": true,
+  "properties": {
+    "version": { "type": "string", "const": "0.2-draft" },
+    "name": { "type": "string", "minLength": 1 },
+    "schema": { "type": "string", "format": "uri" },
+    "ceiling_height_m": { "type": "number", "exclusiveMinimum": 0, "maximum": 30.0 },
+    "floor_polygon": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/point2" }
+    },
+    "listener_area": {
+      "type": "object",
+      "required": ["centroid", "polygon", "height_m"],
+      "additionalProperties": false,
+      "properties": {
+        "centroid": { "$ref": "#/$defs/point2" },
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/point2" }
+        },
+        "height_m": { "type": "number", "exclusiveMinimum": 0, "maximum": 3.0 }
+      }
+    },
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["kind", "material", "absorption_500hz", "polygon"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["wall", "floor", "ceiling"] },
+          "material": {
+            "type": "string",
+            "enum": [
+              "wall_painted",
+              "wall_concrete",
+              "wood_floor",
+              "carpet",
+              "glass",
+              "ceiling_acoustic_tile",
+              "ceiling_drywall",
+              "unknown",
+              "misc_soft",
+              "melamine_foam"
+            ]
+          },
+          "absorption_500hz": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "polygon": {
+            "type": "array",
+            "minItems": 3,
+            "items": { "$ref": "#/$defs/point3" }
+          },
+          "absorption": {
+            "type": "object",
+            "description": "Optional octave-band absorption coefficients (representative typical room-acoustics values; see roomestim/model.py:MaterialAbsorptionBands for citation policy). If absent, callers SHOULD fall back to absorption_500hz.",
+            "required": ["a125", "a250", "a500", "a1000", "a2000", "a4000"],
+            "additionalProperties": false,
+            "properties": {
+              "a125":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a250":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a500":  { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a1000": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a2000": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+              "a4000": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+            }
+          }
+        }
+      }
+    },
+    "objects": {
+      "type": "array",
+      "description": "Obstacle list (columns / doors / windows). Always emitted on 0.2-draft, possibly empty.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "anchor", "width_m", "height_m", "depth_m", "wall_index", "material"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["column", "door", "window"] },
+          "anchor": { "$ref": "#/$defs/point3" },
+          "width_m": { "type": "number", "exclusiveMinimum": 0 },
+          "height_m": { "type": "number", "exclusiveMinimum": 0 },
+          "depth_m": { "type": "number", "minimum": 0 },
+          "wall_index": {
+            "oneOf": [
+              { "type": "integer", "minimum": 0 },
+              { "type": "null" }
+            ]
+          },
+          "material": {
+            "type": "string",
+            "enum": [
+              "wall_painted",
+              "wall_concrete",
+              "wood_floor",
+              "carpet",
+              "glass",
+              "ceiling_acoustic_tile",
+              "ceiling_drywall",
+              "unknown",
+              "misc_soft",
+              "melamine_foam"
+            ]
+          }
+        },
+        "oneOf": [
+          {
+            "description": "column: standalone (wall_index null, depth_m > 0).",
+            "properties": {
+              "kind": { "const": "column" },
+              "wall_index": { "type": "null" },
+              "depth_m": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          {
+            "description": "door: attached to wall (wall_index integer, depth_m == 0).",
+            "properties": {
+              "kind": { "const": "door" },
+              "wall_index": { "type": "integer", "minimum": 0 },
+              "depth_m": { "type": "number", "const": 0 }
+            }
+          },
+          {
+            "description": "window: attached to wall (wall_index integer, depth_m == 0).",
+            "properties": {
+              "kind": { "const": "window" },
+              "wall_index": { "type": "integer", "minimum": 0 },
+              "depth_m": { "type": "number", "const": 0 }
+            }
+          }
+        ]
+      }
+    },
+    "mount_surfaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["surface_index"],
+        "additionalProperties": false,
+        "properties": {
+          "surface_index": { "type": "integer", "minimum": 0 },
+          "inset_m": { "type": "number", "minimum": 0.0, "default": 0.10 }
+        }
+      }
+    },
+    "wfs_baseline_edge": {
+      "type": "object",
+      "required": ["surface_index", "t0", "t1"],
+      "additionalProperties": false,
+      "properties": {
+        "surface_index": { "type": "integer", "minimum": 0 },
+        "t0": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "t1": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+      }
+    }
+  },
+  "$defs": {
+    "point2": {
+      "type": "object",
+      "required": ["x", "z"],
+      "additionalProperties": false,
+      "properties": { "x": { "type": "number" }, "z": { "type": "number" } }
+    },
+    "point3": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    }
+  }
+}

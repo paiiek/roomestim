@@ -32,6 +32,7 @@ from roomestim.model import (
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
+    Object,
     Point3,
     RoomModel,
     Surface,
@@ -116,15 +117,17 @@ def evolve_room(
     surfaces: list[Surface] | None = None,
     listener_area: ListenerArea | None = None,
     name: str | None = None,
+    objects: list[Object] | None = None,
 ) -> RoomModel:
     """Return a new RoomModel with the given fields replaced.
 
-    ``floor_polygon`` is not modified (v0.16 scope; v0.17 will add
-    ``floor_polygon`` evolution for door/window/obstacle schema extension).
+    ``floor_polygon`` is not modified directly (v0.17 scope still leaves
+    floor_polygon evolution out of band; obstacles attach via ``objects``).
 
-    The returned instance uses a *shallow copy* of the surfaces list so the
-    caller's original list cannot mutate the new room's surface collection.
-    The Surface objects themselves are ``frozen=True`` (ADR 0002 invariant).
+    The returned instance uses a *shallow copy* of the surfaces and objects
+    lists so the caller's original lists cannot mutate the new room's
+    collections. The Surface and Object instances themselves are
+    ``frozen=True`` (ADR 0002 + ADR 0034 invariants).
 
     Parameters
     ----------
@@ -136,6 +139,9 @@ def evolve_room(
         Replacement listener area.
     name:
         Replacement room name.
+    objects:
+        Replacement object list (columns/doors/windows). Shallow-copied
+        internally. ``None`` (default) preserves ``room.objects``.
 
     Returns
     -------
@@ -145,6 +151,7 @@ def evolve_room(
     new_surfaces = list(surfaces) if surfaces is not None else list(room.surfaces)
     new_listener_area = listener_area if listener_area is not None else room.listener_area
     new_name = name if name is not None else room.name
+    new_objects = list(objects) if objects is not None else list(room.objects)
 
     # D39 mandate: re-canonicalize floor_polygon to CCW after any room evolution
     # and re-validate finiteness of all numeric leaves.
@@ -163,6 +170,7 @@ def evolve_room(
         listener_area=new_listener_area,
         name=new_name,
         floor_polygon=new_floor_polygon,
+        objects=new_objects,
     )
 
 
@@ -250,9 +258,68 @@ def evolve_room_materials_bulk(
     return evolve_room(room, surfaces=new_surfaces)
 
 
+# --------------------------------------------------------------------------- #
+# Object-level helpers (v0.17 — ADR 0034 + D44)
+# --------------------------------------------------------------------------- #
+
+
+def evolve_room_add_object(room: RoomModel, obj: Object) -> RoomModel:
+    """Return a new RoomModel with ``obj`` appended to ``room.objects``.
+
+    Convenience wrapper over :func:`evolve_room`: surfaces and listener area
+    are preserved; only the object list grows by one element.
+
+    Parameters
+    ----------
+    room:
+        Source room (not mutated).
+    obj:
+        New :class:`~roomestim.model.Object` to append.
+
+    Returns
+    -------
+    RoomModel
+        New room with ``objects = [*room.objects, obj]``.
+    """
+    return evolve_room(room, objects=[*room.objects, obj])
+
+
+def evolve_room_remove_object(room: RoomModel, object_index: int) -> RoomModel:
+    """Return a new RoomModel with ``room.objects[object_index]`` removed.
+
+    Parameters
+    ----------
+    room:
+        Source room (not mutated).
+    object_index:
+        Zero-based index into ``room.objects``.
+
+    Raises
+    ------
+    IndexError
+        When ``object_index`` is out of the valid range
+        ``[0, len(room.objects))``.
+
+    Returns
+    -------
+    RoomModel
+        New room with the object at ``object_index`` removed.
+    """
+    n = len(room.objects)
+    if not (0 <= object_index < n):
+        raise IndexError(
+            f"object_index={object_index} is out of valid range [0, {n}); "
+            f"room '{room.name}' has {n} objects."
+        )
+    new_objects = [o for i, o in enumerate(room.objects) if i != object_index]
+    return evolve_room(room, objects=new_objects)
+
+
 __all__ = [
     "evolve_surface",
     "evolve_room",
     "evolve_room_material",
     "evolve_room_materials_bulk",
+    "evolve_room_add_object",
+    "evolve_room_remove_object",
 ]

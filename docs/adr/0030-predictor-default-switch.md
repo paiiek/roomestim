@@ -300,3 +300,50 @@ byte-equal. 테스트: `test_apply_returns_viewer_figure` +1 케이스 (6-tuple 
 **Versions**: `roomestim.__version__` `0.16.0` → `0.16.1` (PATCH). `roomestim_web.__version__`
 `0.13-web.0` → `0.13-web.1` (PATCH per D30 — wiring 보강 + viewer 색 갱신).
 `__schema_version__` `"0.1-draft"` 불변. ADR 0030/0031/0032/0033 본문 byte-equal.
+
+## §Status-update-v0.17 (2026-05-19)
+
+D22 audit-trail-discipline 패턴 (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.0 / v0.16.1 precedent).
+기존 §Status-update-v0.16.1 본문 위에 append; retroactive 수정 X.
+
+**Item Q — Object schema land (D44 + D46 + D47 + ADR 0034)**
+`Object` frozen dataclass + `ObjectKind` Literal + `DEFAULT_OBJECT_MATERIAL` dict +
+`evolve_room_add_object` / `evolve_room_remove_object` / `evolve_room(objects=)` 6개
+공개 API v0.17.0에서 land. `RoomModel.objects: list[Object] = []` 추가.
+schema_version `"0.1-draft"` → `"0.2-draft"` (D44 backward parse: 0.1 입력 → `objects=[]`
+자동; 0.2 입력 → `objects` 키 파싱).
+
+음향 통합 (D46): column → 5 추가 surface (`predictor._objects_to_surfaces`); door/window
+→ wall α override (`predictor._objects_to_wall_alpha_overrides`; effective α =
+`α_wall × (1 − Σfrac) + Σ(α_obj × frac)`).
+
+ADR 0009 invariant (`ism_rt60 ≥ eyring_rt60 − 1e-6`) 유지 확인 (D47 회귀 lock:
+`tests/test_objects_acoustic_invariant.py` 6 케이스, 50 seeds × 3 kind = 150 instance).
+ADR 0030 cascade `default_predictor_name ∈ {"image_source", "eyring"}` 보존 (D38).
+
+**정직성 노트**: `MeshAdapter` (Polycam 등)와 `ACEChallengeAdapter`는 `objects=[]`
+placeholder — 자동 인식은 OQ-33 (v0.18+) deferral.
+
+**Item R — USDZ + gLTF export land (D45 + ADR 0035)**
+`write_usdz` + `write_gltf` 신규 공개 API 2개. CLI `--format yaml|usdz|gltf|glb`
+(default `yaml` backward-compat). optional `--with-acoustics-sidecar` flag →
+`<basename>.acoustics.json`.
+
+USDZ backend: `usd-core>=24.0` optional extra (`pip install roomestim[usd]`).
+gLTF backend: 기존 core dep `trimesh>=4.0` 재사용 (추가 의존성 0).
+HF Spaces re-deploy 트리거 없음 (시스템 의존성 변경 없음).
+
+**정직성 노트**: v0.17.0 1차 release는 mesh geometry + PBR color만 포함.
+acoustic α 메타데이터는 sidecar (internal schema `v0.1-internal`); USD `<material binding>`
+acoustic extension은 v0.19+ (OQ-35 deferral).
+
+**Item S — Schema bump 0.1-draft → 0.2-draft (D44)**
+외부 consumer (`spatial_engine`)는 `room.yaml` 미사용 (`layout.yaml`만 소비) →
+schema bump 영향 격리. `room.yaml` 소비자: roomestim 자체 (round-trip) + 사용자 도구
+(드물게). 0.1-draft YAML 외부 consumer가 0.2-draft unknown field로 fail 시 OQ-36
+(v0.17.1 patch 후속).
+
+**Versions**: `roomestim.__version__` `0.16.1` → `0.17.0` (MINOR bump — 6 신규 공개
+API + 2 export + 2 CLI flag). `roomestim_web.__version__` `0.13-web.1` → `0.14-web.0`
+(web MINOR — download 버튼 USDZ/GLB 추가). `__schema_version__` `"0.1-draft"` →
+`"0.2-draft"` (ADR 0034 §B).
