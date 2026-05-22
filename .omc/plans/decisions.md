@@ -1486,3 +1486,44 @@ cascade) 검증.
 
 **New ADRs this cycle**: ADR 0034 (Object schema), ADR 0035 (Mesh export policy).
 ADR 0030 §Status-update-v0.17 추가 (Items Q/R/S).
+
+## v0.18.0 D-decision allocation (2026-05-22)
+
+**D48** — Round-trip은 신규 모듈(`load_layout.py`) 없이 기존 reader+writer+신규
+evolve helper로 달성 (스켈레톤 `load_layout.py` 오류 정정). `read_placement_yaml`
+(parse) + `write_layout_yaml` (serialize) 가 이미 존재 → round-trip = reader 보강
+(aim 복원) + `roomestim/edit.py` 의 `evolve_placement`/`nudge_speaker` 조합.
+**Scope**: core (`roomestim/io/` + `roomestim/edit.py`). **Reverse if**: 편집 로직이
+reader/writer/edit 3곳에 분산되어 응집도 저하 시 `roomestim/layout/` package 통합
+리팩터 (v0.19+). **ADR ref**: ADR 0036 §A.
+
+**D49** — nudge 입력 단위: spherical Δ (az/el/dist 도·미터) XOR Cartesian Δ (미터);
+동시 지정 거부 (ValueError); 내부 정규화는 `coords.py` 단일 권위. web step 1°/0.05m.
+**Scope**: core (`roomestim/edit.py::nudge_speaker`). **Reverse if**: 단일 Apply 에서
+두 frame 합성 nudge 요청 ≥ 2건 → 명시적 순서 계약 (Cartesian-first) 후 허용.
+**ADR ref**: ADR 0036 §B.
+
+**D50** — round-trip 충실도 Level 1 (position+aim 구조 동치) 정식 계약 ({VBAP, WFS}
+한정); aim 은 v0.18 에서 reader 복원으로 비손실화 (export 버그 동시 수리).
+`target_algorithm` 은 {VBAP, WFS} 에서만 보존; DBAP/AMBISONICS 는 read 시 "VBAP"
+붕괴 (OQ-38). notes/id 제외 (notes = OQ-37; id = channel 재생성). 부분 aim 키 →
+treat-as-missing. 수치 노트: position `dist_m` 은 비축-정렬 azimuth 에서 cartesian↔
+spherical cycle 당 ~1 ULP drift → byte-equal idempotency 게이트는 축-정렬 fixture
+(단일 write→read→write 고정점) 로 lock. **Scope**: core (reader 보강 + 회귀 lock).
+**Reverse if**: aim 복원이 기존 origin-aim 케이스와 충돌 → 복원 우선순위 명시
+(explicit > origin-default) 후 회귀 케이스 추가. **ADR ref**: ADR 0036 §C.
+
+**D51** — byte-equal round-trip (comment/key-order/float-format 완전 보존)은 v0.18
+비-목표; core 는 `yaml.safe_dump` 단일 직렬화 권위 유지. **Scope**: 정책 (no code).
+**Reverse if**: layout.yaml hand-written comment 보존 요청 ≥ 2건 또는 git-diff 노이즈
+보고 → v0.19+ ruamel 도입 ADR. **ADR ref**: ADR 0036 §F.
+
+**D52** — `__schema_version__` 불변 ("0.2-draft"); layout.yaml 편집은 RoomModel
+schema 와 직교. v0.18 은 RoomModel 필드를 추가/변경하지 않음. **Scope**: 버전 정책.
+**Reverse if**: nudge 가 RoomModel 에 placement-cache 필드 추가 요구 → schema bump
+재검토. **ADR ref**: ADR 0036 §E.
+
+**New ADR this cycle**: ADR 0036 (Layout round-trip + speaker nudge policy).
+ADR 0030 §Status-update-v0.18 추가 (Items T/U/V). 신규 OQ 3건: OQ-36 (room.yaml
+다운그레이드 flag — forward-ref 정식 allocate), OQ-37 (notes round-trip v0.19+),
+OQ-38 (target_algorithm 전체 round-trip / DBAP·AMBISONICS 라벨 v0.19+).

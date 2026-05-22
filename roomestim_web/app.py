@@ -32,6 +32,10 @@ from roomestim_web.object_add import (
     _on_remove_object,
     build_object_add_tab,
 )
+from roomestim_web.speaker_nudge import (
+    _on_nudge_speaker,
+    build_speaker_nudge_tab,
+)
 
 _LOG = logging.getLogger("roomestim_web")
 
@@ -586,6 +590,18 @@ def build_demo() -> gr.Blocks:
                     _obj_remove_btn = _obj_comps.get("remove_btn")
                     _obj_status_md = _obj_comps.get("status_md")
 
+                    # Speaker Nudge Tab — v0.15-web.0 (ADR 0036 §B / D49).
+                    _nudge_comps = build_speaker_nudge_tab(layout_state, _on_nudge_speaker)
+                    _nudge_channel = _nudge_comps.get("channel")
+                    _nudge_daz = _nudge_comps.get("daz")
+                    _nudge_del = _nudge_comps.get("del_deg")
+                    _nudge_ddist = _nudge_comps.get("ddist")
+                    _nudge_dx = _nudge_comps.get("dx")
+                    _nudge_dy = _nudge_comps.get("dy")
+                    _nudge_dz = _nudge_comps.get("dz")
+                    _nudge_apply_btn = _nudge_comps.get("apply_btn")
+                    _nudge_status_md = _nudge_comps.get("status_md")
+
                     with gr.Tab("2D 블루프린트"):
                         gr.Markdown(
                             "### 2D 블루프린트\n"
@@ -726,6 +742,38 @@ def build_demo() -> gr.Blocks:
                 fn=_remove_wrapper,
                 inputs=[room_state, layout_state, _obj_remove_index],
                 outputs=[room_state, viewer_plot, _obj_table, _obj_status_md],
+            )
+
+        # ── Speaker Nudge wiring (v0.15-web.0 / ADR 0036 §B) ─────────────────
+        if _nudge_apply_btn is not None and _nudge_status_md is not None:
+            def _nudge_wrapper(
+                room: Any,
+                layout: Any,
+                channel: Any,
+                daz: Any,
+                del_deg: Any,
+                ddist: Any,
+                dx: Any,
+                dy: Any,
+                dz: Any,
+            ) -> tuple[Any, Any, Any]:
+                new_layout, fig, status = _on_nudge_speaker(
+                    room, layout, channel, daz, del_deg, ddist, dx, dy, dz
+                )
+                # layout_state only advances on success (handler returns the
+                # unchanged layout on error, so a failed nudge keeps the prior
+                # placement). viewer_plot stays as-is when fig is None.
+                fig_update = fig if fig is not None else gr.update()
+                return new_layout, fig_update, gr.update(value=status, visible=True)
+
+            _nudge_apply_btn.click(
+                fn=_nudge_wrapper,
+                inputs=[
+                    room_state, layout_state, _nudge_channel,
+                    _nudge_daz, _nudge_del, _nudge_ddist,
+                    _nudge_dx, _nudge_dy, _nudge_dz,
+                ],
+                outputs=[layout_state, viewer_plot, _nudge_status_md],
             )
 
         # ── Export format dispatch (Phase 5 / ADR 0035) ──────────────────────

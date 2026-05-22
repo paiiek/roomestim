@@ -56,6 +56,30 @@ pytest -m "not lab and not web and not e2e" -v
 python scripts/lint_tense.py
 ```
 
+### 출력 편집 — 스피커 nudge + layout round-trip (v0.18+)
+
+자동 배치된 `layout.yaml` 의 스피커 좌표를 다시 읽어 미세 조정한 뒤 되쓰는
+경로 (ADR 0036). 구면 Δ (az/el/dist) 또는 직교 Δ (x/y/z) 중 하나만 입력한다
+(동시 입력 시 ValueError).
+
+```bash
+# 채널-0 스피커를 방위 5° / 고도 3° 만큼 미세 조정
+python -m roomestim edit \
+    --in-placement /tmp/roomestim_out/layout.yaml \
+    --speaker 0 --daz 5 --del-deg 3 \
+    --out-dir /tmp/roomestim_edit
+```
+
+`roomestim edit` 는 read → nudge → 엔진 재검증 (collector) → write + unified
+diff 를 수행한다. 고도각 delta 플래그는 항상 `--del-deg` 다 (`--del` 은 Python
+예약어와 충돌). 웹 UI 에서는 "스피커 조정" 탭에서 채널을 고른 뒤 Δ 를 입력하고
+**적용** 을 누르면 3D 뷰어가 재렌더된다.
+
+round-trip 충실도는 Level 1 (구조 동치): position / channel / regularity /
+WFS 메타 / aim 방향 ({VBAP, WFS}) 이 보존된다. `notes` 와 per-speaker `id`,
+그리고 DBAP/AMBISONICS 의 `target_algorithm` 라벨은 보존되지 않는다 (OQ-37 /
+OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표 (D51).
+
 ---
 
 ## 현재 상태 (2026-05-16)

@@ -25,6 +25,28 @@ def _point3_from_speaker(d: dict[str, Any]) -> Point3:
     return Point3(x=x, y=y, z=z)
 
 
+def _aim_from_speaker(d: dict[str, Any]) -> Point3 | None:
+    """Reconstruct ``aim_direction`` from ``x_aim_az_deg`` / ``x_aim_el_deg``.
+
+    Aim carries direction only; the magnitude is irrelevant (the writer's
+    ``cartesian_to_pipeline`` discards it). Reconstruct as a unit vector so
+    write→read→write is a stable fixed point (D50). Absent keys → ``None``
+    (backward-compat with pre-v0.18 layouts).
+
+    Partial-key policy (D50 / Fix 7a): when exactly one of the two keys is
+    present the aim cannot be reconstructed from a single axis, so return
+    ``None`` (treat-as-missing). Both keys are required for restoration.
+    """
+    if "x_aim_az_deg" not in d or "x_aim_el_deg" not in d:
+        return None
+    from roomestim.coords import yaml_speaker_to_cartesian
+
+    ax_deg = float(d["x_aim_az_deg"])
+    ael_deg = float(d["x_aim_el_deg"])
+    x, y, z = yaml_speaker_to_cartesian(ax_deg, ael_deg, 1.0)
+    return Point3(x=x, y=y, z=z)
+
+
 def read_placement_yaml(path: Path | str) -> PlacementResult:
     """Load a ``layout.yaml`` produced by :func:`write_layout_yaml` into a
     :class:`PlacementResult`.
@@ -60,6 +82,7 @@ def read_placement_yaml(path: Path | str) -> PlacementResult:
             PlacedSpeaker(
                 channel=int(sp["channel"]),
                 position=position,
+                aim_direction=_aim_from_speaker(sp),
             )
         )
 

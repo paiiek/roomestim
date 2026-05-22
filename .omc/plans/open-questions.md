@@ -483,3 +483,45 @@ acoustic import 경로 미확인.
 3. sidecar schema `"v0.2"` 안정화 (외부 표준 없이 roomestim 자체 spec).
 
 **Cross-refs**: ADR 0035 §E (sidecar format), ADR 0035 §G (reverse-criterion).
+
+---
+
+**OQ-36 — `room.yaml` schema 다운그레이드 export flag (`--schema 0.1`) (v0.18+)**
+이미 forward-ref 됨 (ADR 0030 §Status-update-v0.17 + ADR 0034 §B + decisions.md D44).
+v0.18 에서 정식 allocate 후 deferral. 외부 consumer 가 0.2-draft `room.yaml` 의
+`objects` unknown field 로 fail 보고 시 `roomestim export --schema 0.1` (objects
+생략 + schema_version 0.1-draft write) 도입.
+
+**Trigger conditions** (D26): 외부 consumer fail 보고 ≥ 1건 (현재 0건 —
+`spatial_engine` 은 `layout.yaml` 만 소비). **Evaluation cadence**: v0.19 cycle 시작.
+**Resolution candidates**: (1) `--schema 0.1` flag + `room_yaml.py` 분기. (2) `objects`
+를 구 schema 에서 `x_objects` extension key 로. (3) 영구 deferral (보고 0건이면 YAGNI).
+**Cross-refs**: ADR 0034 §B, ADR 0030 §Status-update-v0.17.
+
+---
+
+**OQ-37 — `PlacedSpeaker.notes` round-trip (engine schema `x_notes` extension) (v0.19+)**
+현재 `notes` 는 `write_layout_yaml` 이 직렬화 안 함 + reader 가 `""` 로 채움. nudge
+편집 시 notes 보존 불가. engine `geometry_schema.json` per-speaker
+`additionalProperties: true` 이므로 `x_notes` extension key 추가 가능하나 engine 측
+협의 (소비/무시 정책) 필요.
+
+**Trigger conditions** (D26): 스피커별 메모 보존 요청 ≥ 1건 또는 nudge 워크플로
+notes 손실 보고. **Evaluation cadence**: v0.19 cycle 시작. **Resolution candidates**:
+(1) `x_notes` per-speaker extension key. (2) sidecar `.notes.json`. (3) 영구 비-목표
+(notes = in-memory annotation 전용). **Cross-refs**: ADR 0036 §C / §G(iv).
+
+---
+
+**OQ-38 — `target_algorithm` 전체 round-trip (`x_target_algorithm` engine extension) (v0.19+)**
+현재 `read_placement_yaml` 은 `regularity_hint` + `x_wfs_f_alias_hz` 키 존재로
+WFS-vs-VBAP 만 추론 → `target_algorithm ∈ {DBAP, AMBISONICS}` 인 layout 은 read 시
+"VBAP" 로 붕괴 (D50 Level 1 계약에서 명시적 제외). nudge round-trip 후 알고리즘
+라벨이 바뀐다.
+
+**Trigger conditions** (D26): DBAP/AMBISONICS layout 을 nudge round-trip 후 알고리즘
+라벨 손실 보고 ≥ 1건, OR engine 이 algorithm-aware 검증 도입. **Evaluation cadence**:
+v0.19 cycle 시작. **Resolution candidates**: (1) top-level `x_target_algorithm`
+extension key (writer emit + reader 복원; WFS 추론보다 우선). (2) reader 추론 확장
+(regularity → algorithm — 단 DBAP/AMBISONICS 는 불충분). (3) 영구 deferral (placement
+알고리즘은 `place` 재실행으로 결정; 편집은 좌표만). **Cross-refs**: ADR 0036 §C, D50.

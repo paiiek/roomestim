@@ -93,6 +93,9 @@ def build_room_figure(
     sz = [s.position.z for s in speakers]
     s_colors = [speaker_color(s.channel) for s in speakers]
     s_text = [f"Ch{s.channel}" for s in speakers]
+    # v0.15-web.0 (ADR 0036 §B): customdata carries the channel so a 3D click
+    # can identify the selected speaker (channel dropdown is the primary path).
+    s_customdata = [[s.channel] for s in speakers]
 
     traces.append(
         go.Scatter3d(
@@ -102,6 +105,7 @@ def build_room_figure(
             mode="markers",
             marker=dict(size=8, symbol="diamond", color=s_colors),
             text=s_text,
+            customdata=s_customdata,
             name="Speakers",
         )
     )

@@ -24,15 +24,19 @@ References: D39, D40, D43, ADR 0031.
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from roomestim.coords import cartesian_to_pipeline, yaml_speaker_to_cartesian
 from roomestim.model import (
     ListenerArea,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
     Object,
+    PlacedSpeaker,
+    PlacementResult,
     Point3,
     RoomModel,
     Surface,
@@ -315,6 +319,133 @@ def evolve_room_remove_object(room: RoomModel, object_index: int) -> RoomModel:
     return evolve_room(room, objects=new_objects)
 
 
+# --------------------------------------------------------------------------- #
+# Placement-level helpers (v0.18 — ADR 0036 §A/§B + D48 + D49)
+# --------------------------------------------------------------------------- #
+
+
+def evolve_placement(
+    result: PlacementResult,
+    *,
+    speakers: list[PlacedSpeaker] | None = None,
+    regularity_hint: str | None = None,
+    layout_name: str | None = None,
+) -> PlacementResult:
+    """Return a new PlacementResult with the given fields replaced.
+
+    Mirrors :func:`evolve_room`: the input is never mutated, the speakers list
+    is shallow-copied, and every :class:`~roomestim.model.PlacedSpeaker` is
+    frozen. Finite-validates each speaker position (and aim, if present).
+
+    Parameters
+    ----------
+    result:
+        Source placement result (not mutated).
+    speakers:
+        Replacement speaker list. Shallow-copied internally. ``None`` (default)
+        preserves ``result.speakers``.
+    regularity_hint:
+        Replacement regularity hint. ``None`` preserves the existing value.
+    layout_name:
+        Replacement layout name. ``None`` preserves the existing value.
+
+    Returns
+    -------
+    PlacementResult
+        New PlacementResult instance.
+    """
+    new_speakers = list(speakers) if speakers is not None else list(result.speakers)
+    for i, sp in enumerate(new_speakers):
+        assert_finite(sp.position.x, field=f"speakers[{i}].position.x")
+        assert_finite(sp.position.y, field=f"speakers[{i}].position.y")
+        assert_finite(sp.position.z, field=f"speakers[{i}].position.z")
+        if sp.aim_direction is not None:
+            assert_finite(sp.aim_direction.x, field=f"speakers[{i}].aim.x")
+            assert_finite(sp.aim_direction.y, field=f"speakers[{i}].aim.y")
+            assert_finite(sp.aim_direction.z, field=f"speakers[{i}].aim.z")
+    return replace(
+        result,
+        speakers=new_speakers,
+        regularity_hint=(
+            regularity_hint if regularity_hint is not None else result.regularity_hint
+        ),
+        layout_name=layout_name if layout_name is not None else result.layout_name,
+    )
+
+
+def nudge_speaker(
+    result: PlacementResult,
+    speaker_index: int,
+    *,
+    daz_deg: float = 0.0,
+    del_deg: float = 0.0,
+    ddist_m: float = 0.0,
+    dx: float = 0.0,
+    dy: float = 0.0,
+    dz: float = 0.0,
+) -> PlacementResult:
+    """Nudge one speaker by a spherical Δ (az/el/dist) XOR a Cartesian Δ (xyz).
+
+    The two frames are mutually exclusive: supplying both a non-zero spherical
+    Δ and a non-zero Cartesian Δ raises :class:`ValueError` (D49). All frame
+    conversion goes through :mod:`roomestim.coords` (the single sign-flip
+    authority); this function never calls trigonometry directly.
+
+    Parameters
+    ----------
+    result:
+        Source placement result (not mutated).
+    speaker_index:
+        Zero-based index into ``result.speakers``.
+    daz_deg, del_deg, ddist_m:
+        Spherical delta — azimuth (degrees), elevation (degrees), distance
+        (metres). Applied relative to the speaker's current spherical form.
+    dx, dy, dz:
+        Cartesian delta — added directly to the speaker's ``position``.
+
+    Raises
+    ------
+    IndexError
+        When ``speaker_index`` is out of the valid range.
+    ValueError
+        When both frames are non-zero, or when the resulting spherical distance
+        is non-positive.
+
+    Returns
+    -------
+    PlacementResult
+        New PlacementResult with the single speaker replaced.
+    """
+    n = len(result.speakers)
+    if not (0 <= speaker_index < n):
+        raise IndexError(
+            f"speaker_index={speaker_index} out of valid range [0, {n})"
+        )
+    spherical = (daz_deg, del_deg, ddist_m) != (0.0, 0.0, 0.0)
+    cartesian = (dx, dy, dz) != (0.0, 0.0, 0.0)
+    if spherical and cartesian:
+        raise ValueError(
+            "nudge_speaker: spherical Δ and Cartesian Δ are mutually exclusive"
+        )
+    sp = result.speakers[speaker_index]
+    p = sp.position
+    if cartesian:
+        new_pos = Point3(x=p.x + dx, y=p.y + dy, z=p.z + dz)
+    else:
+        az_rad, el_rad, dist = cartesian_to_pipeline(p.x, p.y, p.z)
+        az2 = math.degrees(az_rad) + daz_deg
+        el2 = math.degrees(el_rad) + del_deg
+        d2 = dist + ddist_m
+        if d2 <= 0.0:
+            raise ValueError(f"nudge_speaker: resulting dist {d2} must be > 0")
+        nx, ny, nz = yaml_speaker_to_cartesian(az2, el2, d2)
+        new_pos = Point3(x=nx, y=ny, z=nz)
+    new_sp = replace(sp, position=new_pos)
+    new_speakers = list(result.speakers)
+    new_speakers[speaker_index] = new_sp
+    return evolve_placement(result, speakers=new_speakers)
+
+
 __all__ = [
     "evolve_surface",
     "evolve_room",
@@ -322,4 +453,6 @@ __all__ = [
     "evolve_room_materials_bulk",
     "evolve_room_add_object",
     "evolve_room_remove_object",
+    "evolve_placement",
+    "nudge_speaker",
 ]

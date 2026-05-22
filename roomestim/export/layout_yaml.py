@@ -71,6 +71,20 @@ def _load_engine_schema() -> dict[str, Any]:
     return data
 
 
+def _resolve_schema_file(schema_path_override: str | None) -> Path:
+    """Single source for engine schema path resolution.
+
+    De-duplicates the ``schema_path_override → <dir>/proto/geometry_schema.json``
+    join previously inlined in :func:`write_layout_yaml` and now also needed by
+    :func:`validate_placement` (third copy consolidation; v0.15.1 / v0.15.2
+    geom-util precedent). Behaviour is identical to the prior inline join — same
+    path returned — so writer output is byte-equal.
+    """
+    if schema_path_override is not None:
+        return Path(schema_path_override) / "proto" / "geometry_schema.json"
+    return _engine_schema_path()
+
+
 # --------------------------------------------------------------------------- #
 # min_speaker_count — mirror of SpeakerLayout.h:38
 # --------------------------------------------------------------------------- #
@@ -248,10 +262,7 @@ def write_layout_yaml(
 
     if validate:
         # Step 4a — schema validation (default ON, backward-compat).
-        if schema_path_override is not None:
-            schema_file = Path(schema_path_override) / "proto" / "geometry_schema.json"
-        else:
-            schema_file = _engine_schema_path()
+        schema_file = _resolve_schema_file(schema_path_override)
         with schema_file.open("r", encoding="utf-8") as fh:
             schema = json.load(fh)
         Draft202012Validator(schema).validate(data)
@@ -272,9 +283,60 @@ def write_layout_yaml(
             fh.write(yaml_body)
 
 
+# --------------------------------------------------------------------------- #
+# Non-raising validation collector (v0.18 — ADR 0036 §D; MED-1 safe design)
+# --------------------------------------------------------------------------- #
+
+
+def validate_placement(
+    result: PlacementResult, *, schema_path_override: str | None = None
+) -> list[str]:
+    """Collect validation issues WITHOUT raising or writing a file.
+
+    Independent re-check of R10 (``min_speaker_count``) + R11 (finite sweep) +
+    the engine Draft 2020-12 schema. Does NOT call :func:`write_layout_yaml` and
+    does NOT alter the writer's raise path — the writer keeps raising for safety;
+    this collector exists only for CLI / web UX. An empty list means the
+    placement is valid.
+
+    Parameters
+    ----------
+    result:
+        Placement result to validate.
+    schema_path_override:
+        Explicit path to the engine repo directory (resolved via
+        :func:`_resolve_schema_file`).
+
+    Returns
+    -------
+    list[str]
+        Human-readable issue strings; ``[]`` when valid.
+    """
+    errors: list[str] = []
+    try:
+        min_n = _min_speaker_count(result.regularity_hint)
+        if len(result.speakers) < min_n:
+            errors.append(
+                f"{kErrTooFewSpeakers}: needs >= {min_n}, got {len(result.speakers)}"
+            )
+    except ValueError as exc:
+        errors.append(str(exc))
+    try:
+        data = placement_to_dict(result)
+        _sweep_finite(data, path="")
+        schema_file = _resolve_schema_file(schema_path_override)
+        with schema_file.open("r", encoding="utf-8") as fh:
+            schema = json.load(fh)
+        Draft202012Validator(schema).validate(data)
+    except Exception as exc:  # ValidationError/ValueError/OSError → string for UX
+        errors.append(str(exc))
+    return errors
+
+
 __all__ = [
     "placement_to_dict",
     "write_layout_yaml",
+    "validate_placement",
     "kErrNonFiniteValue",
     "kErrTooFewSpeakers",
 ]

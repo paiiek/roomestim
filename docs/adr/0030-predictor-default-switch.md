@@ -347,3 +347,49 @@ schema bump 영향 격리. `room.yaml` 소비자: roomestim 자체 (round-trip) 
 API + 2 export + 2 CLI flag). `roomestim_web.__version__` `0.13-web.1` → `0.14-web.0`
 (web MINOR — download 버튼 USDZ/GLB 추가). `__schema_version__` `"0.1-draft"` →
 `"0.2-draft"` (ADR 0034 §B).
+
+## §Status-update-v0.18 (2026-05-22)
+
+D22 audit-trail-discipline 패턴 (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.0 / v0.16.1 /
+v0.17 precedent). 위 §Status-update-v0.17 본문 위에 append; retroactive 수정 없음.
+
+**Item T — `evolve_placement` + `nudge_speaker` land (D48 + D49 + ADR 0036)**
+`roomestim/edit.py` 에 frozen-respecting `evolve_placement(...)` + `nudge_speaker(...)`
+신규 공개 API 2개. nudge 는 spherical Δ (az/el/dist) XOR Cartesian Δ (xyz) — 동시
+지정 시 ValueError; 모든 frame 변환은 `roomestim.coords` 단일 권위 경유.
+round-trip 은 신규 모듈 없이 기존 reader + `write_layout_yaml` + 신규 edit helper
+조합 (D48 — 스켈레톤 `load_layout.py` 가정은 기존 reader/writer 중복으로 reject).
+정직성 노트: round-trip 충실도는 Level 1 (구조 동치) 만; byte-equal 은 비-목표
+(D51 — `yaml.safe_dump` 단일 직렬화 권위 유지).
+
+**Item U — reader aim 복원 (D50)**
+`read_placement_yaml` 이 `x_aim_az_deg`/`x_aim_el_deg` 존재 시 `aim_direction` 복원
+(시그니처 불변; 반환 PlacementResult 의 aim 이 None→복원으로 채워짐). 정직성 노트:
+aim 복원은 **shipped `roomestim export` 의 기존 aim silent-corruption 버그도 수리**
+(명시 `x_aim_az_deg: 0.0` 이 export 재실행 시 toward-origin 으로 변형되던 문제;
+export byte-gate 로 회귀-lock). `notes` 와 per-speaker `id` 는 engine schema 충실
+슬롯 부재로 round-trip 제외 (notes = OQ-37; id = channel 재생성). `target_algorithm`
+은 {VBAP, WFS} 에서만 보존 — DBAP/AMBISONICS 는 read 시 "VBAP" 로 붕괴 (OQ-38
+deferral). 부분 aim 키 (한 축만 존재) → treat-as-missing (양쪽 키 필요). 수치 노트:
+position `dist_m` 은 비축-정렬 azimuth (예: 120°) 에서 cartesian↔spherical cycle 당
+~1 ULP drift → byte-equal idempotency 게이트는 축-정렬 fixture (az ∈ {0,90,180,270}°,
+el=0, 정수 반경; 단일 write→read→write 고정점) 로 lock. aim az/el 은 atan2 scale-
+invariant 이라 unit-벡터 복원으로 byte-equal.
+
+**Item V — CLI `roomestim edit` + web 스피커 nudge (web 0.14→0.15-web.0)**
+신규 CLI subcommand `roomestim edit` (read → nudge → 재검증 collector → write +
+unified diff; flag `--daz`/`--del-deg`/`--ddist`/`--dx`/`--dy`/`--dz`; D42
+precedence 재사용). web "스피커 조정" 탭 (channel 입력 + 6 Δ Number + Apply →
+`nudge_speaker` → `validate_placement` → 3D 뷰어 재렌더). 검증 collector
+`validate_placement(...)` 는 `write_layout_yaml` 의 5-step·typed raise 를 건드리지
+않는 별도 비-raising 헬퍼 (MED-1); schema path-join 은 `_resolve_schema_file` 로
+중복 제거 (3번째 복제 consolidation). 정직성 노트: web 3D 스피커 클릭 정확도는
+Plotly customdata 의존 (작은 marker 클릭 미스 가능 → channel 입력 fallback 병행).
+CLI elevation Δ 의 el>90 비물리 clamp 는 v0.18.1 deferral (finite 검사만; web 은
+`gr.Number minimum/maximum` 제한).
+
+**Versions**: `roomestim.__version__` `0.17.0` → `0.18.0` (MINOR bump — 3 신규 공개
+API `evolve_placement`/`nudge_speaker`/`validate_placement` + reader 충실도 보강 +
+CLI subcommand 1개 + web UI surface 1개). `roomestim_web.__version__` `0.14-web.0`
+→ `0.15-web.0` (web MINOR — 스피커 조정 탭 + 3D customdata + nudge Apply→재렌더).
+`__schema_version__` `"0.2-draft"` **불변** (D52 — layout 편집 ⊥ RoomModel schema).

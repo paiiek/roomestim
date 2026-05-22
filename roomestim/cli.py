@@ -6,6 +6,7 @@ ingest  -- parse a capture artifact into a RoomModel; write room.yaml
 place   -- load room.yaml, run placement, write layout.yaml
 export  -- re-emit room.yaml + layout.yaml (idempotent)
 run     -- composite: ingest + place + export
+edit    -- nudge one speaker in a layout.yaml; re-validate; write + diff
 """
 
 from __future__ import annotations
@@ -214,6 +215,62 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
 
 
+def _add_edit_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    p = sub.add_parser(
+        "edit",
+        help="Nudge one speaker in a layout.yaml; re-validate; write + unified diff.",
+    )
+    p.add_argument(
+        "--in-placement", required=True, metavar="PATH", help="layout.yaml path."
+    )
+    p.add_argument(
+        "--speaker",
+        required=True,
+        type=int,
+        metavar="N",
+        help="Zero-based speaker index to nudge (matches the nudge_speaker API).",
+    )
+    # Spherical Δ (mutually-additive deltas, not absolute values).
+    p.add_argument("--daz", type=float, default=0.0, metavar="D", help="azimuth delta (degrees).")
+    # NOTE: must be --del-deg, never --del; `args.del` is a Python syntax error.
+    p.add_argument(
+        "--del-deg", type=float, default=0.0, metavar="D", help="elevation delta (degrees)."
+    )
+    p.add_argument("--ddist", type=float, default=0.0, metavar="D", help="distance delta (m).")
+    # Cartesian Δ (metres).
+    p.add_argument("--dx", type=float, default=0.0, metavar="D", help="x delta (m).")
+    p.add_argument("--dy", type=float, default=0.0, metavar="D", help="y delta (m).")
+    p.add_argument("--dz", type=float, default=0.0, metavar="D", help="z delta (m).")
+    p.add_argument(
+        "--out-dir",
+        default=".",
+        metavar="DIR",
+        help="Output directory for the edited layout.yaml (default: cwd).",
+    )
+    # Engine validation toggle (D42 / ADR 0033): CLI flag > ENV var > default ON.
+    engine_grp = p.add_mutually_exclusive_group()
+    engine_grp.add_argument(
+        "--validate-engine",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to the spatial_engine repository directory. "
+            "Uses SPATIAL_ENGINE_REPO_DIR env var or the hardcoded default when omitted. "
+            "Mutually exclusive with --no-engine-validation."
+        ),
+    )
+    engine_grp.add_argument(
+        "--no-engine-validation",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip engine schema validation. A WARNING comment is prepended to the "
+            "output YAML for audit-trail purposes (ADR 0033 §C). "
+            "Mutually exclusive with --validate-engine."
+        ),
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="roomestim",
@@ -226,6 +283,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_place_parser(sub)
     _add_export_parser(sub)
     _add_run_parser(sub)
+    _add_edit_parser(sub)
 
     return parser
 
@@ -423,6 +481,58 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_edit(args: argparse.Namespace) -> int:
+    import difflib
+
+    from roomestim.edit import nudge_speaker
+    from roomestim.export.layout_yaml import validate_placement, write_layout_yaml
+    from roomestim.io.placement_yaml_reader import read_placement_yaml
+
+    placement = read_placement_yaml(args.in_placement)
+    before = Path(args.in_placement).read_text(encoding="utf-8")
+
+    # Flag→kwarg map (Fix 2): --daz→daz_deg, --del-deg→del_deg, --ddist→ddist_m,
+    # --dx/--dy/--dz→dx/dy/dz. ValueError (frame mixing / dist<=0) and IndexError
+    # (speaker out of range) propagate to main() → exit 1.
+    edited = nudge_speaker(
+        placement,
+        args.speaker,
+        daz_deg=args.daz,
+        del_deg=args.del_deg,
+        ddist_m=args.ddist,
+        dx=args.dx,
+        dy=args.dy,
+        dz=args.dz,
+    )
+
+    no_val: bool = getattr(args, "no_engine_validation", False)
+    cli_path: str | None = getattr(args, "validate_engine", None)
+    if not no_val:
+        errs = validate_placement(edited, schema_path_override=cli_path)
+        if errs:
+            for e in errs:
+                print(f"error: {e}", file=sys.stderr)
+            return 1
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "layout.yaml"
+    write_layout_yaml(
+        edited, out_path, validate=not no_val, schema_path_override=cli_path
+    )
+    after = out_path.read_text(encoding="utf-8")
+
+    diff = difflib.unified_diff(
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
+        fromfile=str(args.in_placement),
+        tofile=str(out_path),
+    )
+    sys.stdout.writelines(diff)
+    print(f"wrote {out_path}")
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
@@ -444,7 +554,9 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_export(args)
         if args.command == "run":
             return _cmd_run(args)
-    except (ValueError, OSError, RuntimeError) as exc:
+        if args.command == "edit":
+            return _cmd_edit(args)
+    except (ValueError, OSError, RuntimeError, IndexError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
