@@ -1527,3 +1527,23 @@ schema 와 직교. v0.18 은 RoomModel 필드를 추가/변경하지 않음. **S
 ADR 0030 §Status-update-v0.18 추가 (Items T/U/V). 신규 OQ 3건: OQ-36 (room.yaml
 다운그레이드 flag — forward-ref 정식 allocate), OQ-37 (notes round-trip v0.19+),
 OQ-38 (target_algorithm 전체 round-trip / DBAP·AMBISONICS 라벨 v0.19+).
+
+---
+
+## v0.18.1 D-decision allocation (2026-05-22)
+
+**D53** — `nudge_speaker` spherical 분기 el ∉ [-90, 90] → `ValueError` (reject).
+clamp/warn-clamp/silent-accept 세 대안 거부. 근거: (1) 기존 `dist <= 0` reject 와
+대칭 (같은 함수, 같은 frame, 동급 비물리 입력); (2) 사용자 의도 보존 (경계 초과는
+truncate 대상 아닌 개념적 오류); (3) 멱등성 유지 (clamp 는 반복 apply 시 90°
+saturate); (4) web `gr.Number(minimum=-90, maximum=90)` 입력 제약과 정합 ("UI 막음
++ core 강제" vs "UI 막음 + core 조용히 수정" 의미 충돌 회피). Cartesian 분기
+unguarded 유지: atan2 산출 el 은 정의상 [-90, 90] 안에 들어 dead guard 회피.
+**Scope**: `roomestim/edit.py::nudge_speaker` + `roomestim/cli.py` `--del-deg`
+help note. **Reverse if**: "el 경계 넘어도 clamp 적용" ≥ 2 요청 →
+`nudge_speaker(..., clamp_el: bool = False)` opt-in + ADR 0036 §Status-update.
+**ADR ref**: ADR 0036 §B/§C (보강) + §Status-update-v0.18.1.
+
+**New ADR this cycle**: none. ADR 0036 §Status-update-v0.18.1 (el-bound
+enforcement) + ADR 0030 §Status-update-v0.18.1 (Item W) append. 신규 OQ: none
+(Fix 7b 는 v0.18 에서 OQ 미신설; v0.18.1 closure 이므로 신규 deferral 불필요).

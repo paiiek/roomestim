@@ -114,3 +114,20 @@ def test_cli_edit_no_engine_validation(tmp_path: Path) -> None:
     assert rc == 0
     text = (out_dir / "layout.yaml").read_text(encoding="utf-8")
     assert text.startswith("# WARNING: schema validation skipped")
+
+
+def test_cli_edit_el_out_of_range_exit_1(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fixture = tmp_path / "layout.yaml"
+    _write_fixture(fixture)  # speakers at el=0
+    out_dir = tmp_path / "out"
+    rc = main(
+        ["edit", "--in-placement", str(fixture), "--speaker", "0",
+         "--del-deg", "95", "--out-dir", str(out_dir), "--no-engine-validation"]
+    )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "outside [-90, 90]" in captured.err
+    # rejected before write → no output file
+    assert not (out_dir / "layout.yaml").exists()

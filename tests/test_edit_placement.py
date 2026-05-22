@@ -68,6 +68,30 @@ def test_nudge_speaker_spherical() -> None:
     r3 = nudge_speaker(r, 0, del_deg=89.0)
     q = r3.speakers[0].position
     assert math.isfinite(q.x) and math.isfinite(q.y) and math.isfinite(q.z)
+    # el=90 exact boundary is physical (zenith) → accepted
+    r4 = nudge_speaker(r, 0, del_deg=90.0)
+    assert math.isfinite(r4.speakers[0].position.y)
+
+
+def test_nudge_speaker_el_above_90_raises() -> None:
+    r = _ring_result()  # speaker 0 at el=0
+    with pytest.raises(ValueError, match="outside \\[-90, 90\\]"):
+        nudge_speaker(r, 0, del_deg=91.0)
+
+
+def test_nudge_speaker_el_below_neg90_raises() -> None:
+    r = _ring_result()
+    with pytest.raises(ValueError, match="outside \\[-90, 90\\]"):
+        nudge_speaker(r, 0, del_deg=-91.0)
+
+
+def test_nudge_speaker_cartesian_no_el_guard() -> None:
+    # Cartesian Δ can place a speaker far above the listener; the implied el
+    # is always physical (atan2 ∈ [-90,90]) so no guard fires — large dy OK.
+    r = _ring_result()
+    r2 = nudge_speaker(r, 0, dz=0.0, dy=100.0)
+    p = r2.speakers[0].position
+    assert p.y == pytest.approx(100.0, abs=1e-9)  # no rejection
 
 
 def test_nudge_speaker_cartesian() -> None:

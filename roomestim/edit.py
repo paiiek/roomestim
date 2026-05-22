@@ -408,8 +408,9 @@ def nudge_speaker(
     IndexError
         When ``speaker_index`` is out of the valid range.
     ValueError
-        When both frames are non-zero, or when the resulting spherical distance
-        is non-positive.
+        When both frames are non-zero, when the resulting spherical distance
+        is non-positive, or when the resulting spherical elevation is outside
+        [-90, 90] degrees (non-physical — would flip the hemisphere).
 
     Returns
     -------
@@ -435,6 +436,17 @@ def nudge_speaker(
         az_rad, el_rad, dist = cartesian_to_pipeline(p.x, p.y, p.z)
         az2 = math.degrees(az_rad) + daz_deg
         el2 = math.degrees(el_rad) + del_deg
+        # v0.18.1 (D53 / Fix 7b closure): reject non-physical elevation. el ∉
+        # [-90, 90] would flip the x/z hemisphere via cos(el)<0 in
+        # yaml_speaker_to_cartesian — finite but mirror-reflected (a silent
+        # hemisphere flip). Mirrors the existing dist<=0 reject (same frame,
+        # same class of non-physical input). Cartesian branch needs no guard:
+        # any finite (x,y,z) implies a physical el ∈ [-90,90] via atan2.
+        if not (-90.0 <= el2 <= 90.0):
+            raise ValueError(
+                f"nudge_speaker: resulting elevation {el2}° outside [-90, 90] "
+                f"(non-physical); reduce del_deg or use a Cartesian Δ"
+            )
         d2 = dist + ddist_m
         if d2 <= 0.0:
             raise ValueError(f"nudge_speaker: resulting dist {d2} must be > 0")

@@ -141,3 +141,29 @@ need it; Level 1 (structural equivalence) is sufficient. Core keeps
   0.14-web.0 → 0.15-web.0).
 - `PlacedSpeaker` / `PlacementResult` stay frozen-respecting (all edits via
   `dataclasses.replace`); D29 lane separation preserved (web → core only).
+
+## §Status-update-v0.18.1 (2026-05-22)
+
+**Fix 7b closure — CLI el-bound enforcement (D53).**
+
+v0.18.0 deferred el-bound enforcement in `nudge_speaker`'s spherical path as a
+known gap (Fix 7b). v0.18.1 closes it: `nudge_speaker` now raises `ValueError`
+when the resulting elevation `el2 = degrees(el_rad) + del_deg` falls outside
+`[-90, 90]` (inclusive — el=±90 is physical zenith/nadir).
+
+**Policy decision (D53 — reject, not clamp):** mirrors the existing `dist <= 0`
+reject in the same function (same frame, same class of non-physical input).
+Clamp was rejected for four reasons: (1) breaks `dist <= 0` / el-bound symmetry;
+(2) silently distorts user intent; (3) non-idempotent with repeated nudges;
+(4) "UI restricts, core silently corrects" semantics conflict with
+`gr.Number(minimum=-90, maximum=90)` — reject is consistent.
+
+**Cartesian branch stays unguarded (D53 §2.2):** any finite (x, y, z) implies
+`el = atan2(y, sqrt(x²+z²)) ∈ [-90, 90]` by atan2's range — adding a guard
+would be dead code.
+
+**Scope**: `roomestim/edit.py` guard (~8 LoC) + `roomestim/cli.py` `--del-deg`
+help note (~2 LoC). `§A/§D/§E/§F` body byte-equal. `§B/§C` nudge policy
+enforcement-tightened (no new policy surface). Web lane byte-equal (`0.15-web.0`
+— web `gr.Number` already restricts input; no web change needed). D22
+audit-trail-discipline: this block is appended; no retroactive edits above.

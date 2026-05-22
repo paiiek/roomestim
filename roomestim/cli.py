@@ -234,7 +234,9 @@ def _add_edit_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -
     p.add_argument("--daz", type=float, default=0.0, metavar="D", help="azimuth delta (degrees).")
     # NOTE: must be --del-deg, never --del; `args.del` is a Python syntax error.
     p.add_argument(
-        "--del-deg", type=float, default=0.0, metavar="D", help="elevation delta (degrees)."
+        "--del-deg", type=float, default=0.0, metavar="D",
+        help="elevation delta (degrees). Resulting elevation must stay within "
+             "[-90, 90]; out-of-range raises an error (exit 1).",
     )
     p.add_argument("--ddist", type=float, default=0.0, metavar="D", help="distance delta (m).")
     # Cartesian Δ (metres).
