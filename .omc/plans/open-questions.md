@@ -525,3 +525,68 @@ v0.19 cycle 시작. **Resolution candidates**: (1) top-level `x_target_algorithm
 extension key (writer emit + reader 복원; WFS 추론보다 우선). (2) reader 추론 확장
 (regularity → algorithm — 단 DBAP/AMBISONICS 는 불충분). (3) 영구 deferral (placement
 알고리즘은 `place` 재실행으로 결정; 편집은 좌표만). **Cross-refs**: ADR 0036 §C, D50.
+
+---
+
+## v0.18.2 OQ status-updates (2026-05-24)
+
+### OQ-33 status-update (v0.18.2 — residual narrowed, re-deferred to v0.20)
+
+**Previous status**: deferred from v0.17 with evaluation cadence v0.19 (D26 hard
+wall).
+
+**v0.18.2 resolution (D54)**: OQ-33 의 manual-annotation 부분은 **이미 충족됨**
+(v0.17 에서 shipped):
+- Core: `evolve_room_add_object` / `evolve_room_remove_object` (`roomestim/edit.py`)
+- Web: `roomestim_web/object_add.py` Object Add Mode (kind-specific input forms +
+  input validation + direct `evolve_room_add_object` calls)
+- Acoustic fold: `predictor._objects_to_surfaces()` + `_objects_to_wall_alpha_overrides()`
+  (column → +5 surfaces, door/window → wall α override per D46)
+
+**Residual (still open)**: "non-RoomPlan adapter (Mesh/ACE) 의 무인 자동 객체
+추출" — `MeshAdapter` 와 `ACEChallengeAdapter` 는 여전히 `objects=[]` placeholder.
+RoomPlan adapter 의 `_extract_objects()` (ARKit category substring matching) 는
+mesh/ACE 에 범용화 불가 (소스 데이터 부재).
+
+**Re-deferred to v0.20 (hard wall)**: 두 자동-추출 후보 —
+- 후보 1 (Polycam Pro segmentation API): 비공개 API, Linux-CI 불가, fixture 없음
+- 후보 2 (bbox clustering + geometric heuristic): greenfield "미안정", GT fixture
+  부재로 검증 불가
+
+두 D26 trigger 모두 미충족 (0 user reports; 0 mesh-only GT fixtures). D54 결정.
+v0.20 hard wall — 재-재연기 금지. trigger 미충족 시 WONTFIX 정식 종결.
+
+**OQ-33 is NOT closed** (residual = adapter auto-detection remains real).
+
+**Reverse-criterion (D54)**: (a) non-RoomPlan 출처 자동 추출 요청 ≥ 1건, OR
+(b) mesh-only object-GT fixture repo 도입, OR (c) Polycam Linux-buildable
+segmentation export 공개.
+
+**Cross-refs**: D54, ADR 0034 §Status-update-v0.18.2, ADR 0030 §Status-update-v0.18.2
+Item X.
+
+---
+
+**OQ-39 — ADR 0030 §Status-update split (v0.21+)**
+
+ADR 0030 (`docs/adr/0030-predictor-default-switch.md`) 는 v0.18.2 기준 7개
+§Status-update 블록을 포함하는 ~438 라인 파일. 파일 크기가 커짐에 따라 내비게이션
+불편 가능성 존재.
+
+**Deferral reason**: doc-only re-defer 사이클에서 438-line ADR 을 분할하면 no
+functional gain 에 audit-trail discipline (D22 — append-only, no retroactive edits)
+위반 위험. D26 YAGNI — 현재 reader pain 보고 0건.
+
+**Trigger conditions** (D26 forbidden-indefinite-deferral 적용):
+- 파일 > ~600 lines (현재 ~438), OR
+- documented navigation-pain / readability report ≥ 1건.
+
+**Evaluation cadence**: v0.21 cycle 시작 시 재검토.
+
+**Resolution candidates**:
+1. ADR 0030 본문(§A–§E) 을 `docs/adr/0030-predictor-default-switch-core.md` 로
+   분리 + status-update 블록만 원본 파일에 잔류.
+2. `docs/adr/0030-status-updates/` 디렉토리 분할 (버전별 파일).
+3. 영구 deferral (파일 크기 ~600 lines 이하 유지 가능 시 YAGNI).
+
+**Cross-refs**: ADR 0030, D22 audit-trail-discipline.

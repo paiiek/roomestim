@@ -1547,3 +1547,53 @@ help note. **Reverse if**: "el 경계 넘어도 clamp 적용" ≥ 2 요청 →
 **New ADR this cycle**: none. ADR 0036 §Status-update-v0.18.1 (el-bound
 enforcement) + ADR 0030 §Status-update-v0.18.1 (Item W) append. 신규 OQ: none
 (Fix 7b 는 v0.18 에서 OQ 미신설; v0.18.1 closure 이므로 신규 deferral 불필요).
+
+---
+
+## v0.18.2 D-decision allocation (2026-05-24)
+
+**D54** — OQ-33 ("adapter object 자동 인식")의 **manual-annotation 부분은
+v0.17 에서 이미 충족됨** (core `evolve_room_add_object` / `evolve_room_remove_object`
++ web `roomestim_web/object_add.py` Object Add Mode + predictor `_objects_to_surfaces`
+fold). 따라서 OQ-33 의 미해결 잔여를 **"non-RoomPlan adapter (Mesh/ACE) 의 무인
+자동 객체 추출"** 로 **범위 축소**하고, 그 잔여(후보 1 Polycam Pro API / 후보 2
+bbox clustering)는 **doc-only 로 v0.20 까지 재연기(re-defer)** 한다. 두 D26
+trigger (RoomPlan 외 phone-scan 출처 자동 추출 요청 ≥ 1건; mesh-only object-GT
+fixture 도입)는 **모두 미충족**이며, 두 자동-추출 후보 모두 0 user report 상태에서
+가장 높은 리스크(미안정 클러스터링 / 비공개 API + non-CI)를 동반하므로 D26 의
+YAGNI 규율에 정합한다. v0.20 은 **hard wall** 이다 (재-재연기 금지 — 그때까지도
+trigger 미충족이면 WONTFIX 로 정식 종결).
+
+**Rejected alternatives:**
+- **후보 1 (Polycam Pro API)** — 비공개 API 의존, Linux-CI 빌드 불가, fixture 없음.
+  0 user report 에 외부 의존을 들이는 것은 premature.
+- **후보 2 (bbox clustering)** — greenfield + self-described "미안정"; validation
+  ground-truth fixture 부재로 검증 불가한 heuristic 을 ship 하게 됨. D26 의
+  "보고 없는 추측 구현 금지" 위반.
+- **후보 3 을 "신규 작업"으로 취급** — 이미 ship 됨. 재구현은 중복.
+- **무기한 재연기 (wall 없음)** — D26 직접 위반.
+
+**Reverse-criterion (재연기 해제 조건):** 다음 중 하나라도 충족되면 v0.20 에서
+ADR 0037 (auto-recognition policy) 를 신규 작성하고 후보 1/2 중 검증 가능한 쪽을
+구현한다 —
+(a) RoomPlan 외 출처(raw mesh/Polycam/ACE)에서 무인 객체 추출 요청 ≥ 1건, OR
+(b) object ground-truth 라벨이 붙은 mesh-only fixture 가 repo 에 도입(후보 2 의
+    회귀 검증 기반 확보), OR
+(c) Polycam 이 안정적 Linux-buildable segmentation export 를 공개(후보 1 의 CI
+    제약 해소).
+**Scope**: policy (no acoustic/schema code). **ADR ref**: ADR 0034
+§Status-update-v0.18.2 + ADR 0030 §Status-update-v0.18.2 Item X.
+
+**D55 (OPTIONAL — deferred, user-gated)** — manual-annotation 의 CLI 패리티
+격차를 닫기 위해 `roomestim add-object` 서브커맨드를 신설한다는 제안. 본체는
+신규 로직 없이 이미 shipped 인 `evolve_room_add_object` + `room_yaml` reader/writer
+를 호출만 한다. **이 항목은 OQ-33 해소에 필수가 아니다** (web 으로 이미 가능).
+v0.18.2 사용자 확인 결과: **OUT / deferred** — 사용자가 명시 요청하지 않음.
+**Reverse if**: 사용자가 CLI 객체 추가 패리티를 명시 요청할 때. 채택 시 web/CLI
+객체 추가 시맨틱 분기 → 단일 helper 로 재수렴 주의.
+**ADR ref**: 없음 (이 항목은 shipped core 사용이므로 신규 ADR 불필요).
+
+**New ADR this cycle**: none (re-defer는 §Status-update append 만으로 충분 — 신규
+ADR 은 v0.20 에서 auto-detection 이 실제 구현될 때 ADR 0037 로 신설).
+ADR 0034 §Status-update-v0.18.2 + ADR 0030 §Status-update-v0.18.2 Item X append.
+신규 OQ: OQ-39 (ADR 0030 §Status-update split — deferred).

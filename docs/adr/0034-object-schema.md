@@ -177,3 +177,61 @@ evolve helper 신규 공개 API (6개):
 - `roomestim/export/room_yaml.py` — 0.2-draft export.
 - `tests/test_objects.py` — Object schema 단위 테스트.
 - `tests/test_objects_acoustic_invariant.py` — D47 회귀 lock 150 instance.
+
+---
+
+## §Status-update-v0.18.2 (2026-05-24)
+
+**OQ-33 residual narrowing — manual-annotation path declared DONE; auto-detection
+re-deferred to v0.20 hard wall.**
+
+D22 audit-trail-discipline (v0.15.1 / v0.17 / v0.18 precedent): append only,
+no retroactive edits to prior body.
+
+### Manual-annotation path: DONE (v0.17)
+
+The portion of OQ-33 describing "사용자 수동 annotation" is **fully satisfied**
+as of v0.17 (ADR 0034 §A + D39/D46 land):
+
+- `roomestim/edit.py`: `evolve_room_add_object(room, obj)` and
+  `evolve_room_remove_object(room, idx)` — frozen-respecting helpers, exported in
+  `__all__` and `roomestim.__init__`.
+- `roomestim_web/object_add.py`: full Object Add Mode web UI (kind-specific input
+  forms for column/door/window, input validation, direct evolve-helper calls,
+  remove-by-index).
+- `roomestim/reconstruct/predictor.py`: `_objects_to_surfaces()` folds
+  `room.objects` into ISM/Sabine (column → +5 surfaces; door/window → wall α
+  override per D46); rationale string reports `+N column surfaces` / `+N wall α
+  overrides`.
+
+### OQ-33 residual (still open): adapter auto-detection only
+
+`MeshAdapter` (`roomestim/adapters/mesh.py:154`) and `ACEChallengeAdapter`
+(`roomestim/adapters/ace_challenge.py:721`) retain `objects=[]` placeholder.
+The two auto-detection candidates are **re-deferred to v0.20 (hard wall)**
+per D54:
+
+- **Candidate 1 (Polycam Pro segmentation API)**: proprietary API, non-CI
+  (Linux-unbuildable), no fixture — 0 user reports → premature.
+- **Candidate 2 (bbox clustering + geometric heuristic)**: greenfield,
+  self-described "미안정", no ground-truth fixture for validation → ships
+  unvalidated heuristics, violates D26 "보고 없는 추측 구현 금지".
+
+Both D26 triggers remain unmet: (a) non-RoomPlan auto-extraction request = 0;
+(b) mesh-only object-GT fixture = 0.
+
+### v0.20 hard wall
+
+At v0.20: if any Reverse-criterion fires (D54) — (a) ≥1 auto-extraction user
+request, OR (b) mesh-only object-GT fixture introduced, OR (c) Polycam
+Linux-buildable segmentation export published — author ADR 0037
+(auto-recognition policy) and implement the validated candidate. If none fire:
+WONTFIX close OQ-33 remainder. Re-re-deferral is forbidden (D26).
+
+### Regression lock
+
+`tests/test_oq33_residual_lock.py` (added v0.18.2) locks:
+- `MeshAdapter` and `ACEChallengeAdapter` still return `objects==[]` (adapter
+  placeholder behavior).
+- `evolve_room_add_object` manual path round-trips through `room.yaml`
+  (object survives write → read cycle).
