@@ -176,3 +176,85 @@ def test_edit_then_validate(tmp_path: Path) -> None:
     loaded = read_placement_yaml(p)
     edited = nudge_speaker(loaded, 0, daz_deg=5.0)
     assert validate_placement(edited) == []
+
+
+# --------------------------------------------------------------------------- #
+# D56 fix-lock regression gates (v0.18.3; G10 / G11 / G12)
+# --------------------------------------------------------------------------- #
+
+
+def _n8_ring_result() -> PlacementResult:
+    """8-speaker VBAP ring — the non-axis-aligned case that produced dirty floats."""
+    from roomestim.place.vbap import place_vbap_ring
+
+    return place_vbap_ring(n=8, radius_m=2.0, el_deg=0.0)
+
+
+def test_noop_edit_empty_diff_non_axis_aligned(tmp_path: Path) -> None:
+    """G10 — a zero-magnitude edit on a non-axis-aligned ring is byte-identical.
+
+    This is the dogfood-reproduced defect turned into a permanent guard.
+    Before D56, ``edit --speaker 0 --daz 0`` on the n8 ring produced a
+    non-empty diff touching an unrelated speaker (x_aim_az_deg churn).
+    """
+    from roomestim.edit import nudge_speaker
+
+    r = _n8_ring_result()
+    in_path = tmp_path / "in.yaml"
+    out_path = tmp_path / "out.yaml"
+    _write(r, in_path)
+
+    # Read → zero-magnitude nudge on speaker 0 → write.
+    loaded = read_placement_yaml(in_path)
+    edited = nudge_speaker(loaded, 0, daz_deg=0.0)
+    _write(edited, out_path)
+
+    assert in_path.read_bytes() == out_path.read_bytes(), (
+        "no-op edit (--daz 0) on n8 ring produced non-empty diff — "
+        "D56 writer normalization regression"
+    )
+
+
+def test_place_output_has_no_dirty_floats(tmp_path: Path) -> None:
+    """G11 — every emitted numeric leaf equals its own round(v, 9).
+
+    Asserts that the writer already normalized all degree/distance fields so
+    no trailing-ULP noise (e.g. ``-135.00000000000003``) survives into the
+    YAML text. The assertion is non-vacuous: it parses the written YAML and
+    checks every float leaf.
+    """
+    import yaml as _yaml
+
+    r = _n8_ring_result()
+    p = tmp_path / "layout.yaml"
+    _write(r, p)
+
+    data = _yaml.safe_load(p.read_text(encoding="utf-8"))
+    dirty: list[str] = []
+    for sp in data["speakers"]:
+        for key in ("az_deg", "el_deg", "dist_m", "x_aim_az_deg", "x_aim_el_deg"):
+            v = sp[key]
+            if v != round(v, 9):
+                dirty.append(f"speaker {sp['id']} {key}={v!r}")
+
+    assert dirty == [], (
+        "D56 regression — emitted floats not normalized to 9 decimals: " + str(dirty)
+    )
+
+
+def test_idempotent_non_axis_aligned_rewrite_byte_equal(tmp_path: Path) -> None:
+    """G12 — write→read→write is a byte-equal fixed point on a non-axis-aligned layout.
+
+    Before D56 this was NOT byte-equal (the second write produced different dirty
+    floats than the first). Confirms single-iteration convergence post-fix.
+    """
+    r = _n8_ring_result()
+    p1 = tmp_path / "a.yaml"
+    p2 = tmp_path / "b.yaml"
+    _write(r, p1)
+    r2 = read_placement_yaml(p1)
+    _write(r2, p2)
+    assert _sha(p1) == _sha(p2), (
+        "non-axis-aligned write→read→write not byte-equal — "
+        "D56 idempotency regression"
+    )

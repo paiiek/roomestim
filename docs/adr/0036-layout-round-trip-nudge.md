@@ -142,6 +142,52 @@ need it; Level 1 (structural equivalence) is sufficient. Core keeps
 - `PlacedSpeaker` / `PlacementResult` stay frozen-respecting (all edits via
   `dataclasses.replace`); D29 lane separation preserved (web → core only).
 
+## §Status-update-v0.18.3 (2026-05-24)
+
+**D56 — writer float normalization (diff-noise defect closure).**
+
+A dogfood-reproduced defect was confirmed at HEAD `aae5514` (v0.18.2): a
+no-op `edit --speaker 0 --daz 0` on the n8 VBAP ring produced a non-empty
+unified diff touching an UNRELATED speaker (`x_aim_az_deg: 44.99999999999999`
+→ `45.0`). Root cause: `_placed_speaker_to_dict` emitted raw `math.degrees(...)`
+/ `math.sqrt(...)` trig output. The writer's second `cartesian_to_pipeline` on
+the reader-restored unit aim vector landed on a different dirty float than the
+original, making write≠rewrite for non-axis-aligned layouts.
+
+**Fix (D56):** `_placed_speaker_to_dict` wraps `az_deg`, `el_deg`, `dist_m`,
+`x_aim_az_deg`, `x_aim_el_deg` in `_round9(x) = round(x, 9)` as the LAST emit
+step; `placement_to_dict` wraps `x_wfs_f_alias_hz` likewise. Place-write and
+edit-write share this one code path → identical structural input → byte-identical
+output → no-op edit produces an empty diff (dogfood defect gone).
+
+**Precision (N=9):** position error ≤ `2·sin(5e-10°)` ≈ **1.7e-11 m** (dist ≤ 2 m),
+two orders of magnitude inside the D50 Level-1 ≤1e-9 contract. N=6 would violate
+it; N≥10 re-admits trailing digits. `round(-0.0, 9) == -0.0` is preserved.
+
+**§C round-trip fidelity (D50) — status:** D56 is an enforcement *tightening*,
+not a policy change. Level-1 ≤1e-9 still holds, now with cleaner floats.
+Byte-equal idempotency (axis-aligned fixtures) stays GREEN (rounding is
+idempotent: `round(round(x,9),9)==round(x,9)`). Non-axis-aligned is now also a
+single-iteration fixed point (G12 regression gate locks it).
+
+**§F byte-equal round-trip is a non-goal (D51) — unchanged:** D56 makes the
+*writer* idempotent, not a comment/key-order preservation guarantee — that is a
+distinct concern; D51/§F body is byte-equal above.
+
+**Honesty correction (v0.18.0 overclaim):** `RELEASE_NOTES_v0.18.0.md` line
+57–58 stated the float drift *"does not affect editing UX, which relies on Level 1
+structural equivalence."* Dogfooding disproves this: the spurious diff IS visible
+UX. Per D22 audit-trail-discipline, the shipped v0.18.0 notes are NOT retroactively
+edited; the correction is recorded here and in `RELEASE_NOTES_v0.18.3.md`
+§What v0.18.0 overclaimed.
+
+**Scope:** `roomestim/export/layout_yaml.py` (~18 LoC); golden
+`tests/fixtures/golden/place_vbap_ring_n8_default.yaml` regenerated (SHA
+`2caea92…` → `3b9b0dc…`); 3 fix-lock regression gates (G10/G11/G12) added to
+`tests/test_layout_round_trip.py`. Web byte-equal (`0.15-web.0`). Acoustic path
+untouched (RT60 `1.9190766987173207` byte-equal). Schema `0.2-draft` unchanged.
+D22 audit-trail-discipline: this block appended; no retroactive edits above.
+
 ## §Status-update-v0.18.1 (2026-05-22)
 
 **Fix 7b closure — CLI el-bound enforcement (D53).**

@@ -30,7 +30,8 @@
 #                          UTF-8 encoded, copied verbatim from v0.1 HEAD
 #                          (function signature line through `return speakers`).
 
-golden_sha256: 2caea92b7b50730fe6dae5377b35971d768e7de0f9993b8551ca31b2d66b7486
+golden_sha256: 3b9b0dc760b9b417c8daa5cbf4ef895bee214364af93d18cb57f36e94fcc35ac
+# Regenerated v0.18.3 (D56 writer float normalization round(·,9)); prior dirty-float golden_sha256 was 2caea92b7b50730fe6dae5377b35971d768e7de0f9993b8551ca31b2d66b7486
 pre_edit_source_sha256: e331659c9dba4c91782d489bbeaa976615aa561f5ea1c183d132042870244269
 
 # The pre-edit source text (for offline verification — the same bytes whose

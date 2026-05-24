@@ -21,6 +21,11 @@ R10 pre-flight: enforce ``min_speaker_count`` per
 ``spatial_engine/core/src/geometry/SpeakerLayout.h:38`` (LINEAR≥2, CIRCULAR≥3,
 PLANAR_GRID≥4, IRREGULAR≥1). R11 finite-sweep: every numeric leaf must satisfy
 ``math.isfinite``.
+
+D56 (v0.18.3): all emitted numeric degree/distance fields are normalized to 9
+decimal places via ``_round9`` as the LAST step on every write — idempotent
+fixed point, position error ≤ 1.7e-11 m (≪ D50 Level-1 ≤1e-9 contract).
+See ADR 0036 §Status-update-v0.18.3.
 """
 
 from __future__ import annotations
@@ -108,6 +113,24 @@ def _min_speaker_count(regularity_hint: str) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# D56 — writer float normalization (v0.18.3, ADR 0036 §Status-update-v0.18.3)
+# --------------------------------------------------------------------------- #
+
+
+def _round9(x: float) -> float:
+    """Normalize emitted numeric degree/distance field to 9 decimal places.
+
+    Applied as the LAST step on every write so that place-write and edit-write
+    traverse the same code path and produce byte-identical output (idempotent
+    fixed point). ``round(-0.0, 9) == -0.0`` is preserved intentionally.
+    Position error injected: ≤ 1.7e-11 m at dist ≤ 2 m — well within the D50
+    Level-1 ≤1e-9 structural contract. Scheme: stdlib ``round`` (local,
+    explicit, dep-free, deterministic). D56 / ADR 0036 §Status-update-v0.18.3.
+    """
+    return round(x, 9)
+
+
+# --------------------------------------------------------------------------- #
 # Per-speaker dict construction
 # --------------------------------------------------------------------------- #
 
@@ -140,11 +163,11 @@ def _placed_speaker_to_dict(speaker: PlacedSpeaker) -> dict[str, Any]:
     out: dict[str, Any] = {
         "id": int(speaker.channel),
         "channel": int(speaker.channel),
-        "az_deg": math.degrees(az_rad),
-        "el_deg": math.degrees(el_rad),
-        "dist_m": dist_m,
-        "x_aim_az_deg": aim_az_deg,
-        "x_aim_el_deg": aim_el_deg,
+        "az_deg": _round9(math.degrees(az_rad)),      # D56 — normalize at emit
+        "el_deg": _round9(math.degrees(el_rad)),      # D56
+        "dist_m": _round9(dist_m),                    # D56
+        "x_aim_az_deg": _round9(aim_az_deg),          # D56
+        "x_aim_el_deg": _round9(aim_el_deg),          # D56
     }
     return out
 
@@ -175,7 +198,7 @@ def placement_to_dict(
                 "x_wfs_f_alias_hz is required for WFS-produced layouts "
                 "(see design §6.1, A8 item #4); got wfs_f_alias_hz=None"
             )
-        out["x_wfs_f_alias_hz"] = float(result.wfs_f_alias_hz)
+        out["x_wfs_f_alias_hz"] = _round9(float(result.wfs_f_alias_hz))  # D56
     return out
 
 

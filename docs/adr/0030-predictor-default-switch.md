@@ -411,6 +411,25 @@ append. D22 audit-trail-discipline (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.1 /
 v0.17 / v0.18 precedent): 이 블록 append, 기존 §Status-update 본문 retroactive
 수정 없음.
 
+## §Status-update-v0.18.3 (2026-05-24)
+
+D22 audit-trail-discipline pattern (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.0 /
+v0.16.1 / v0.17 / v0.18 / v0.18.1 / v0.18.2 precedent). 위
+§Status-update-v0.18.2 본문 위에 append; retroactive 수정 없음.
+
+**Item Y — D56 writer float normalization PATCH (placement serialization only)**
+
+`roomestim/export/layout_yaml.py` `_round9` helper + 6 call-site wraps (D56):
+per-speaker `az_deg`, `el_deg`, `dist_m`, `x_aim_az_deg`, `x_aim_el_deg` +
+top-level `x_wfs_f_alias_hz` all normalized to 9 decimal places at emit time.
+Fixes dogfood-reproduced no-op-edit diff churn. Predictor cascade (§A–§E)
+byte-equal — placement serialization is not on the acoustic code path; RT60
+negative control `1.9190766987173207` unchanged. `roomestim_web.__version__`
+`0.15-web.0` 불변 (web byte-equal). `__schema_version__` `0.2-draft` 불변.
+`roomestim.__version__` `0.18.2` → `0.18.3` (PATCH). New ADR: none (writer
+precision tightening recorded via §Status-update appends per v0.18.1 precedent).
+ADR 0036 §Status-update-v0.18.3 병행 append. 신규 OQ: none.
+
 ## §Status-update-v0.18.2 (2026-05-24)
 
 D22 audit-trail-discipline 패턴 (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.0 /
