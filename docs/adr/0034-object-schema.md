@@ -180,6 +180,38 @@ evolve helper 신규 공개 API (6개):
 
 ---
 
+## §Status-update-v0.18.4 (2026-05-25)
+
+D22 audit-trail-discipline (v0.15.1 / v0.17 / v0.18 / v0.18.2 precedent): 위
+§Status-update-v0.18.2 본문 위에 append; retroactive 수정 없음.
+
+**OQ-36 WONTFIX (D57) — `room.yaml --schema 0.1` 다운그레이드 CLI flag: D26
+hard-wall forced CLOSED.**
+
+v0.19-cycle cadence 의 D26 hard-wall 이 여기서 충족됨. 근거: (1) 유일한 실제
+consumer (`spatial_engine`) 는 `layout.yaml` **만** 소비 (`docs/adr/0034-object-schema.md:142`);
+`room.yaml` 소비 consumer 가 존재하지 않으므로 0.2-draft `objects` unknown-field
+trigger 가 성립할 consumer 자체가 없음. (2) trigger (외부 consumer fail ≥ 1건) =
+**0건**. (3) 다운그레이드 library write-path 는 이미 존재 (`room_model_to_dict(
+schema_version="0.1"|"0.1-draft")` + `write_room_yaml(schema_version=...)`); CLI
+노출만 없음 — 프로그래매틱 caller 는 오늘도 다운그레이드 가능. CLI `--schema`
+플래그 추가 = 0-consumer 기능에 surface-area 증가 = YAGNI.
+
+OQ-36 **CLOSED (WONTFIX)**. Reverse-criterion: (a) `room.yaml` 직접 소비 외부
+consumer 가 unknown field fail ≥ 1건, OR (b) spatial_engine 이 `room.yaml` 소비
+도입하면서 0.1-draft 만 지원 → v0.20+ ADR 0034 §Status-update + CLI 플래그 신설.
+**ADR ref**: D57.
+
+**OQ-34 재연기 (D58) — 곡선/원형 column (§D): v0.21 cycle 시작 시 재검토.**
+
+두 trigger 모두 미충족: 사용자 cylinder/arch 요청 0건; acoustic 모델 = rectilinear
+shoebox ISM (non-rectilinear 교체 없음). v0.20 은 OQ-33 auto-detection hard wall
+에 예약 → object-schema 변경 충돌 회피; OQ-34 는 v0.21 로. Reverse if: cylinder/
+arch 요청 ≥ 1건 OR 모델 교체 → `shape: Literal["box","cylinder"]` 필드 검토.
+**ADR ref**: D58. Predictor cascade / schema: 불변.
+
+---
+
 ## §Status-update-v0.18.2 (2026-05-24)
 
 **OQ-33 residual narrowing — manual-annotation path declared DONE; auto-detection

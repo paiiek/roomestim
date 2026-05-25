@@ -411,6 +411,26 @@ append. D22 audit-trail-discipline (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.1 /
 v0.17 / v0.18 precedent): 이 블록 append, 기존 §Status-update 본문 retroactive
 수정 없음.
 
+## §Status-update-v0.18.4 (2026-05-25)
+
+D22 audit-trail-discipline pattern (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.0 /
+v0.16.1 / v0.17 / v0.18 / v0.18.1 / v0.18.2 / v0.18.3 precedent). 위
+§Status-update-v0.18.3 본문 위에 append; retroactive 수정 없음.
+
+**Item Z — v0.19-cycle OQ 재검토 (doc-only PATCH)**
+
+v0.19-cycle cadence 의 5 OQ 재검토 (OQ-34/35/36/37/38) 가 PATCH `0.18.4` 로
+landing. OQ-36 은 D26 hard-wall 에서의 정식 WONTFIX close (D57); OQ-34/35 는
+v0.21 명시-cadence 재연기 (D58/D59); OQ-37/38 은 v0.20 명시-cadence 재연기
+(D60/D61). 모든 trigger 검증됨 (0건). 신규 ADR: none. 신규 OQ: none.
+
+Predictor cascade §A–§E: **byte-equal** (doc-only — acoustic / schema 코드 미접촉).
+web: **byte-equal** `0.15-web.0` (D30). `__schema_version__` `0.2-draft` 불변.
+`roomestim.__version__` `0.18.3` → `0.18.4` (PATCH).
+ADR 0034/0035/0036 §Status-update-v0.18.4 병행 append.
+
+---
+
 ## §Status-update-v0.18.3 (2026-05-24)
 
 D22 audit-trail-discipline pattern (v0.10.1 / v0.15.1 / v0.15.2 / v0.16.0 /

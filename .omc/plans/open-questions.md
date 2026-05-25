@@ -590,3 +590,82 @@ functional gain 에 audit-trail discipline (D22 — append-only, no retroactive 
 3. 영구 deferral (파일 크기 ~600 lines 이하 유지 가능 시 YAGNI).
 
 **Cross-refs**: ADR 0030, D22 audit-trail-discipline.
+
+---
+
+## v0.18.4 OQ status-updates (2026-05-25)
+
+### OQ-36 status-update (v0.18.4 — CLOSED / WONTFIX, D57)
+
+D26 hard-wall forced decision (v0.19-cycle cadence commitment). Trigger = "외부
+consumer fail 보고 ≥ 1건" — **verified 0건** (git log / docs / artifacts 전수
+grep, 0 hits). Sole real consumer (`spatial_engine`) consumes only `layout.yaml`
+and never reads `room.yaml` (`docs/adr/0034-object-schema.md:142`). Library
+write-path (`room_model_to_dict(schema_version="0.1")` + `write_room_yaml(
+schema_version=...)`) already exists; CLI `--schema` flag = YAGNI (0 consumer).
+D26 hard-wall is satisfied by a real decision (WONTFIX), not another re-defer.
+
+**[x] CLOSED (WONTFIX)**. Decision: D57. ADR ref: ADR 0034 §Status-update-v0.18.4.
+
+**Reverse-criterion (재개 조건):** (a) `room.yaml` 직접 소비 외부 consumer 가
+0.2-draft `objects` unknown field 로 fail 보고 ≥ 1건, OR (b) spatial_engine 이
+`room.yaml` 소비 도입하면서 0.1-draft 만 지원 → v0.20+ ADR 0034 §Status-update
+기록 + CLI 플래그 신설.
+
+---
+
+### OQ-37 status-update (v0.18.4 — re-deferred to v0.20, D60)
+
+Trigger 미충족: per-speaker note 보존 요청 0건; nudge notes-loss 보고 0건.
+`notes` = in-memory annotation only (ADR 0036 §C Level-1 명시 제외; reader 미복원).
+Engine `geometry_schema.json` `additionalProperties: true` → `x_notes` 기술적
+가능, engine 소비/무시 정책 협의 필요.
+
+**신규 cadence: v0.20 cycle 시작 시 재검토** (OQ-38 과 동일 사이클 — 한 번의
+engine-schema 협의로 묶음 평가). Decision: D60. ADR ref: ADR 0036 §Status-update-v0.18.4.
+
+**Reverse if (조기 escalate):** per-speaker note 보존 요청 ≥ 1건 OR nudge
+notes-loss 보고 ≥ 1건 → `x_notes` extension key + engine 협의.
+
+---
+
+### OQ-38 status-update (v0.18.4 — re-deferred to v0.20, D61)
+
+Trigger 미충족: DBAP/AMBISONICS nudge round-trip 라벨-손실 보고 0건; engine
+algorithm-aware 검증 미도입. `placement_yaml_reader.py:67-76` WFS-vs-VBAP 추론만;
+DBAP/AMBISONICS → "VBAP" 붕괴 (D50 Level-1 명시 제외, 의도적 설계).
+
+**신규 cadence: v0.20 cycle 시작 시 재검토** (OQ-37 과 동일 사이클). Decision: D61.
+ADR ref: ADR 0036 §Status-update-v0.18.4.
+
+**Reverse if (조기 escalate):** DBAP/AMBISONICS 라벨 손실 보고 ≥ 1건 OR engine
+algorithm-aware 검증 도입 → `x_target_algorithm` extension key.
+
+---
+
+### OQ-34 status-update (v0.18.4 — re-deferred to v0.21, D58)
+
+Trigger 미충족: 사용자 cylinder/arch column 요청 0건; acoustic 모델 = rectilinear
+shoebox ISM (non-rectilinear 교체 없음). 곡선 근사 = ISM surface 수 n배 → 계산비용
+n배 (실측 needs 없는 성능회귀).
+
+**신규 cadence: v0.21 cycle 시작 시 재검토** (v0.20 OQ-33 hard wall 과 충돌 회피;
+OQ-34 한 사이클 뒤). Decision: D58. ADR ref: ADR 0034 §Status-update-v0.18.4.
+
+**Reverse if (조기 escalate):** cylinder/arch column 요청 ≥ 1건 OR acoustic 모델
+non-rectilinear 교체 → `shape: Literal["box","cylinder"]` 필드 검토.
+
+---
+
+### OQ-35 status-update (v0.18.4 — re-deferred to v0.21, D59)
+
+Trigger 미충족: Apple/Khronos acoustic-metadata 표준 **미공개**; Unreal/SPARTA
+등 외부 도구 import 요청 0건. sidecar `"v0.1-internal"` 동작 중; 외부 표준 없는
+상태에서 spec 동결 = premature (표준 등장 시 재작업 비용).
+
+**신규 cadence: v0.21 cycle 시작 시 재검토** (외부 표준 의존 — OQ-34 와 동일
+사이클 묶음). Decision: D59. ADR ref: ADR 0035 §Status-update-v0.18.4.
+
+**Reverse if (조기 escalate):** Vision Pro/Apple RoomPlan acoustic metadata 표준
+공개 OR 외부 도구 acoustic import 요청 ≥ 1건 → ADR 0035 §E 확장 (§G
+reverse-criterion (iv)).

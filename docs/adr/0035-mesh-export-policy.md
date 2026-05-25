@@ -192,3 +192,28 @@ write → read → vertex/face equal. byte-equal lock은 v0.17.1 patch 후속
 - `tests/test_export_usdz.py` — round-trip equality 회귀 lock.
 - `tests/test_export_gltf.py` — GLB/gLTF format 회귀 lock.
 - `README.md §USDZ` — 설치 및 사용법.
+
+---
+
+## §Status-update-v0.18.4 (2026-05-25)
+
+ADR 0035 최초 §Status-update 블록. D22 audit-trail-discipline: append only,
+no retroactive edits to prior body.
+
+**OQ-35 재연기 (D59) — USDZ/gLTF acoustic metadata 표준: v0.21 cycle 시작 시 재검토.**
+
+두 trigger 모두 미충족: (1) Apple/Khronos acoustic-metadata 표준 **미공개** (Vision
+Pro/RoomPlan acoustic extension 도 미확정); (2) Unreal/SPARTA 등 외부 도구 import
+요청 0건. sidecar 는 `"v0.1-internal"` 로 동작 중이며 외부 표준이 없는 상태에서
+roomestim 자체 spec 을 동결하는 것은 premature — 표준 등장 시 재작업 비용 발생.
+
+**신규 cadence: v0.21 cycle 시작 시 재검토** (외부 표준 의존 — OQ-34 와 동일 사이클
+묶음으로 재검토 효율화). §G reverse-criterion (iv) = OQ-35 closure 경로 (표준 공개
+시 §E 확장).
+
+Reverse if (조기 escalate): Vision Pro/Apple RoomPlan acoustic metadata 표준 공개
+OR 외부 도구 (Unreal/SPARTA 등) acoustic import 요청 ≥ 1건 → ADR 0035 §E 확장
+(KHR extension key / Apple sidecar spec 채택). **ADR ref**: D59.
+
+Predictor cascade / ObjectKind / schema: 불변. web: byte-equal (`0.15-web.0`).
+`roomestim.__version__` `0.18.3` → `0.18.4` (PATCH). 신규 ADR: none. 신규 OQ: none.

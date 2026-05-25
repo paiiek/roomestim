@@ -142,6 +142,43 @@ need it; Level 1 (structural equivalence) is sufficient. Core keeps
 - `PlacedSpeaker` / `PlacementResult` stay frozen-respecting (all edits via
   `dataclasses.replace`); D29 lane separation preserved (web → core only).
 
+## §Status-update-v0.18.4 (2026-05-25)
+
+D22 audit-trail-discipline (v0.18.1 / v0.18.3 precedent): 위
+§Status-update-v0.18.3 본문 위에 append; retroactive 수정 없음.
+
+**OQ-37 재연기 (D60) — `PlacedSpeaker.notes` round-trip (`x_notes`): v0.20 cycle 시작 시 재검토.**
+
+Trigger 미충족: per-speaker note 보존 요청 0건; nudge notes-loss 보고 0건. §C
+(Level-1 계약) 가 `notes` 를 명시 제외: in-memory annotation 전용 (`model.py:247`
+`notes: str = ""`; reader 미복원). Engine `geometry_schema.json` per-speaker
+`additionalProperties: true` → `x_notes` 기술적 가능하나 engine 소비/무시 정책
+협의 필요. §G(iv) reverse-criterion 적용.
+
+**신규 cadence: v0.20 cycle 시작 시 재검토** (OQ-38 과 동일 — 둘 다 `layout.yaml`
+round-trip extension; 한 번의 engine-schema 협의로 묶음 평가). Decision: D60.
+
+Reverse if (조기 escalate): per-speaker note 보존 요청 ≥ 1건 OR nudge notes-loss
+보고 ≥ 1건 → `x_notes` per-speaker extension key (resolution candidate 1) + engine 협의.
+
+**OQ-38 재연기 (D61) — `target_algorithm` 전체 round-trip (`x_target_algorithm`): v0.20 cycle 시작 시 재검토.**
+
+Trigger 미충족: DBAP/AMBISONICS nudge round-trip 라벨-손실 보고 0건; engine
+algorithm-aware 검증 미도입. §C 가 명시 제외: `roomestim/io/placement_yaml_reader.py:67-76`
+WFS-vs-VBAP 추론만; DBAP/AMBISONICS → "VBAP" 붕괴 (D50 Level-1 명시 제외, 의도적
+설계 — 편집은 좌표만, 알고리즘은 `place` 재실행으로 결정). §G(iv) reverse-criterion 적용.
+
+**신규 cadence: v0.20 cycle 시작 시 재검토** (OQ-37 과 동일 사이클). Decision: D61.
+
+Reverse if (조기 escalate): DBAP/AMBISONICS 라벨 손실 보고 ≥ 1건 OR engine
+algorithm-aware 검증 도입 → top-level `x_target_algorithm` extension key (writer
+emit + reader 복원, WFS 추론보다 우선; resolution candidate 1).
+
+Predictor cascade / ObjectKind / schema: 불변. web: byte-equal (`0.15-web.0`).
+`roomestim.__version__` `0.18.3` → `0.18.4` (PATCH). 신규 ADR: none. 신규 OQ: none.
+
+---
+
 ## §Status-update-v0.18.3 (2026-05-24)
 
 **D56 — writer float normalization (diff-noise defect closure).**
