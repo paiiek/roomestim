@@ -1729,3 +1729,39 @@ algorithm-aware 검증 도입 → top-level `x_target_algorithm` extension key
 
 **New ADR this cycle**: none (re-examination = §Status-update appends).
 ADR 0030/0034/0035/0036 §Status-update-v0.18.4 append. 신규 OQ: none.
+
+---
+
+**D62** — The four `tests/web/*.py` files that used the **deprecated**
+`PolycamAdapter` alias purely as a *generic mesh parser* migrate to the canonical
+`roomestim.adapters.MeshAdapter` (D33's intended end-state). Changed call sites
+(verified at HEAD `35e691d`): `tests/web/test_setup_pdf.py` (import :12, parse
+:19), `tests/web/test_acoustic_report.py` (import :9, parse :15),
+`tests/web/test_binaural_renderer.py` (import :24, parse :79),
+`tests/web/test_3d_viewer.py` (import :11, construct :19 + parse :20). Each parse
+target is `tests/fixtures/lab_room.obj` (a `.obj` mesh, NOT a `.json`), so the
+swap is **behavior-preserving** — `PolycamAdapter(MeshAdapter)` is a subclass that
+only adds a `DeprecationWarning` + `.json`-delegation branch, neither of which
+applies to a `.obj` mesh parse. Effect: the four files emit ZERO `PolycamAdapter`
+DeprecationWarnings; the alias's intentional warning now fires ONLY from the
+contract test (the desired single canonical trigger).
+
+**Explicitly OUT OF SCOPE**: (a) the alias is NOT removed — `roomestim/adapters/__init__.py`
+keeps the `PolycamAdapter` export and the shim `roomestim/adapters/polycam.py` stays
+as-is; full removal remains deferred under the **D33 reverse-criterion** (BREAKING →
+needs successor D + "Breaking changes" callout). (b) the contract test
+`tests/test_adapter_polycam.py` is NOT touched. (c) `roomestim/cli.py:303-306`
+`_get_adapter("polycam")` is NOT touched — `MeshAdapter.parse` REJECTS `.json`
+(raises `ValueError`; `.json` ∉ `_SUPPORTED_SUFFIXES`), so swapping cli.py would
+REGRESS `roomestim … --backend polycam <file>.json`. (d) the shim docstring's
+"removal at v0.14 or later" is noted as stale but not edited (removal deferred by D33).
+
+**Reverse-criterion (D62)**: if a future cycle wants to remove the `PolycamAdapter`
+alias entirely, it must (i) migrate remaining alias callers — `cli.py`
+`_get_adapter("polycam")` (requires preserving `.json` delegation) and the contract
+test — then (ii) land the removal under a successor D-decision with a "Breaking
+changes" RELEASE_NOTES callout (D33). D62 does NOT authorize removal.
+
+**Scope**: tests only (`tests/web/*.py`). **ADR ref**: ADR 0027
+§Status-update-v0.18.5. **New ADR this cycle**: none. **New OQ**: OQ-40 (gradio
+`col_count` deprecation noise — separate, deferred). PATCH bump `0.18.4 → 0.18.5`.

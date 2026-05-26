@@ -80,6 +80,33 @@ cleanly across the rename.
   faces; the existing `vertices.shape[1] != 3` guard did NOT catch this. Documented
   as a known gap; resolution deferred to v0.12-web.2 on user report.
 
+## §Status-update-v0.18.5 (2026-05-27)
+
+**D62 — internal test-caller migration (D33 intended end-state).** The four
+`tests/web/*.py` files that used the deprecated `PolycamAdapter` alias purely
+as a generic mesh parser were migrated to the canonical `MeshAdapter`:
+`tests/web/test_setup_pdf.py` (import :12, parse :19),
+`tests/web/test_acoustic_report.py` (import :9, parse :15),
+`tests/web/test_binaural_renderer.py` (import :24, parse :79),
+`tests/web/test_3d_viewer.py` (import :11, construct :19). Each parse target
+is `tests/fixtures/lab_room.obj` (a `.obj` mesh); the swap is
+behavior-preserving (`PolycamAdapter(MeshAdapter)` only adds the
+`DeprecationWarning` + a `.json`-delegation branch, neither of which applies
+to a `.obj` input). Effect: the four files emit zero `PolycamAdapter`
+`DeprecationWarning`s; the alias's intentional warning now fires only from the
+contract test `tests/test_adapter_polycam.py` (the desired single canonical
+trigger).
+
+The alias is **NOT removed** (D33 reverse-criterion still gates full removal —
+full removal is a BREAKING change requiring a successor D-decision and a
+"Breaking changes" RELEASE_NOTES callout). The shim docstring's "removal at
+v0.14 or later" is noted as stale (we are at v0.18.x); editing it would imply
+a removal commitment not made this cycle; it remains as-is pending a future
+removal decision. `cli.py` `_get_adapter("polycam")` and the contract test
+`tests/test_adapter_polycam.py` are byte-equal (DO-NOT-TOUCH invariants —
+see D62 for rationale). New OQ filed: OQ-40 (gradio `col_count` deprecation
+noise — a separate, deferred web-lane source). PATCH bump `0.18.4 → 0.18.5`.
+
 ## Follow-ups
 
 - **OQ-20** — glTF binary (`.glb`) byte-equal reproducibility across trimesh versions.

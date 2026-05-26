@@ -6,13 +6,13 @@ import pytest
 
 pytest.importorskip("plotly")
 
-from roomestim.adapters.polycam import PolycamAdapter
+from roomestim.adapters import MeshAdapter
 from roomestim_web.report import build_acoustic_report
 
 
 @pytest.fixture
 def fixture_room() -> object:
-    return PolycamAdapter().parse(
+    return MeshAdapter().parse(
         "tests/fixtures/lab_room.obj", scale_anchor=None, octave_band=False
     )
 

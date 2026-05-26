@@ -9,14 +9,14 @@ import pytest
 
 pytest.importorskip("reportlab")
 
-from roomestim.adapters.polycam import PolycamAdapter
+from roomestim.adapters import MeshAdapter
 from roomestim.place.dispatch import run_placement
 from roomestim_web.setup_pdf import build_setup_pdf
 
 
 @pytest.fixture
 def fixture_room_and_layout() -> tuple[object, object]:
-    room = PolycamAdapter().parse(
+    room = MeshAdapter().parse(
         "tests/fixtures/lab_room.obj", scale_anchor=None, octave_band=False
     )
     layout = run_placement(room, "vbap", 8, 2.0, 0.0)

@@ -669,3 +669,16 @@ Trigger 미충족: Apple/Khronos acoustic-metadata 표준 **미공개**; Unreal/
 **Reverse if (조기 escalate):** Vision Pro/Apple RoomPlan acoustic metadata 표준
 공개 OR 외부 도구 acoustic import 요청 ≥ 1건 → ADR 0035 §E 확장 (§G
 reverse-criterion (iv)).
+
+
+---
+
+**OQ-40** — gradio `col_count` Dataframe-kwarg deprecation noise (web lane).
+`roomestim_web/material_override.py:196` and `roomestim_web/object_add.py:218`
+pass `col_count=(N, "fixed")` to a gradio `Dataframe`, which emits a
+Deprecation/UserWarning under newer gradio. SEPARATE from D62 (which is adapter
+test-migration only). **Deferred** — a fix is a gradio-6 runtime-source migration
+(`roomestim_web/**`), out of scope for the v0.18.5 test-hygiene PATCH; requires a
+gradio version-compat assessment first. **Reverse-trigger**: address when a
+gradio upgrade is undertaken, or if ≥1 user reports the web-lane warning noise.
+Allocated v0.18.5 (D62 cycle).

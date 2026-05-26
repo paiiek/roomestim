@@ -8,7 +8,7 @@ import pytest
 
 pytest.importorskip("plotly")
 
-from roomestim.adapters.polycam import PolycamAdapter  # noqa: E402
+from roomestim.adapters import MeshAdapter  # noqa: E402
 from roomestim.place.dispatch import run_placement  # noqa: E402
 from roomestim_web.material_palette import MATERIAL_PALETTE  # noqa: E402
 from roomestim_web.viewer import build_room_figure  # noqa: E402
@@ -16,7 +16,7 @@ from roomestim_web.viewer import build_room_figure  # noqa: E402
 
 @pytest.fixture
 def fixture_room_and_layout():
-    adapter = PolycamAdapter()
+    adapter = MeshAdapter()
     room = adapter.parse(
         "tests/fixtures/lab_room.obj", scale_anchor=None, octave_band=False
     )
