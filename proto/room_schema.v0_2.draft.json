@@ -90,6 +90,7 @@
           "height_m": { "type": "number", "exclusiveMinimum": 0 },
           "depth_m": { "type": "number", "minimum": 0 },
           "wall_index": {
+            "description": "Zero-based index into the WALLS-ONLY surface list ([s for s in surfaces if s.kind=='wall']), NOT the full surfaces array. doors/windows attach to walls only. See ADR 0037.",
             "oneOf": [
               { "type": "integer", "minimum": 0 },
               { "type": "null" }

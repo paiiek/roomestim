@@ -152,5 +152,5 @@ class MeshAdapter:
             surfaces=surfaces,
             listener_area=listener,
             objects=[],  # v0.17: no auto-detection (OQ-33); use evolve_room_add_object()
-            schema_version="0.1-draft",
+            schema_version="0.2-draft",
         )

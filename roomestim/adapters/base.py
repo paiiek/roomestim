@@ -22,4 +22,10 @@ class ScaleAnchor:
 
 @runtime_checkable
 class CaptureAdapter(Protocol):
-    def parse(self, path: Path, *, scale_anchor: ScaleAnchor | None = None) -> RoomModel: ...
+    def parse(
+        self,
+        path: Path,
+        *,
+        scale_anchor: ScaleAnchor | None = None,
+        octave_band: bool = False,
+    ) -> RoomModel: ...

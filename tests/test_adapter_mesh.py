@@ -37,7 +37,7 @@ def test_mesh_adapter_parses_shoebox(fixture_path: Path) -> None:
     room = MeshAdapter().parse(fixture_path)
 
     assert isinstance(room, RoomModel)
-    assert room.schema_version == "0.1-draft"
+    assert room.schema_version == "0.2-draft"
     assert room.ceiling_height_m == pytest.approx(2.5, abs=0.10), (
         f"ceiling height {room.ceiling_height_m} not ~2.5 m"
     )

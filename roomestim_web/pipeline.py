@@ -4,6 +4,10 @@ from __future__ import annotations
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from roomestim.adapters.base import CaptureAdapter
 
 
 @dataclass(frozen=True)
@@ -54,7 +58,7 @@ def run_pipeline(
     suffix = input_path.suffix.lower()
     if suffix == ".usdz":
         from roomestim.adapters.roomplan import RoomPlanAdapter
-        adapter: object = RoomPlanAdapter()
+        adapter: CaptureAdapter = RoomPlanAdapter()
     elif suffix == ".json":
         from roomestim.adapters.roomplan import RoomPlanAdapter
         adapter = RoomPlanAdapter()
@@ -67,10 +71,7 @@ def run_pipeline(
             " Expected .usdz / .obj / .gltf / .glb / .ply."
         )
 
-    # parse() is defined on both adapter types
-    room = adapter.parse(  # type: ignore[union-attr]
-        input_path, scale_anchor=None, octave_band=octave_band
-    )
+    room = adapter.parse(input_path, scale_anchor=None, octave_band=octave_band)
 
     from roomestim.place.dispatch import run_placement
     layout = run_placement(room, algorithm, n_speakers, layout_radius_m, el_deg, wfs_f_max_hz=wfs_f_max_hz)

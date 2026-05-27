@@ -246,10 +246,13 @@ def _wall_attached_traces(
     """
     if obj.wall_index is None:
         return []
-    try:
-        wall: "Surface" = room.surfaces[obj.wall_index]
-    except (IndexError, AttributeError):
+    # wall_index is indexed against the WALLS-ONLY surface list (mirroring the
+    # predictor's _objects_to_wall_alpha_overrides), NOT the full surfaces
+    # array. See ADR 0037. Out-of-range still returns [] (robustness contract).
+    walls = [s for s in room.surfaces if s.kind == "wall"]
+    if not (0 <= obj.wall_index < len(walls)):
         return []
+    wall: "Surface" = walls[obj.wall_index]
     if len(wall.polygon) < 4:
         return []
     p0 = wall.polygon[0]

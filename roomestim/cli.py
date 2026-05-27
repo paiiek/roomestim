@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Literal
 from roomestim import __version__
 
 if TYPE_CHECKING:
+    from roomestim.adapters.base import CaptureAdapter
     from roomestim.model import PlacementResult, RoomModel
 
 
@@ -295,7 +296,7 @@ def _build_parser() -> argparse.ArgumentParser:
 # --------------------------------------------------------------------------- #
 
 
-def _get_adapter(backend: str) -> object:
+def _get_adapter(backend: str) -> "CaptureAdapter":
     if backend == "roomplan":
         from roomestim.adapters.roomplan import RoomPlanAdapter
 
@@ -337,16 +338,13 @@ def _run_placement(
 
 def _cmd_ingest(args: argparse.Namespace) -> int:
     from roomestim.export.room_yaml import write_room_yaml
-    from roomestim.model import RoomModel
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     octave_band: bool = getattr(args, "octave_band", False)
     adapter = _get_adapter(args.backend)
-    parse = getattr(adapter, "parse")
-    room = parse(args.input, scale_anchor=None, octave_band=octave_band)
-    assert isinstance(room, RoomModel)
+    room = adapter.parse(Path(args.input), scale_anchor=None, octave_band=octave_band)
 
     out_path = out_dir / "room.yaml"
     write_room_yaml(room, out_path)
@@ -450,16 +448,14 @@ def _cmd_export(args: argparse.Namespace) -> int:
 def _cmd_run(args: argparse.Namespace) -> int:
     from roomestim.export.layout_yaml import write_layout_yaml
     from roomestim.export.room_yaml import write_room_yaml
-    from roomestim.model import PlacementResult, RoomModel
+    from roomestim.model import PlacementResult
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     octave_band: bool = getattr(args, "octave_band", False)
     adapter = _get_adapter(args.backend)
-    parse = getattr(adapter, "parse")
-    room = parse(args.input, scale_anchor=None, octave_band=octave_band)
-    assert isinstance(room, RoomModel)
+    room = adapter.parse(Path(args.input), scale_anchor=None, octave_band=octave_band)
 
     result = _run_placement(
         room,

@@ -682,3 +682,19 @@ test-migration only). **Deferred** — a fix is a gradio-6 runtime-source migrat
 gradio version-compat assessment first. **Reverse-trigger**: address when a
 gradio upgrade is undertaken, or if ≥1 user reports the web-lane warning noise.
 Allocated v0.18.5 (D62 cycle).
+
+
+---
+
+**OQ-42 (DEFERRED, opened v0.19.0, 2026-05-28)** — hardcoded engine-schema
+absolute path fallback. `roomestim/export/layout_yaml.py:57–59`
+`_DEFAULT_ENGINE_SCHEMA_PATH = /home/seung/mmhoa/spatial_engine/proto/geometry_schema.json`
+is used when neither `SPATIAL_ENGINE_REPO_DIR` env nor `--validate-engine` flag
+is set. Not a correctness bug — a portability/UX wart, orthogonal to the
+v0.19.0 ①/②/③ scope (④, deferred). Blast radius is real:
+`tests/test_export_layout_yaml.py:29–42` and `tests/test_engine_toggle.py:160–288`
+depend on this fallback + ENV/CLI precedence (D42 / ADR 0033); cli help
+(`cli.py:141/260`) promises the fallback. Replacing it with a hard error would
+require coordinated test + help-text + ADR 0033 amendments. **Cadence: v0.20.**
+**Reverse-trigger**: address when the engine-schema location is parameterized or
+when a non-author environment hits the missing-path failure.

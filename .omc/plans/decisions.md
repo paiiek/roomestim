@@ -1765,3 +1765,38 @@ changes" RELEASE_NOTES callout (D33). D62 does NOT authorize removal.
 **Scope**: tests only (`tests/web/*.py`). **ADR ref**: ADR 0027
 §Status-update-v0.18.5. **New ADR this cycle**: none. **New OQ**: OQ-40 (gradio
 `col_count` deprecation noise — separate, deferred). PATCH bump `0.18.4 → 0.18.5`.
+
+
+## D63 — `Object.wall_index` canonicalized on the walls-only frame (v0.19.0, 2026-05-28)
+
+`wall_index` is zero-based into the WALLS-ONLY surface list
+(`[s for s in surfaces if s.kind == "wall"]`), NOT the full `surfaces` array
+(`[floor, *ceilings, *walls]`). The predictor
+(`_objects_to_wall_alpha_overrides`, `predictor.py:461`) already used this frame;
+the viewer (`roomestim_web/viewer.py:_wall_attached_traces`) was the single
+divergent consumer (`room.surfaces[obj.wall_index]`) and was fixed to mirror the
+predictor. For any nonzero `wall_index` the two had resolved to different
+surfaces (e.g. `wall_index=0` = first wall for the predictor, the FLOOR for the
+viewer), so wall-attached door/window quads rendered against the wrong surface.
+
+**Drivers**: field name implies wall; predictor-already-walls-only → ZERO
+acoustic edits, no RT60 re-baseline; single-consumer fix. **Rejected**:
+full-surfaces frame (would force a predictor change + RT60 re-baseline + naming
+re-litigation). Schema `wall_index` property gained a `description` documenting
+the frame. Locked by `tests/test_wall_index_frame.py` (predictor) +
+`tests/web/test_wall_index_viewer.py` (viewer), door at `wall_index=2`. Out-of-range
+still returns `[]`. **Cross-refs**: ADR 0037; ADR 0034; D64.
+
+
+## D64 — `MeshAdapter` `schema_version` unified to `0.2-draft` (v0.19.0, 2026-05-28)
+
+`adapters/mesh.py` emitted `schema_version="0.1-draft"` while `RoomPlanAdapter`
+(`roomplan.py:308`) and the `RoomModel` default emit `"0.2-draft"`. The mesh
+adapter's value was a stale label: mesh output is never jsonschema-validated
+(no jsonschema import in `mesh.py`; the 0.1 schema is referenced only by the
+reader/exporter), so the change is a pure label fix with no validation
+consequence. Bumped to `"0.2-draft"`; one test updated
+(`tests/test_adapter_mesh.py`). The 0.1-draft backward-parse path
+(reader/exporter) is UNTOUCHED. This output-contract change of a public adapter
+is the specific SemVer driver for the v0.19.0 MINOR bump. **Cross-refs**:
+ADR 0027; ADR 0035; D33; D63.
