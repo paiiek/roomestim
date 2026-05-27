@@ -271,3 +271,36 @@ def test_rejects_too_few_speakers(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="kErrTooFewSpeakers"):
         write_layout_yaml(bad, out)
     assert not out.exists()
+
+
+# --------------------------------------------------------------------------- #
+# OQ-42 (v0.20.0) — descriptive error when no engine schema resolves
+# --------------------------------------------------------------------------- #
+
+
+def test_engine_schema_missing_raises_descriptive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When neither ENV var nor the documented default resolves, the writer
+
+    raises one descriptive ``FileNotFoundError`` naming all three escape hatches
+    (``SPATIAL_ENGINE_REPO_DIR``, ``--validate-engine``, ``--no-engine-validation``)
+    rather than a bare deep ``FileNotFoundError`` from ``open()`` (OQ-42).
+    """
+    import roomestim.export.layout_yaml as ly
+
+    monkeypatch.delenv("SPATIAL_ENGINE_REPO_DIR", raising=False)
+    missing = tmp_path / "no_such_engine" / "proto" / "geometry_schema.json"
+    monkeypatch.setattr(ly, "_DEFAULT_ENGINE_SCHEMA_PATH", missing)
+
+    result = _vbap_circular_result()
+    out = tmp_path / "layout.yaml"
+    with pytest.raises(FileNotFoundError) as excinfo:
+        write_layout_yaml(result, out)
+
+    msg = str(excinfo.value)
+    assert "kErrEngineSchemaNotFound" in msg
+    assert "SPATIAL_ENGINE_REPO_DIR" in msg
+    assert "--validate-engine" in msg
+    assert "--no-engine-validation" in msg
+    assert not out.exists()

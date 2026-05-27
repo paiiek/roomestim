@@ -103,7 +103,9 @@ See [ADR 0003](adr/0003-placement-algorithm-priority.md).
 | `vbap.py` | VBAP | Equal-angle ring; fastest deterministic placement. |
 | `dbap.py` | DBAP | Robust to irregular venues. |
 | `wfs.py` | WFS | λ/2 spacing constraint; emits `x_wfs_f_alias_hz`. |
-| `ambisonics.py` | Ambisonics | Stub; deferred to v0.3. |
+
+(Ambisonics remains a roadmap item deferred to v0.3 — no module file exists; the
+empty stub was removed in v0.20.0, D67.)
 
 ### Export (`roomestim/export/`)
 

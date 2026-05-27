@@ -91,6 +91,42 @@ Revert or extend this ADR when:
 
 ---
 
+## §Status-update-v0.20.0 (2026-05-28)
+
+**D65 — silent fallback → descriptive error (OQ-42 CLOSED).** Previously, when
+neither `SPATIAL_ENGINE_REPO_DIR` nor `--validate-engine` resolved a file, the
+resolver returned `_DEFAULT_ENGINE_SCHEMA_PATH` unconditionally and the missing
+file surfaced only as a bare deep `FileNotFoundError` from
+`schema_file.open()` — non-portable and unactionable on any host without the
+engine repo at the canonical absolute path. v0.20.0 routes all three open sites
+(`_load_engine_schema`, `write_layout_yaml`, `validate_placement`) through a
+single guard `_assert_schema_file_exists`, which raises one descriptive
+`FileNotFoundError` tagged `kErrEngineSchemaNotFound` naming all three escape
+hatches (`SPATIAL_ENGINE_REPO_DIR`, `--validate-engine`, `--no-engine-validation`).
+
+**§B chain RETAINED.** The documented `CLI > ENV > default` precedence is
+unchanged and `_DEFAULT_ENGINE_SCHEMA_PATH` is kept as the documented fallback
+constant. This honors §E intent (do not let a missing schema fail silently)
+WITHOUT firing §E's breaking-removal trigger: the default path is not yet
+*permanently* unavailable, so removing the default + making the ENV var required
+remains a future action gated on §E. Option (b) warn-and-skip was rejected
+(collides with §C/§D's explicit `--no-engine-validation` audit-trail opt-out);
+option (c) vendoring a schema copy was rejected (ADR 0027/0033 keep the engine
+schema un-vendored to avoid drift).
+
+**Behavior delta.** Byte-identical output and exit codes on any host where the
+schema resolves (env set, repo present, or `--validate-engine` valid). Only a
+host where the schema is *genuinely* absent sees the new (actionable) error
+instead of the bare one — strictly an improvement. CLI help text updated to drop
+the "hardcoded default" phrasing in favor of "the documented default engine repo
+dir … errors with guidance if none resolve." Tests: new
+`test_engine_schema_missing_raises_descriptive`; `tests/test_engine_toggle.py`
+docstrings re-worded to the error-on-missing semantics (the ENV/CLI-precedence
+tests themselves are unchanged — they supply a valid schema dir). MINOR bump
+`0.19.0 → 0.20.0`.
+
+---
+
 ## §References
 
 - ADR 0024 — web-demo separate package (D29 lane separation)

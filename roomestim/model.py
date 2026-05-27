@@ -29,6 +29,7 @@ from shapely.geometry import Polygon as ShapelyPolygon
 
 kErrNonFiniteValue: str = "kErrNonFiniteValue"
 kErrTooFewSpeakers: str = "kErrTooFewSpeakers"
+kErrEngineSchemaNotFound: str = "kErrEngineSchemaNotFound"
 
 
 def assert_finite(value: float, *, field: str) -> None:

@@ -107,10 +107,31 @@ removal decision. `cli.py` `_get_adapter("polycam")` and the contract test
 see D62 for rationale). New OQ filed: OQ-40 (gradio `col_count` deprecation
 noise — a separate, deferred web-lane source). PATCH bump `0.18.4 → 0.18.5`.
 
+## §Status-update-v0.20.0 (2026-05-28)
+
+**D66 — PLY no-faces guard (OQ-21 CLOSED).** A points-only PLY (vertices but no
+triangular faces — a degenerate point-cloud export) loads via
+`trimesh.load(force="mesh")` as a `Trimesh` with `len(faces)==0`. The existing
+`(N, 3)` vertex-shape check does NOT catch this (the array is still 2-D with 3
+columns, or `(0, 3)` after trimesh drops unreferenced vertices), so the input
+slipped through to the convex-hull-of-projection path, which is undefined for a
+point cloud. `MeshAdapter._room_model_from_mesh` now adds a guard right after the
+vertex-shape check: `faces = np.asarray(getattr(loaded, "faces", []))` →
+`if len(faces) == 0: raise ValueError("MeshAdapter: mesh has 0 faces
+(points-only PLY); a surface mesh with triangular faces is required.")`. New
+fixture `tests/fixtures/points_only.ply` (vertices only, `element face 0`) +
+`tests/test_adapter_mesh.py::test_mesh_adapter_points_only_ply_raises` lock it;
+the existing 4-format parse test and the vertex-color PLY test (faces present)
+are unaffected. This resolves the v0.12-web.1 "known degenerate case" without
+vendoring. The mesh output contract (convex-hull floor, D6) is otherwise
+byte-equal. MINOR bump `0.19.0 → 0.20.0` (the no-faces guard adds a new
+validation error path for a previously-undefined input).
+
 ## Follow-ups
 
 - **OQ-20** — glTF binary (`.glb`) byte-equal reproducibility across trimesh versions.
 - **OQ-21** — PLY files with vertex colour but no faces (points-only degenerate case).
+  CLOSED v0.20.0 (no-faces guard; D66 / ADR 0027 §Status-update-v0.20.0).
 
 ## References
 

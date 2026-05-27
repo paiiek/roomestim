@@ -139,7 +139,8 @@ def _add_export_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         default=None,
         help=(
             "Path to the spatial_engine repository directory. "
-            "Uses SPATIAL_ENGINE_REPO_DIR env var or the hardcoded default when omitted. "
+            "Uses SPATIAL_ENGINE_REPO_DIR env var or the documented default engine "
+            "repo dir when omitted; errors with guidance if none resolve. "
             "Mutually exclusive with --no-engine-validation."
         ),
     )
@@ -258,7 +259,8 @@ def _add_edit_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -
         default=None,
         help=(
             "Path to the spatial_engine repository directory. "
-            "Uses SPATIAL_ENGINE_REPO_DIR env var or the hardcoded default when omitted. "
+            "Uses SPATIAL_ENGINE_REPO_DIR env var or the documented default engine "
+            "repo dir when omitted; errors with guidance if none resolve. "
             "Mutually exclusive with --no-engine-validation."
         ),
     )

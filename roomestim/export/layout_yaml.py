@@ -44,6 +44,7 @@ from roomestim.model import (
     PlacedSpeaker,
     PlacementResult,
     assert_finite,
+    kErrEngineSchemaNotFound,
     kErrNonFiniteValue,
     kErrTooFewSpeakers,
 )
@@ -60,7 +61,14 @@ _DEFAULT_ENGINE_SCHEMA_PATH: Path = Path(
 
 
 def _engine_schema_path() -> Path:
-    """Resolve geometry_schema.json. ``SPATIAL_ENGINE_REPO_DIR`` env var wins."""
+    """Resolve geometry_schema.json. ``SPATIAL_ENGINE_REPO_DIR`` env var wins.
+
+    Precedence (ADR 0033 §B): ``SPATIAL_ENGINE_REPO_DIR`` env →
+    :data:`_DEFAULT_ENGINE_SCHEMA_PATH` documented default. The env candidate is
+    used only when its file exists; otherwise the documented default is returned
+    (existence of the default is asserted at the open site via
+    :func:`_assert_schema_file_exists`).
+    """
     repo_dir = os.environ.get("SPATIAL_ENGINE_REPO_DIR")
     if repo_dir:
         candidate = Path(repo_dir) / "proto" / "geometry_schema.json"
@@ -69,8 +77,29 @@ def _engine_schema_path() -> Path:
     return _DEFAULT_ENGINE_SCHEMA_PATH
 
 
+def _assert_schema_file_exists(path: Path) -> Path:
+    """Raise a descriptive :exc:`FileNotFoundError` when ``path`` is missing.
+
+    Single source for the missing-engine-schema error (v0.20.0 / OQ-42). All
+    three open sites (:func:`_load_engine_schema`, :func:`write_layout_yaml`,
+    :func:`validate_placement`) route their resolved path through here, so the
+    bare deep ``FileNotFoundError`` from ``path.open()`` is replaced by one
+    actionable message naming all three escape hatches. The documented
+    ``CLI > ENV > default`` chain (ADR 0033 §B) is retained — this only improves
+    the error when the *finally resolved* path is genuinely absent.
+    """
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{kErrEngineSchemaNotFound}: engine geometry schema not found at "
+            f"{path}. Set SPATIAL_ENGINE_REPO_DIR=<spatial_engine repo dir>, "
+            f"pass --validate-engine <dir>, or use --no-engine-validation to "
+            f"skip (ADR 0033)."
+        )
+    return path
+
+
 def _load_engine_schema() -> dict[str, Any]:
-    path = _engine_schema_path()
+    path = _assert_schema_file_exists(_engine_schema_path())
     with path.open("r", encoding="utf-8") as fh:
         data: dict[str, Any] = json.load(fh)
     return data
@@ -83,11 +112,19 @@ def _resolve_schema_file(schema_path_override: str | None) -> Path:
     join previously inlined in :func:`write_layout_yaml` and now also needed by
     :func:`validate_placement` (third copy consolidation; v0.15.1 / v0.15.2
     geom-util precedent). Behaviour is identical to the prior inline join — same
-    path returned — so writer output is byte-equal.
+    path returned — so writer output is byte-equal when the schema is present.
+
+    v0.20.0 (OQ-42): the resolved path is checked via
+    :func:`_assert_schema_file_exists`, so a genuinely-missing engine schema
+    raises one descriptive :exc:`FileNotFoundError` (naming the env var,
+    ``--validate-engine``, and ``--no-engine-validation``) instead of a bare
+    deep ``FileNotFoundError`` from ``open()``. The ``CLI > ENV > default`` chain
+    (ADR 0033 §B) is unchanged.
     """
     if schema_path_override is not None:
-        return Path(schema_path_override) / "proto" / "geometry_schema.json"
-    return _engine_schema_path()
+        candidate = Path(schema_path_override) / "proto" / "geometry_schema.json"
+        return _assert_schema_file_exists(candidate)
+    return _assert_schema_file_exists(_engine_schema_path())
 
 
 # --------------------------------------------------------------------------- #
@@ -362,4 +399,5 @@ __all__ = [
     "validate_placement",
     "kErrNonFiniteValue",
     "kErrTooFewSpeakers",
+    "kErrEngineSchemaNotFound",
 ]

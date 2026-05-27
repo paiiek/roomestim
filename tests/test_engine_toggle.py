@@ -1,12 +1,18 @@
 """tests/test_engine_toggle.py — engine validation toggle CLI tests (v0.16.0 / D42 + ADR 0033).
 
 Covers:
-  - Default ON: no flag → validation uses ENV/hardcoded path.
+  - Default ON: no flag → validation uses ENV/documented-default path.
   - --validate-engine INVALID_PATH → schema not found → exit non-zero.
   - --no-engine-validation → WARNING header in output YAML + exit 0.
   - Mutually exclusive group: both flags → argparse error.
   - ENV var precedence: SPATIAL_ENGINE_REPO_DIR set, no CLI flag → ENV used.
   - CLI overrides ENV: --validate-engine Y with ENV set to X → Y used.
+
+v0.20.0 (OQ-42): when neither the ENV var nor --validate-engine resolves and the
+documented default is absent, resolution raises one descriptive
+``FileNotFoundError`` (``kErrEngineSchemaNotFound`` — naming all three escape
+hatches) instead of silently falling back to a non-portable hardcoded path. The
+tests below keep providing a valid ENV/CLI schema dir, so they are unaffected.
 """
 from __future__ import annotations
 
@@ -159,11 +165,12 @@ def test_cli_export_env_var_precedence(
 ) -> None:
     """ENV SPATIAL_ENGINE_REPO_DIR set to valid engine dir → used when flag absent.
 
-    The existing _engine_schema_path() only uses ENV when the candidate file
-    exists; it silently falls back to the hardcoded default otherwise (D42 §A
-    backward-compat). This test verifies that when no CLI flag is given the
-    ENV var is consulted — by creating a fake schema dir with a valid schema
-    file and confirming the export succeeds with it.
+    _engine_schema_path() uses the ENV candidate only when its file exists,
+    otherwise returning the documented default; v0.20.0 (OQ-42) makes a
+    genuinely-missing resolved path raise a descriptive FileNotFoundError rather
+    than failing silently deep in open(). This test verifies that when no CLI
+    flag is given the ENV var is consulted — by creating a fake schema dir with a
+    valid schema file and confirming the export succeeds with it.
     """
     room_yaml, layout_yaml = room_and_layout_yaml
     out_dir = tmp_path / "out_env"

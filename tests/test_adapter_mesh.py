@@ -75,3 +75,14 @@ def test_mesh_adapter_vertex_color_ply() -> None:
     room = MeshAdapter().parse(FIXTURE_DIR / "lab_room_vertex_color.ply")
     assert isinstance(room, RoomModel)
     assert room.ceiling_height_m == pytest.approx(2.5, abs=0.10)
+
+
+def test_mesh_adapter_points_only_ply_raises() -> None:
+    """OQ-21: a points-only PLY (0 faces) raises a clear ValueError.
+
+    ``trimesh.load(force="mesh")`` yields a Trimesh with ``len(faces)==0`` for a
+    points-only export; the ``(N, 3)`` vertex-shape check does NOT catch it. The
+    no-faces guard must reject it before the undefined convex-hull path.
+    """
+    with pytest.raises(ValueError, match="0 faces"):
+        MeshAdapter().parse(FIXTURE_DIR / "points_only.ply")

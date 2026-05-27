@@ -1800,3 +1800,70 @@ consequence. Bumped to `"0.2-draft"`; one test updated
 (reader/exporter) is UNTOUCHED. This output-contract change of a public adapter
 is the specific SemVer driver for the v0.19.0 MINOR bump. **Cross-refs**:
 ADR 0027; ADR 0035; D33; D63.
+
+
+## D65 — engine-schema resolution raises a descriptive error (OQ-42 close, v0.20.0, 2026-05-28)
+
+`export/layout_yaml.py` previously returned `_DEFAULT_ENGINE_SCHEMA_PATH`
+(a hardcoded absolute path) whenever neither `SPATIAL_ENGINE_REPO_DIR` nor
+`--validate-engine` resolved a file; a genuinely-missing schema then surfaced
+only as a bare deep `FileNotFoundError` from `schema_file.open()` — unactionable
+and non-portable off the author machine. **Decision**: option (a) — keep the
+documented `CLI > ENV > default` chain and the `_DEFAULT_ENGINE_SCHEMA_PATH`
+constant (ADR 0033 §B), but route all three open sites (`_load_engine_schema`,
+`write_layout_yaml`, `validate_placement`) through a single guard
+`_assert_schema_file_exists` that raises one descriptive `FileNotFoundError`
+tagged `kErrEngineSchemaNotFound` naming `SPATIAL_ENGINE_REPO_DIR`,
+`--validate-engine`, and `--no-engine-validation`.
+
+**Drivers**: §E intent (no silent missing-schema failure) honored WITHOUT firing
+§E's breaking-removal trigger (the default path is not yet permanently
+unavailable); single-source guard = no third-copy drift; behavior + byte output
+unchanged on any host where the schema resolves (suite green, RT60 byte-equal —
+no acoustic edits). **Rejected**: (b) warn-and-skip (collides with ADR 0033 §C/§D
+`--no-engine-validation` audit opt-out — re-introduces dishonesty §C prevents);
+(c) vendor a pinned schema copy (ADR 0027/0033 keep the engine schema un-vendored
+to avoid drift; D64 reaffirms mesh output is never validated against a vendored
+schema). New sentinel `kErrEngineSchemaNotFound` mirrors the `kErr*` convention
+in `model.py`. CLI help text de-"hardcoded". New test
+`test_engine_schema_missing_raises_descriptive`; `test_engine_toggle.py`
+docstrings re-worded. **Cross-refs**: ADR 0033 §Status-update-v0.20.0; ADR 0027;
+D42; OQ-42 (CLOSED).
+
+
+## D66 — `MeshAdapter` PLY no-faces guard (OQ-21 close, v0.20.0, 2026-05-28)
+
+A points-only PLY (vertices, zero triangular faces) loads via
+`trimesh.load(force="mesh")` as a `Trimesh` with `len(faces)==0`; the existing
+`(N, 3)` vertex-shape check does NOT catch it, so the input reached the
+convex-hull-of-projection path (undefined for a point cloud). **Decision**: add a
+guard right after the vertex-shape check —
+`faces = np.asarray(getattr(loaded, "faces", []))` → `if len(faces) == 0: raise
+ValueError("MeshAdapter: mesh has 0 faces (points-only PLY); a surface mesh with
+triangular faces is required.")`. New fixture `tests/fixtures/points_only.ply` +
+`tests/test_adapter_mesh.py::test_mesh_adapter_points_only_ply_raises`.
+**Drivers**: closes a v0.12-web.1 known degenerate case; small, self-contained,
+no vendoring; adds a defined error path for a previously-undefined input (a SemVer
+driver for the MINOR bump). **Rejected**: silently coercing to a point cloud /
+attempting alpha-shape reconstruction (out of scope, D6 defers alpha-shape). The
+4-format parse test and the vertex-color PLY test (faces present) are unaffected.
+**Cross-refs**: ADR 0027 §Status-update-v0.20.0; D6; OQ-21 (CLOSED).
+
+
+## D67 — `place_ambisonics` stub export removed (v0.20.0, 2026-05-28)
+
+`roomestim/place/ambisonics.py` was a pure `NotImplementedError` stub
+("deferred to v0.3 per ADR 0003") whose ONLY consumer was the
+`roomestim/place/__init__.py` re-export — it is NOT in `dispatch.py`, NOT a CLI
+`--algorithm {vbap,dbap,wfs}` choice, and NOT imported by any test (the one
+ambisonics test, `test_layout_round_trip.py`, exercises `TargetAlgorithm`
+collapse, not this function). **Decision**: delete `ambisonics.py` and remove the
+`from ...ambisonics import place_ambisonics` import + the `"place_ambisonics"`
+`__all__` entry from `place/__init__.py` (module docstring de-"Ambisonics"-ed).
+Leaves zero misleading public surface. **Drivers**: the stub advertised a public
+API that always raised; removing it is honest and zero-risk (grep confirmed no
+internal consumer beyond the re-export). **Rejected**: keeping the stub (advertises
+non-functional API). A future v0.x reviving ambisonics gets a real impl + ADR.
+Not a breaking change in the D33 sense (never functional, never in CLI/dispatch).
+**Cross-refs**: ADR 0003 (ambisonics deferral); D33 (breaking-change discipline —
+N/A here).

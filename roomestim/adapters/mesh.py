@@ -81,6 +81,17 @@ class MeshAdapter:
                 f"{vertices.shape}"
             )
 
+        # OQ-21: a points-only PLY (vertices but no triangular faces) loads as a
+        # Trimesh with len(faces)==0; the (N, 3) vertex check above does NOT
+        # catch it. Reject early — a surface mesh is required (downstream
+        # convex-hull-of-projection logic is undefined for point clouds).
+        faces = np.asarray(getattr(loaded, "faces", []))
+        if len(faces) == 0:
+            raise ValueError(
+                "MeshAdapter: mesh has 0 faces (points-only PLY); a surface "
+                "mesh with triangular faces is required."
+            )
+
         y_min = float(vertices[:, 1].min())
         y_max = float(vertices[:, 1].max())
         ceiling_height_m = float(y_max - y_min)

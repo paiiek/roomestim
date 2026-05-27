@@ -237,7 +237,15 @@ projections (documented in ADR 0027 § "Consequences" and `RELEASE_NOTES_v0.12-w
 Cross-refs: §3-P2; ADR 0027.
 
 
-## OQ-21 — `.ply` files with vertex colour but no faces (points-only degenerate case) (v0.12-web.1)
+## OQ-21 — `.ply` files with vertex colour but no faces (points-only degenerate case) (v0.12-web.1) — CLOSED v0.20.0
+
+**CLOSED (v0.20.0, 2026-05-28)** — no-faces guard landed (D66; ADR 0027
+§Status-update-v0.20.0). `MeshAdapter._room_model_from_mesh` now rejects a
+points-only PLY with a clear `ValueError("MeshAdapter: mesh has 0 faces
+(points-only PLY); a surface mesh with triangular faces is required.")` right
+after the `(N, 3)` vertex-shape check, before the undefined convex-hull path.
+New fixture `tests/fixtures/points_only.ply` (vertices only, 0 faces) +
+`tests/test_adapter_mesh.py::test_mesh_adapter_points_only_ply_raises` lock it.
 
 What does `MeshAdapter` do with a PLY upload that contains vertices but no triangular faces
 (a degenerate point-cloud export)?
@@ -250,7 +258,7 @@ reported it. Documented as a known degenerate case in `RELEASE_NOTES_v0.12-web.1
 § "Known gaps". Reverse: if v0.12-web.1 verifier flagged a CI segfault on a real
 points-only `.ply` upload, hotpatch in v0.12-web.1 itself.
 
-Cross-refs: §3-P1; ADR 0027.
+Cross-refs: §3-P1; ADR 0027; D66.
 
 
 ## OQ-22 — `_TEMP_REAPER` 4 h `atexit` window tightening (v0.12-web.1)
@@ -686,8 +694,8 @@ Allocated v0.18.5 (D62 cycle).
 
 ---
 
-**OQ-42 (DEFERRED, opened v0.19.0, 2026-05-28)** — hardcoded engine-schema
-absolute path fallback. `roomestim/export/layout_yaml.py:57–59`
+**OQ-42 (CLOSED, opened v0.19.0, closed v0.20.0, 2026-05-28)** — hardcoded
+engine-schema absolute path fallback. `roomestim/export/layout_yaml.py:57–59`
 `_DEFAULT_ENGINE_SCHEMA_PATH = /home/seung/mmhoa/spatial_engine/proto/geometry_schema.json`
 is used when neither `SPATIAL_ENGINE_REPO_DIR` env nor `--validate-engine` flag
 is set. Not a correctness bug — a portability/UX wart, orthogonal to the
@@ -698,3 +706,81 @@ depend on this fallback + ENV/CLI precedence (D42 / ADR 0033); cli help
 require coordinated test + help-text + ADR 0033 amendments. **Cadence: v0.20.**
 **Reverse-trigger**: address when the engine-schema location is parameterized or
 when a non-author environment hits the missing-path failure.
+
+**CLOSED (v0.20.0, 2026-05-28)** — resolved by option (a) descriptive error
+(D65; ADR 0033 §Status-update-v0.20.0). The documented `CLI > ENV > default`
+chain (ADR 0033 §B) is RETAINED — `_DEFAULT_ENGINE_SCHEMA_PATH` stays as the
+documented fallback (the path is not yet permanently unavailable, so §E's
+breaking-removal trigger is NOT yet fired). The fix replaces the silent deep
+`FileNotFoundError` with one descriptive error
+(`kErrEngineSchemaNotFound`) raised from a single source
+(`_assert_schema_file_exists`, inherited by all three open sites) that names
+`SPATIAL_ENGINE_REPO_DIR`, `--validate-engine`, and `--no-engine-validation`.
+Behavior + byte output are unchanged on any host where the schema resolves;
+only hosts where it is genuinely absent see the new (actionable) error. CLI help
+(`cli.py`) updated to drop the "hardcoded" wording. New test
+`tests/test_export_layout_yaml.py::test_engine_schema_missing_raises_descriptive`;
+`tests/test_engine_toggle.py` docstrings updated to the error-on-missing
+semantics.
+
+---
+
+**OQ-43** — `edit.py` dual "surface index" frame (the wall_index bug's TWIN).
+Surfaced by the v0.20.0 multi-perspective audit (critic). `evolve_room_material`
+(`roomestim/edit.py:218`) and `evolve_room_materials_bulk` (`:254-261`) index into
+the **full** `room.surfaces` list, while `Object.wall_index` resolves on the
+**walls-only** filtered list (predictor `reconstruct/predictor.py:293`, viewer
+`roomestim_web/viewer.py:252` — unified walls-only in v0.19.0/ADR 0037). Two
+different integer "surface index" frames coexist in the model with no shared
+resolver. Adapter surface order is NOT uniform (`roomplan.py:294`
+`[floor,*ceilings,*walls]`; `mesh.py` `[floor,ceiling,*walls]`;
+`ace_challenge.py` has a trailing floor), so a future "edit wall N material"
+feature wiring a walls-relative index into `evolve_room_material` would patch the
+WRONG surface. NOT a current regression (no shipping caller passes a walls-relative
+index there), but the exact latent condition that produced the v0.19.0 defect.
+**Recommended next correctness cycle.** Fix: a shared
+`surface_index_for_wall(room, wall_ordinal)` resolver + a characterization test
+pinning `evolve_room_material` and `wall_index` to the same `Surface` on a nonzero
+index across all adapters' orderings (the analogue of `test_wall_index_frame.py`).
+**Reverse-trigger**: any feature exposing a wall-relative material edit. Allocated
+v0.20.0 (audit).
+
+**OQ-44** — silent state/predictor changes on out-of-range or edited input.
+Surfaced by the v0.20.0 audit (critic, reproduced). (a) An out-of-range
+`wall_index` on a door/window makes `_objects_to_wall_alpha_overrides` raise, which
+`predict_rt60_default` catches (`predictor.py:479-491`) and silently downgrades the
+**whole room** ISM→Eyring (materially changing RT60), with the offending index
+discarded from the rationale; `object_add.py:201-202` accepts any `wall_index>=0`
+with no upper bound, and the reader (`room_yaml_reader.py`, `roomplan.py:169`)
+applies no bound either. (b) `evolve_surface` (`edit.py:91-93`) unconditionally
+promotes a single-band surface (`absorption_bands=None`, the `octave_band=False`
+ingest default) to per-band on a material change, silently shifting the per-band
+predictor branch for edited rooms. **Deferred.** Fix: bound `wall_index <
+len(walls)` at object-add/reader time (user-facing error) + surface the bad index
+in the predictor rationale; gate the band promotion on the source surface already
+having bands. **Reverse-trigger**: any user report of an unexpected RT60 jump after
+an object add / material edit. Allocated v0.20.0 (audit).
+
+**OQ-45** — web public-deployment hardening (HF Spaces). Surfaced by the v0.20.0
+security audit. The tool is publicly deployable (`app.py`, `sdk: gradio`) and the
+audit found (no CRITICAL/RCE; YAML safe_load uniform, no eval/exec/pickle/shell):
+(a) **unbounded untrusted-mesh parsing** — `trimesh.load(force="mesh")`
+(`mesh.py:69`) reached from web upload (`app.py`/`pipeline.py`) with NO file-size /
+vertex-count cap → trivial DoS on a shared Space; (b) **stale dependency
+environment with known CVEs** (starlette/aiohttp/pillow/requests/urllib3/werkzeug
+per `pip-audit`) and a README `sdk_version: "4.0.0"` vs installed gradio 6.14.0
+mismatch; (c) **info-leak** — `_DEFAULT_ENGINE_SCHEMA_PATH` (`layout_yaml.py:58`,
+the `/home/seung/...` dev path) and other raw exception text are echoed into
+web-user-facing error strings (`app.py` `_on_export`/`_on_apply_overrides`),
+disclosing the dev username/layout (residual of OQ-42 — error message improved but
+the hardcoded constant + verbose web echo remain); (d) **tempdir reaper**
+(`app.py:59-68`) globs the shared system temp root (cross-session deletion risk on
+a shared host); (e) **latent crash** — `material_override.py:105`
+`on_apply_overrides` raises `AttributeError` on a list-shaped JSON payload (only
+dict accepted; no type guard). **Deferred** — out of scope for the local/CLI core;
+gate on an actual public-deployment decision. Fix when deploying publicly: cap
+upload size + vertex count (`gradio max_file_size` + a `MeshAdapter` bound), pin a
+lockfile + `pip-audit` in CI, scrub absolute paths/raw exceptions from web-facing
+errors, namespace the tempdir reaper per-PID, type-guard `on_apply_overrides`.
+**Reverse-trigger**: decision to expose the Gradio demo publicly. Allocated v0.20.0
+(audit).
