@@ -121,11 +121,13 @@ def _on_add_object(
         )
         new_room = evolve_room_add_object(room, obj)
     except ValueError as exc:
+        # ADR 0038 / OQ-45: full detail logged server-side; generic to the user.
         _LOG.warning("_on_add_object ValueError: %s", exc)
-        return room, f"오류: 객체 추가 실패 — {exc}"
-    except Exception as exc:
+        return room, "오류: 객체 추가에 실패했습니다. 서버 로그를 확인하세요."
+    except Exception:
+        # ADR 0038 / OQ-45: full detail logged server-side; generic to the user.
         _LOG.exception("_on_add_object failed")
-        return room, f"오류: 예상치 못한 실패 — {exc}"
+        return room, "오류: 객체 추가 중 예상치 못한 오류가 발생했습니다. 서버 로그를 확인하세요."
     return new_room, f"객체 추가됨: {kind} (총 objects={len(new_room.objects)})"
 
 
@@ -143,11 +145,13 @@ def _on_remove_object(
     try:
         new_room = evolve_room_remove_object(room, idx)
     except IndexError as exc:
+        # ADR 0038 / OQ-45: full detail logged server-side; generic to the user.
         _LOG.warning("_on_remove_object IndexError: %s", exc)
-        return room, f"오류: index 범위 초과 — {exc}"
-    except Exception as exc:
+        return room, "오류: index 범위를 벗어났습니다. 서버 로그를 확인하세요."
+    except Exception:
+        # ADR 0038 / OQ-45: full detail logged server-side; generic to the user.
         _LOG.exception("_on_remove_object failed")
-        return room, f"오류: 예상치 못한 실패 — {exc}"
+        return room, "오류: 객체 제거 중 예상치 못한 오류가 발생했습니다. 서버 로그를 확인하세요."
     return new_room, f"객체 제거됨 (index={idx}; 총 objects={len(new_room.objects)})"
 
 

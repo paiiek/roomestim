@@ -53,3 +53,116 @@ def test_on_submit_returns_all_none_on_pipeline_failure(
         "Expected an ERROR log record with 'run_pipeline failed' on logger 'roomestim_web'. "
         f"Records seen: {[(r.name, r.levelno, r.message) for r in caplog.records]}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# OQ-45 / ADR 0038 — web-facing error strings are scrubbed (no path / raw exc)
+# --------------------------------------------------------------------------- #
+
+_LEAK_MARKER = "/home/seung/secret-dev-path/engine_schema.json"
+
+
+@pytest.mark.web
+def test_on_submit_value_error_does_not_leak_path(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A ValueError carrying a dev path must NOT reach the web-facing report JSON."""
+    mock_file = MagicMock()
+    mock_file.name = "tests/fixtures/lab_room.obj"
+
+    with patch(
+        "roomestim_web.pipeline.run_pipeline",
+        side_effect=ValueError(f"validation failed: {_LEAK_MARKER}"),
+    ):
+        with patch.dict(
+            "sys.modules",
+            {
+                "roomestim_web.archive": MagicMock(),
+                "roomestim_web.provenance": MagicMock(),
+                "roomestim_web.viewer": MagicMock(),
+            },
+        ):
+            with caplog.at_level(logging.WARNING, logger="roomestim_web"):
+                result = _on_submit(mock_file, "vbap", "8", 2.0, 0.0, False, 8000.0)
+
+    error_report = result[2]
+    assert isinstance(error_report, dict), f"Expected dict report, got {error_report!r}"
+    serialized = repr(error_report)
+    assert _LEAK_MARKER not in serialized, f"Dev path leaked into web report: {serialized!r}"
+    assert "validation failed" not in serialized, f"Raw exc text leaked: {serialized!r}"
+    assert "서버 로그를 확인하세요" in error_report["error"], (
+        f"Expected generic message, got {error_report!r}"
+    )
+    # Full detail must still be logged server-side.
+    assert any(_LEAK_MARKER in r.getMessage() for r in caplog.records), (
+        "Expected full detail in server-side log"
+    )
+
+
+@pytest.mark.web
+def test_on_export_does_not_leak_exception_text() -> None:
+    """_on_export exception branch must return a generic message, not raw exc text."""
+    from roomestim_web.app import _on_export
+
+    room = MagicMock()
+    layout = MagicMock()
+    with patch(
+        "roomestim.export.write_layout_yaml",
+        side_effect=RuntimeError(_LEAK_MARKER),
+    ):
+        _file, status = _on_export(room, layout, "yaml")
+
+    status_str = repr(status)
+    assert _LEAK_MARKER not in status_str, f"Dev path leaked into export status: {status_str!r}"
+    assert "서버 로그를 확인하세요" in status_str, f"Expected generic message, got {status_str!r}"
+
+
+@pytest.mark.web
+def test_on_apply_overrides_wrapper_does_not_leak_exception_text() -> None:
+    """_on_apply_overrides_wrapper exception branch returns a generic message."""
+    from roomestim_web.app import _on_apply_overrides_wrapper
+
+    room = MagicMock()
+    with patch(
+        "roomestim_web.material_override.on_apply_overrides",
+        side_effect=RuntimeError(_LEAK_MARKER),
+    ):
+        result = _on_apply_overrides_wrapper(room, None, "{}")
+
+    status_str = repr(result[4])
+    assert _LEAK_MARKER not in status_str, f"Dev path leaked into status: {status_str!r}"
+    assert "서버 로그를 확인하세요" in status_str, f"Expected generic message, got {status_str!r}"
+
+
+# --------------------------------------------------------------------------- #
+# OQ-45 / ADR 0038 (Gap 2) — the upload cap must be bound on the build_demo()
+# Blocks object so gradio's server honors it regardless of launch path. The HF
+# entrypoint (root app.py: ``demo = build_demo(); demo.launch()``) never runs
+# roomestim_web's ``__main__`` guard, so a launch-only cap would be inert there.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.web
+def test_build_demo_binds_upload_cap() -> None:
+    """build_demo() must set max_file_size on the Blocks object (effective at HF)."""
+    from roomestim_web.app import _MAX_UPLOAD_BYTES, build_demo
+
+    demo = build_demo()
+    assert demo.max_file_size == _MAX_UPLOAD_BYTES, (
+        "build_demo() must bind the upload cap on the Blocks object so gradio's "
+        f"server honors it; got {demo.max_file_size!r}, want {_MAX_UPLOAD_BYTES!r}"
+    )
+
+
+@pytest.mark.web
+def test_root_entrypoint_carries_upload_cap() -> None:
+    """The HF root entrypoint's `demo` object must carry the cap (not launch-only)."""
+    import importlib
+
+    root_app = importlib.import_module("app")
+    from roomestim_web.app import _MAX_UPLOAD_BYTES
+
+    assert root_app.demo.max_file_size == _MAX_UPLOAD_BYTES, (
+        "Root app.py `demo` must carry the upload cap so the HF-served app "
+        f"enforces it; got {root_app.demo.max_file_size!r}"
+    )

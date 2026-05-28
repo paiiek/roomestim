@@ -132,6 +132,37 @@ is therefore unaffected.
 - If HF Spaces cold-start exceeds 90 s → switch to Docker-based Space or
   trim deps (OQ-18 resolution candidate).
 
+## §Status-update-v0.22.0 (2026-05-28)
+
+**OQ-45 web public-deployment hardening (D71, ADR 0038).** Cycle B of the v0.21
+post-audit fix program lands four web-source changes on the `roomestim_web`
+track plus a declaration-only dependency reconcile:
+
+- **Error-string scrub.** The three `app.py` echo sites (`_on_submit` ValueError
+  branch, `_on_apply_overrides_wrapper`, `_on_export`) no longer place
+  `str(exc)`/`{exc}` in the user-visible string — full detail stays in `_LOG`
+  server-side, the user gets a generic "서버 로그를 확인하세요" message. This closes
+  the residual OQ-42 echo-leak (the dev `_DEFAULT_ENGINE_SCHEMA_PATH` could
+  surface via a validation message); see ADR 0033 §Status-update-v0.22.0.
+- **Tempdir reaper per-PID.** `_reap_stale_tempdirs` globs `roomestim_{pid}_*`
+  and the creation prefixes embed the PID → no cross-session deletion on a shared
+  host (R-3: a crashed process's dirs are no longer reaped by a fresh process;
+  accepted — HF Spaces containers cycle ≤ 24 h, OQ-22).
+- **Upload `max_file_size` cap** at the `launch()` boundary (ADR 0038),
+  mirroring the `MeshAdapter` byte bound.
+- **`material_override.on_apply_overrides` list-input guard** (non-dict JSON
+  payload → user-facing error + no crash).
+- **Dependency reconcile (declaration-only).** `pyproject.toml` web extra
+  `gradio>=4.0` → `>=4.44` (≤ installed 6.14.0; widens-forward, no downgrade);
+  README front-matter `sdk_version` `"4.0.0"` → `"6.14.0"` (installed reality).
+  The installed canonical env is unaffected. CI `pip-audit` + lockfile deferred
+  to OQ-46.
+
+`roomestim_web` `0.17-web.0` → `0.18-web.0` (web source changes; D30). Core
+`roomestim` advances `0.21.0` → `0.22.0` (the `MeshAdapter` bound is the
+SemVer-MINOR driver; ADR 0038). All gates green; RT60 byte-equal
+`1.9190766987173207`.
+
 ## References
 
 - D29 — `.omc/plans/decisions.md` (output-filename routing for parallel-track

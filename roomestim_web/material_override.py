@@ -95,8 +95,18 @@ def on_apply_overrides(
     try:
         raw: dict[str, str] = json.loads(changes_json) if changes_json.strip() else {}
     except json.JSONDecodeError as exc:
-        msg = f"잘못된 JSON 입력: {exc}"
+        # ADR 0038 / OQ-45: full detail logged server-side; generic to the user.
+        msg = "잘못된 JSON 입력입니다. 변경 사항을 확인하세요."
         _LOG.warning("on_apply_overrides: invalid changes_json %r — %s", changes_json, exc)
+        errors.append(msg)
+        raw = {}
+
+    # OQ-45: a non-dict JSON payload (e.g. '["glass"]' → a list) would raise
+    # AttributeError at the .items() loop below. Guard it: user-facing error,
+    # warn server-side, and treat as empty so the loop is a safe no-op.
+    if not isinstance(raw, dict):
+        msg = "변경 사항은 객체(JSON dict)여야 합니다."
+        _LOG.warning("on_apply_overrides: non-dict changes payload %r — treating as empty", raw)
         errors.append(msg)
         raw = {}
 
@@ -119,7 +129,8 @@ def on_apply_overrides(
             mat = MaterialLabel(v)
             changes[idx] = mat
         except (ValueError, KeyError) as exc:
-            msg = f"항목 {k!r}={v!r} 처리 오류: {exc}"
+            # ADR 0038 / OQ-45: full detail logged server-side; generic to the user.
+            msg = f"항목 {k!r}={v!r} 처리에 실패했습니다."
             _LOG.warning("on_apply_overrides: skipping invalid entry %r=%r — %s", k, v, exc)
             errors.append(msg)
 

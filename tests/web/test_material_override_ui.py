@@ -121,6 +121,29 @@ def test_on_apply_overrides_invalid_material_surfaces_errors(lab_room: RoomModel
     )
 
 
+@pytest.mark.web
+def test_on_apply_overrides_list_payload_does_not_crash(lab_room: RoomModel) -> None:
+    """OQ-45 / ADR 0038: a JSON list payload ('["glass"]') must NOT raise.
+
+    Before the guard, ``raw.items()`` raised ``AttributeError`` on a list. The
+    type guard treats a non-dict payload as empty and surfaces a user-facing
+    error instead of crashing.
+    """
+    from roomestim_web.material_override import on_apply_overrides
+
+    # Must not raise (revert-sanity: removing the guard raises AttributeError here).
+    new_room, new_report, errors = on_apply_overrides(lab_room, '["glass"]')
+
+    assert len(errors) >= 1, "Expected a non-empty errors list for a list-shaped payload"
+    assert any("객체" in e for e in errors), (
+        f"Expected the 'must be an object' error; got {errors!r}"
+    )
+    # Treated as empty → no material changed.
+    for i, (orig, new) in enumerate(zip(lab_room.surfaces, new_room.surfaces)):
+        assert new.material == orig.material, f"Surface {i} material changed unexpectedly"
+    assert new_report is not None
+
+
 def test_dataframe_changes_to_json_helper(lab_room: RoomModel) -> None:
     """_dataframe_to_changes_json: changing surface 0 → glass produces {"0": "glass"}."""
     from roomestim_web.material_override import _build_surface_table, _dataframe_to_changes_json

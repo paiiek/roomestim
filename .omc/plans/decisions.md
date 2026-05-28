@@ -1948,3 +1948,105 @@ single-band room; observable contract change of a public `edit.py` helper → Se
 MINOR driver. **Rejected**: dropping band promotion entirely (per-band edited
 rooms would lose their refreshed bands). **Cross-refs**: ADR 0031
 §Status-update-v0.21.0; OQ-44 (CLOSED).
+
+## D71 — web public-deployment hardening bundle (OQ-45 close, v0.22.0, 2026-05-28)
+
+Cycle B of the post-audit fix program lands the five code-level / declarative
+hardening items the v0.20.0 audit collected under OQ-45 (no CRITICAL/RCE was
+found; these are defense-in-depth on a publicly-deployable Gradio Space).
+**Decision** — land them as one bundle:
+
+- **(a) Input resource bounds (ADR 0038).** `MeshAdapter` gains env-overridable
+  `_MAX_MESH_FILE_BYTES` (~200 MB, `ROOMESTIM_MAX_MESH_BYTES`) +
+  `_MAX_MESH_VERTICES` (5M, `ROOMESTIM_MAX_MESH_VERTICES`): file-size `stat()`
+  check in `parse()` before `trimesh.load`, vertex-count check in
+  `_room_model_from_mesh` (ordering shape → vertex-count → faces). Both raise a
+  clear `ValueError` and protect the CLI/library path too. A matching Gradio
+  `max_file_size` cap is applied at the web `launch()` boundary. This is the
+  SemVer-MINOR driver (new observable `parse()` error path).
+- **(b) Web error-string scrub.** The three `app.py` echo sites
+  (`_on_submit` ValueError branch, `_on_apply_overrides_wrapper`, `_on_export`)
+  no longer put `str(exc)`/`{exc}` in the USER-VISIBLE string — full detail stays
+  in `_LOG.exception`/`warning` server-side, the user gets a generic
+  "서버 로그를 확인하세요" message. Closes the residual OQ-42 echo-leak vector
+  (the dev `_DEFAULT_ENGINE_SCHEMA_PATH` could surface via a validation message).
+- **(c) Tempdir reaper per-PID.** `_reap_stale_tempdirs` globs
+  `roomestim_{pid}_*` (was `roomestim_*`) and the two creation prefixes embed the
+  PID, so the reaper can never delete another process's dirs on a shared host.
+- **(d) List-input guard.** `material_override.on_apply_overrides` guards a
+  non-dict JSON payload (`'["glass"]'`) after `json.loads` and before `.items()`:
+  user-facing error + treat as empty (was `AttributeError`).
+- **(e) Dep-CVE declaration-only.** `pyproject.toml` web extra `gradio` floor
+  `>=4.0` → `>=4.44` (≤ installed 6.14.0 — widens the contract forward without
+  forcing a downgrade; transitive starlette/aiohttp/pillow/requests/urllib3
+  floors are pulled forward by gradio's pins). README front-matter `sdk_version`
+  `"4.0.0"` → `"6.14.0"` reconciled to the installed reality. requests/urllib3/
+  pillow are transitive (no direct import; `fetch_web_data` uses stdlib
+  `urllib.request`) → NOT over-declared. The installed canonical env is
+  UNAFFECTED (RT60 byte-equal `1.9190766987173207` proves it). CI `pip-audit` +
+  lockfile deferred to OQ-46.
+
+**Drivers**: publicly-deployable Gradio app; DoS / info-leak / cross-session
+deletion / latent crash surfaced by the audit; defense-in-depth at the single
+adapter chokepoint reachable from every entry path. **Rejected**: force-upgrade
+the canonical miniforge env (risks all gates, not reproducible — declaration-only
+floor bumps instead); remove `_DEFAULT_ENGINE_SCHEMA_PATH` (ADR 0033 §B / OQ-42
+deliberately keeps it as the documented default — the fix is to stop echoing it).
+**Versions**: `roomestim` 0.21.0 → 0.22.0 (MINOR); `roomestim_web` 0.17-web.0 →
+0.18-web.0; schema unchanged `0.2-draft`. **Cross-refs**: ADR 0038 (NEW);
+ADR 0024 §Status-update-v0.22.0; ADR 0033 §Status-update-v0.22.0; OQ-45 (CLOSED);
+OQ-46 (NEW).
+
+## D72 — security-re-review completion of the OQ-45 leak-scrub + boundary-cap (v0.22.0, 2026-05-28)
+
+An independent security re-review of the (uncommitted) v0.22.0 changeset found
+that D71 did **not** fully close OQ-45 — two real gaps the first pass missed.
+This is an in-place completion of the same uncommitted v0.22.0 release (NOT a new
+version): versions stay `roomestim` 0.22.0 / `roomestim_web` 0.18-web.0.
+
+- **Gap 1 (HIGH) — schema-path info-leak still open via the Speaker Nudge tab.**
+  D71 scrubbed only the three `app.py` echo sites. But `validate_placement()`
+  (`roomestim/export/layout_yaml.py`) RETURNS error strings that embed the dev
+  `_DEFAULT_ENGINE_SCHEMA_PATH` (a `/home/...` path) when the engine schema is
+  missing, and `speaker_nudge.py:_on_nudge_speaker` echoed that list verbatim to
+  the web user. **Decision** — scrub at the WEB BOUNDARY (leave
+  `validate_placement` itself intact; CLI use wants the detailed path, D29 lane
+  separation preserved): log the full `errs` server-side and return a generic
+  message. An exhaustive re-grep of `roomestim_web/` for any web-facing
+  return/`gr.update` interpolating `validate_placement(...)`, `{exc}`,
+  `str(exc)`, or any exception/path found and fixed, beyond Gap 1:
+  `speaker_nudge.py` nudge `ValueError`/`IndexError` branch; `object_add.py`
+  `_on_add_object` (`ValueError` + catch-all) and `_on_remove_object`
+  (`IndexError` + catch-all); `material_override.py` `on_apply_overrides`
+  `JSONDecodeError` + per-entry `ValueError`/`KeyError`. A new load-bearing web
+  test (`tests/web/test_speaker_nudge_ui.py`) drives the real `validate_placement`
+  with a forced-missing schema and asserts the user-facing string carries no
+  `/home/`/`geometry_schema` while the generic message is present and the full
+  detail is logged (fails if the scrub is reverted).
+- **Gap 2 (MEDIUM) — `max_file_size` cap inert in production.** D71 set the cap
+  inside `roomestim_web/app.py`'s `if __name__ == "__main__"` block, but HF
+  Spaces serves the root `app.py` (`demo = build_demo(); demo.launch()`) which
+  never runs that block — so the cap never bound. **Decision** — bind it on the
+  Blocks object in `build_demo()` (`demo.max_file_size = _MAX_UPLOAD_BYTES`);
+  gradio 6.14.0's `gr.Blocks` ctor does NOT accept `max_file_size` (verified —
+  only `launch()` does), and gradio's upload route reads
+  `app.get_blocks().max_file_size` at request time, so binding the attribute
+  makes the cap effective regardless of launch path. The root `app.py`
+  entrypoint now also passes `launch(max_file_size=...)`, and the `__main__` cap
+  in `roomestim_web/app.py` is kept (harmless). The `MeshAdapter` byte-cap stays
+  the load-bearing pre-parse DoS guard. New tests assert the cap is set on both
+  the `build_demo()` Blocks object and the root `app.py` `demo`.
+- **Gap 3 (accuracy) — ADR 0038 + RELEASE_NOTES overclaim corrected.** The
+  vertex-count cap runs AFTER `trimesh.load` and bounds the O(N) hull projection,
+  NOT parse memory; the byte-cap (pre-`stat()`, before load) is the parse-memory
+  bound. The "rejected at the Gradio layer before bytes hit disk" claim is wrong
+  for gradio 6.14.0 (it streams the upload to a temp file before handlers run) —
+  reworded to gradio's own server-side size rejection at the request boundary.
+
+**Drivers**: an "OQ-45 CLOSED" claim must be honest; the named leak (Speaker
+Nudge) was a live HIGH info-leak and the boundary cap was a live MEDIUM inert
+control. **Rejected**: changing `validate_placement` core behavior (CLI wants the
+path); removing `_DEFAULT_ENGINE_SCHEMA_PATH` (ADR 0033 §B keeps it). **Versions**:
+unchanged (`roomestim` 0.22.0 / `roomestim_web` 0.18-web.0 — same uncommitted
+release). **Cross-refs**: OQ-45 (CLOSED, completion); ADR 0038 §Decision/§Drivers
+(reworded); D71 (this completes it).

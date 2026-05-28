@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.21.0"
+version = "0.22.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -26,7 +26,15 @@ dev = [
     "mypy>=1.8",
 ]
 web = [
-    "gradio>=4.0",
+    # OQ-45 / ADR 0038: floor bumps are DECLARATION-ONLY — they widen the
+    # `pip install` contract forward (pulling gradio's transitive starlette /
+    # aiohttp / pillow / requests / urllib3 floors past the audit-flagged CVE
+    # lines) without forcing a downgrade. The gradio floor stays ≤ the installed
+    # 6.14.0 so the canonical env is unaffected (RT60 byte-equal proves it).
+    # requests/urllib3/pillow are transitive (no direct import in this repo;
+    # fetch_web_data uses stdlib urllib.request) → left to gradio's pins; an
+    # explicit CI pip-audit + lockfile is deferred to OQ-46.
+    "gradio>=4.44",
     "plotly>=5.18",
     "pyroomacoustics>=0.7",
     "pysofaconventions>=0.1",

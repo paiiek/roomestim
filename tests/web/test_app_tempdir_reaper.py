@@ -57,9 +57,13 @@ def test_deque_eviction_removes_oldest_tempdir() -> None:
 
 @pytest.mark.web
 def test_reap_stale_tempdirs_removes_old_dirs(tmp_path: Path) -> None:
-    """_reap_stale_tempdirs must delete roomestim_* dirs older than max_age_seconds."""
+    """_reap_stale_tempdirs must delete THIS PID's roomestim_<pid>_* dirs older than max_age.
+
+    OQ-45 / ADR 0038: the reaper glob is now per-PID, so the stale dir must carry
+    this process's PID to be matched.
+    """
     tmproot = Path(tempfile.gettempdir())
-    stale_name = f"roomestim_stale_{uuid.uuid4().hex[:8]}"
+    stale_name = f"roomestim_{os.getpid()}_stale_{uuid.uuid4().hex[:8]}"
     stale_dir = tmproot / stale_name
     stale_dir.mkdir()
 
@@ -74,3 +78,37 @@ def test_reap_stale_tempdirs_removes_old_dirs(tmp_path: Path) -> None:
     assert not stale_dir.exists(), (
         f"Expected stale dir {stale_dir} to be removed by _reap_stale_tempdirs, but it still exists."
     )
+
+
+@pytest.mark.web
+def test_reap_stale_tempdirs_spares_other_pid(tmp_path: Path) -> None:
+    """OQ-45 / ADR 0038: the per-PID reaper must NOT delete another process's tempdirs.
+
+    A stale dir owned by an alien PID must survive; this process's own stale dir
+    is still reaped in the same call.
+    """
+    tmproot = Path(tempfile.gettempdir())
+    suffix = uuid.uuid4().hex[:8]
+    alien_pid = os.getpid() + 1  # any PID that is not ours
+    alien_dir = tmproot / f"roomestim_{alien_pid}_alien_{suffix}"
+    ours_dir = tmproot / f"roomestim_{os.getpid()}_ours_{suffix}"
+    alien_dir.mkdir()
+    ours_dir.mkdir()
+    old_time = time.time() - 5 * 3600
+    os.utime(alien_dir, (old_time, old_time))
+    os.utime(ours_dir, (old_time, old_time))
+
+    try:
+        _reap_stale_tempdirs(max_age_seconds=4 * 3600)
+
+        assert alien_dir.exists(), (
+            f"Alien-PID tempdir {alien_dir} must survive the per-PID reaper, but it was deleted."
+        )
+        assert not ours_dir.exists(), (
+            f"This process's stale dir {ours_dir} should still be reaped, but it survives."
+        )
+    finally:
+        if alien_dir.exists():
+            alien_dir.rmdir()
+        if ours_dir.exists():
+            ours_dir.rmdir()

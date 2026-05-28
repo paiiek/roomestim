@@ -39,6 +39,14 @@ from roomestim_web.speaker_nudge import (
 
 _LOG = logging.getLogger("roomestim_web")
 
+# ADR 0038: web upload boundary cap (defense-in-depth). Mirrors the MeshAdapter
+# byte bound so gradio's own server-side size check rejects an oversized upload
+# at the request boundary. NOTE: gradio still streams the upload to a temp file
+# before handlers run, so this is gradio's size rejection — not a "before bytes
+# hit disk" guard. The MeshAdapter pre-stat() byte-cap (env-overridable) is the
+# load-bearing parse-memory chokepoint that also protects the CLI/library path.
+_MAX_UPLOAD_BYTES = int(os.environ.get("ROOMESTIM_MAX_MESH_BYTES", 200 * 1024 * 1024))  # ~200 MB
+
 class _EvictingDeque(deque[tempfile.TemporaryDirectory[str]]):
     """deque that calls .cleanup() on TemporaryDirectory entries evicted by maxlen."""
 
@@ -57,10 +65,15 @@ _TEMP_REAPER: _EvictingDeque = _EvictingDeque(maxlen=8)
 
 
 def _reap_stale_tempdirs(max_age_seconds: int = 4 * 3600) -> None:
-    """Walk tempfile.gettempdir() for roomestim_* dirs older than max_age_seconds; remove."""
+    """Walk tempfile.gettempdir() for this PID's roomestim_<pid>_* dirs older than max_age; remove.
+
+    OQ-45 / ADR 0038: the glob is namespaced per-PID so the reaper can never
+    delete another process's tempdirs on a shared host. It still reaps this
+    process's own stale dirs at ``atexit``.
+    """
     root = Path(tempfile.gettempdir())
     now = time.time()
-    for entry in root.glob("roomestim_*"):
+    for entry in root.glob(f"roomestim_{os.getpid()}_*"):
         try:
             if entry.is_dir() and (now - entry.stat().st_mtime) > max_age_seconds:
                 shutil.rmtree(entry, ignore_errors=True)
@@ -194,7 +207,7 @@ def _on_submit(
     from roomestim_web.provenance import build_provenance_readme
     from roomestim_web.viewer import build_room_figure
 
-    td = tempfile.TemporaryDirectory(prefix="roomestim_")
+    td = tempfile.TemporaryDirectory(prefix=f"roomestim_{os.getpid()}_")
     _TEMP_REAPER.append(td)  # deque eviction closes the oldest entry; cap=8
     out_dir = Path(td.name)
 
@@ -217,7 +230,13 @@ def _on_submit(
         except ValueError:
             pass
         td.cleanup()
-        error_report: Any = {"error": str(exc), "algorithm": algorithm}
+        # ADR 0038 / OQ-45: do NOT echo str(exc) to the web user — WFS/validation
+        # messages can embed the dev schema path (_DEFAULT_ENGINE_SCHEMA_PATH).
+        # Full detail is logged above; the user gets a generic message.
+        error_report: Any = {
+            "error": "처리 중 오류가 발생했습니다. 서버 로그를 확인하세요.",
+            "algorithm": algorithm,
+        }
         return (None, None, error_report, None, None, _binaural_status_update(None), None, None, None, None, None, None)
     except Exception:
         _LOG.exception("run_pipeline failed; returning all-None tuple")
@@ -395,9 +414,13 @@ def _on_apply_overrides_wrapper(
             _LOG.exception("build_room_figure failed in _on_apply_overrides_wrapper")
             new_figure = None
         return new_room, new_figure, new_rt60_chart, new_report_json, status_update, "{}"
-    except Exception as exc:
+    except Exception:
+        # ADR 0038 / OQ-45: full detail logged server-side; user sees a generic
+        # message (no raw exception text in the web-facing string).
         _LOG.exception("_on_apply_overrides_wrapper failed")
-        status_update = gr.update(value=f"오류: {exc}", visible=True)
+        status_update = gr.update(
+            value="오류: 재질 정정에 실패했습니다. 서버 로그를 확인하세요.", visible=True
+        )
         return room, None, None, None, status_update, "{}"
 
 
@@ -783,6 +806,16 @@ def build_demo() -> gr.Blocks:
             outputs=[export_file, export_status_md],
         )
 
+    # ADR 0038 / OQ-45 (Gap 2): bind the upload cap on the Blocks object itself
+    # so gradio's server honors it regardless of how the app is launched. The
+    # gradio 6.14.0 upload route reads ``app.get_blocks().max_file_size`` at
+    # request time (gradio.Blocks does NOT accept max_file_size as a ctor kwarg;
+    # only launch() does, and HF Spaces' ``demo = build_demo(); demo.launch()``
+    # never runs roomestim_web's ``__main__`` guard). Setting the attribute here
+    # makes the cap effective at the HF entrypoint and any importer; a later
+    # launch(max_file_size=...) simply re-affirms the same value.
+    demo.max_file_size = _MAX_UPLOAD_BYTES
+
     return demo
 
 
@@ -802,7 +835,7 @@ def _on_export(
     """
     if room is None or layout is None:
         return None, gr.update(value="오류: 먼저 방 스캔 파일을 실행하세요.", visible=True)
-    td = tempfile.TemporaryDirectory(prefix="roomestim_export_")
+    td = tempfile.TemporaryDirectory(prefix=f"roomestim_{os.getpid()}_export_")
     _TEMP_REAPER.append(td)
     out_dir = Path(td.name)
     try:
@@ -836,10 +869,16 @@ def _on_export(
             write_gltf(room, layout, out_path, format="glb")
             return str(out_path), gr.update(value=f"gLTF export 완료: {out_path.name}", visible=True)
         return None, gr.update(value=f"오류: 알 수 없는 포맷 {fmt!r}", visible=True)
-    except Exception as exc:
+    except Exception:
+        # ADR 0038 / OQ-45: full detail logged server-side; user sees a generic
+        # message (no raw exception text in the web-facing string).
         _LOG.exception("_on_export failed for fmt=%s", fmt)
-        return None, gr.update(value=f"오류: export 실패 — {exc}", visible=True)
+        return None, gr.update(
+            value="오류: export에 실패했습니다. 서버 로그를 확인하세요.", visible=True
+        )
 
 
 if __name__ == "__main__":
-    build_demo().launch()
+    # ADR 0038: build_demo() already binds the cap on the Blocks object; the
+    # explicit launch kwarg re-affirms it for the local-run path (harmless).
+    build_demo().launch(max_file_size=_MAX_UPLOAD_BYTES)

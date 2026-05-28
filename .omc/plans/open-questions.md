@@ -802,7 +802,8 @@ in the predictor rationale; gate the band promotion on the source surface alread
 having bands. **Reverse-trigger**: any user report of an unexpected RT60 jump after
 an object add / material edit. Allocated v0.20.0 (audit).
 
-**OQ-45** — web public-deployment hardening (HF Spaces). Surfaced by the v0.20.0
+**OQ-45** — web public-deployment hardening (HF Spaces). — CLOSED v0.22.0
+(2026-05-28, D71, ADR 0038). Surfaced by the v0.20.0
 security audit. The tool is publicly deployable (`app.py`, `sdk: gradio`) and the
 audit found (no CRITICAL/RCE; YAML safe_load uniform, no eval/exec/pickle/shell):
 (a) **unbounded untrusted-mesh parsing** — `trimesh.load(force="mesh")`
@@ -824,7 +825,48 @@ upload size + vertex count (`gradio max_file_size` + a `MeshAdapter` bound), pin
 lockfile + `pip-audit` in CI, scrub absolute paths/raw exceptions from web-facing
 errors, namespace the tempdir reaper per-PID, type-guard `on_apply_overrides`.
 **Reverse-trigger**: decision to expose the Gradio demo publicly. Allocated v0.20.0
-(audit).
+(audit). **CLOSED v0.22.0 (2026-05-28, D71+D72, ADR 0038)** — reverse-trigger treated
+as fired (the audit + the v0.21 fix program authorized the hardening pass). Landed:
+(a) `MeshAdapter` env-overridable byte + vertex caps (ADR 0038) — the byte-cap is
+the pre-`trimesh.load` parse-memory bound, the vertex-cap a post-parse
+hull-projection guard — plus a Gradio `max_file_size` cap **bound on the
+`build_demo()` Blocks object** (`demo.max_file_size`) so gradio's server honors it
+regardless of launch path (gradio 6.14.0 `Blocks` ctor rejects the kwarg; only
+`launch()` accepts it, and HF's root `app.py` never runs `roomestim_web`'s
+`__main__` guard — so the original launch-only cap was inert in production; the
+root entrypoint now also carries it); (b) **all** web-facing error-string echo
+sites scrubbed — not just the original three. The v0.22.0 first pass scrubbed only
+`app.py` `_on_submit`/`_on_apply_overrides_wrapper`/`_on_export`; a security
+re-review (D72) found the **Speaker Nudge** path
+(`speaker_nudge.py:_on_nudge_speaker`) still echoed `validate_placement()`'s
+schema-path-bearing error list verbatim. The exhaustive scrub now covers
+`speaker_nudge.py` (validate echo + nudge `ValueError`/`IndexError`),
+`object_add.py` (`_on_add_object`/`_on_remove_object` `{exc}` branches), and
+`material_override.py` (`on_apply_overrides` `JSONDecodeError`/per-entry `{exc}`) —
+full detail logged server-side; `validate_placement` itself is intact (CLI wants
+the path) and `_DEFAULT_ENGINE_SCHEMA_PATH` is kept (ADR 0033 §Status-update-v0.22.0);
+a new load-bearing web test drives the real `validate_placement` with a missing
+schema and asserts no `/home/`/`geometry_schema` reaches the user; (c) per-PID
+tempdir reaper (`roomestim_{pid}_*` glob + creation prefixes); (d)
+`on_apply_overrides` list-input type guard. The dependency-CVE work is
+declaration-only this cycle (`pyproject` `gradio>=4.44`, README
+`sdk_version: "6.14.0"`; installed env unaffected, RT60 byte-equal); the CI
+`pip-audit` + lockfile follow-up is split out to **OQ-46**.
+
+---
+
+**OQ-46** — CI `pip-audit` + dependency lockfile for the web extras (HF Spaces).
+Split from OQ-45 (D71, v0.22.0, 2026-05-28). The v0.22.0 dep work was
+declaration-only (`pyproject` floor bumps + README `sdk_version` reconcile) so the
+canonical env and all gates stay byte-identical. The residual **process/infra**
+piece — not a code change — is: (a) add a lockfile (`pip-compile`/`uv lock` or
+equivalent) pinning the resolved web-extras tree, and (b) wire `pip-audit` into CI
+so a freshly-resolved install is checked against the advisory DB on every push.
+This catches a transitive CVE re-introduced by a floor that resolves to a newer
+(or, on an old host, older) line than the canonical 6.14.0 env. **Deferred** —
+requires a CI runner + a lockfile-maintenance cadence decision; out of scope for
+a code-only cycle. **Reverse-trigger**: a public deployment lands AND a CI
+pipeline exists to host the audit step. Allocated v0.22.0 (D71).
 
 ---
 

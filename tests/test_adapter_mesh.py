@@ -86,3 +86,44 @@ def test_mesh_adapter_points_only_ply_raises() -> None:
     """
     with pytest.raises(ValueError, match="0 faces"):
         MeshAdapter().parse(FIXTURE_DIR / "points_only.ply")
+
+
+# --------------------------------------------------------------------------- #
+# OQ-45 / ADR 0038 — input resource bounds (DoS guard)
+# --------------------------------------------------------------------------- #
+
+
+def test_mesh_adapter_vertex_cap_rejects_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0038: monkeypatching the vertex cap LOW makes a normal fixture exceed it.
+
+    No huge fixture is committed — the existing shoebox has far more than 3
+    vertices, so a cap of 3 forces the ValueError on a real parse path.
+    """
+    import roomestim.adapters.mesh as mesh_mod
+
+    monkeypatch.setattr(mesh_mod, "_MAX_MESH_VERTICES", 3)
+    with pytest.raises(ValueError, match="vertices, exceeding"):
+        MeshAdapter().parse(FIXTURE_DIR / "lab_room.obj")
+
+
+def test_mesh_adapter_byte_cap_rejects_over_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR 0038: monkeypatching the byte cap LOW makes a normal fixture exceed it."""
+    import roomestim.adapters.mesh as mesh_mod
+
+    monkeypatch.setattr(mesh_mod, "_MAX_MESH_FILE_BYTES", 1)
+    with pytest.raises(ValueError, match="bytes, exceeding"):
+        MeshAdapter().parse(FIXTURE_DIR / "lab_room.obj")
+
+
+def test_mesh_adapter_default_bounds_leave_fixtures_unaffected() -> None:
+    """Default caps are far above the test fixtures — the shoebox still parses."""
+    import roomestim.adapters.mesh as mesh_mod
+
+    assert mesh_mod._MAX_MESH_FILE_BYTES == 200 * 1024 * 1024
+    assert mesh_mod._MAX_MESH_VERTICES == 5_000_000
+    room = MeshAdapter().parse(FIXTURE_DIR / "lab_room.obj")
+    assert isinstance(room, RoomModel)

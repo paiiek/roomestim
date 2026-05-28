@@ -10,6 +10,7 @@ reconstruction deferred to v0.3). Material defaults per :data:`MaterialLabel`.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -35,6 +36,13 @@ from roomestim.reconstruct.walls import walls_from_floor_polygon
 __all__ = ["MeshAdapter"]
 
 _SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply"})
+
+# Input resource bounds (ADR 0038). An untrusted mesh reaches
+# ``trimesh.load(force="mesh")`` from both the CLI and the publicly-deployable
+# web upload boundary; without a cap that path is a trivial DoS vector. Both
+# limits are env-overridable so legitimate large-scan operators can raise them.
+_MAX_MESH_FILE_BYTES = int(os.environ.get("ROOMESTIM_MAX_MESH_BYTES", 200 * 1024 * 1024))  # ~200 MB
+_MAX_MESH_VERTICES = int(os.environ.get("ROOMESTIM_MAX_MESH_VERTICES", 5_000_000))  # ~5M
 
 
 class MeshAdapter:
@@ -63,6 +71,15 @@ class MeshAdapter:
                 f"MeshAdapter: unsupported extension {suffix!r}; "
                 f"expected one of {sorted(_SUPPORTED_SUFFIXES)}."
             )
+        # ADR 0038: bound file size BEFORE trimesh reads the bytes. Guards both
+        # the CLI and the web upload path against a DoS-sized mesh.
+        file_bytes = path_obj.stat().st_size
+        if file_bytes > _MAX_MESH_FILE_BYTES:
+            raise ValueError(
+                f"MeshAdapter: mesh file is {file_bytes} bytes, exceeding the "
+                f"{_MAX_MESH_FILE_BYTES}-byte cap (set ROOMESTIM_MAX_MESH_BYTES "
+                f"to raise it)."
+            )
         return self._room_model_from_mesh(path_obj, octave_band=octave_band)
 
     def _room_model_from_mesh(self, path: Path, *, octave_band: bool = False) -> RoomModel:
@@ -79,6 +96,16 @@ class MeshAdapter:
             raise ValueError(
                 f"MeshAdapter: expected (N, 3) vertex array, got shape "
                 f"{vertices.shape}"
+            )
+
+        # ADR 0038: bound vertex count (ordering: shape → vertex-count → faces).
+        # A file under the byte cap can still expand to a pathological vertex
+        # count after parsing; cap it before the O(N) hull projection below.
+        if vertices.shape[0] > _MAX_MESH_VERTICES:
+            raise ValueError(
+                f"MeshAdapter: mesh has {vertices.shape[0]} vertices, exceeding "
+                f"the {_MAX_MESH_VERTICES}-vertex cap (set "
+                f"ROOMESTIM_MAX_MESH_VERTICES to raise it)."
             )
 
         # OQ-21: a points-only PLY (vertices but no triangular faces) loads as a

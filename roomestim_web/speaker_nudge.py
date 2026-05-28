@@ -84,13 +84,24 @@ def _on_nudge_speaker(
             dz=float(dz or 0.0),
         )
     except (ValueError, IndexError) as exc:
+        # ADR 0038 / OQ-45: full detail logged server-side; the user gets a
+        # generic message (no raw exception text in the web-facing string).
         _LOG.warning("_on_nudge_speaker nudge failed: %s", exc)
-        return layout, None, f"오류: nudge 실패 — {exc}"
+        return layout, None, "오류: nudge 적용에 실패했습니다. 서버 로그를 확인하세요."
 
     errs = validate_placement(new_layout)
     if errs:
-        joined = "\n".join(f"• {e}" for e in errs)
-        return layout, None, f"⚠ 엔진 검증 실패 (layout 미변경):\n{joined}"
+        # ADR 0038 / OQ-45: validate_placement error strings can embed the dev
+        # engine schema path (_DEFAULT_ENGINE_SCHEMA_PATH / FileNotFoundError);
+        # log the full list server-side and return a GENERIC user-facing
+        # message — never echo the raw `errs` to the web user. validate_placement
+        # itself is left intact (CLI use wants the detailed path).
+        _LOG.warning("_on_nudge_speaker engine validation failed: %s", errs)
+        return (
+            layout,
+            None,
+            "⚠ 엔진 검증 실패 (layout 미변경). 서버 로그를 확인하세요.",
+        )
 
     # Rebuild the 3D viewer with the new speaker positions (OQ-32 pattern).
     try:

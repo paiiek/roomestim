@@ -127,6 +127,26 @@ tests themselves are unchanged — they supply a valid schema dir). MINOR bump
 
 ---
 
+## §Status-update-v0.22.0 (2026-05-28)
+
+**OQ-42 echo-leak residual CLOSED (D71, OQ-45) — without removing the documented
+default.** v0.20.0 fixed the silent-fallback path but the dev
+`_DEFAULT_ENGINE_SCHEMA_PATH` (a `/home/...` absolute path) could still surface
+to a *web* user: a validation `ValueError` carrying the path was echoed verbatim
+into the Gradio `_on_submit` error report (and `_on_export` /
+`_on_apply_overrides_wrapper` echoed raw exception text generally). v0.22.0
+scrubs all three web-facing echo sites in `roomestim_web/app.py` — full detail
+stays in `_LOG` server-side, the web user gets a generic
+"서버 로그를 확인하세요" message. The leak vector was the **echo**, now closed.
+
+**§B chain RETAINED (again).** `_DEFAULT_ENGINE_SCHEMA_PATH` is **kept** as the
+documented `CLI > ENV > default` fallback per §B / D42; this update changes only
+the web-facing presentation, not the constant or the CLI's detailed (local-use)
+errors. See ADR 0024 §Status-update-v0.22.0 and ADR 0038. No core-schema behavior
+change → RT60 byte-equal `1.9190766987173207`.
+
+---
+
 ## §References
 
 - ADR 0024 — web-demo separate package (D29 lane separation)

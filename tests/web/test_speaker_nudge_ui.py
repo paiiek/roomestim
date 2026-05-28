@@ -98,3 +98,59 @@ def test_on_nudge_viewer_rebuild(lab_room: RoomModel, layout: PlacementResult) -
     )
     assert fig is not None
     assert new_layout is not layout
+
+
+# --------------------------------------------------------------------------- #
+# OQ-45 / ADR 0038 (Gap 1) — the validate_placement-echo path must NOT leak the
+# dev engine schema path to the web user. Load-bearing: if the speaker_nudge
+# boundary scrub is reverted, this test fails (the path appears in `status`).
+# --------------------------------------------------------------------------- #
+
+
+def test_on_nudge_engine_validation_failure_does_not_leak_schema_path(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    layout: PlacementResult,
+) -> None:
+    """A missing engine schema makes validate_placement return a path-bearing
+    FileNotFoundError string; the web user must see ONLY a generic message.
+
+    This drives the REAL validate_placement (not a mock): the schema is forced
+    to resolve to a missing file so the genuine engine FileNotFoundError carries
+    the dev path. The web boundary must scrub it; the full detail is logged.
+    """
+    import logging
+
+    import roomestim.export.layout_yaml as ly
+
+    leak_path = Path("/home/seung/secret-dev-path/geometry_schema.json")
+    # Force both resolution legs (ENV candidate + documented default) to miss so
+    # _resolve_schema_file raises the descriptive FileNotFoundError naming the path.
+    monkeypatch.setenv("SPATIAL_ENGINE_REPO_DIR", "/tmp/roomestim_nonexistent_engine_dir")
+    monkeypatch.setattr(ly, "_DEFAULT_ENGINE_SCHEMA_PATH", leak_path)
+
+    # Sanity: the RAW collector still contains the path (CLI behavior intact).
+    from roomestim.export import validate_placement
+
+    raw_errs = validate_placement(layout)
+    assert any("geometry_schema" in e for e in raw_errs), (
+        "Test precondition broken: validate_placement should surface the missing "
+        f"schema path for CLI use; got {raw_errs!r}"
+    )
+
+    with caplog.at_level(logging.WARNING, logger="roomestim_web.speaker_nudge"):
+        new_layout, fig, status = _on_nudge_speaker(
+            None, layout, 1, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        )
+
+    # Web-facing string is scrubbed: no path, no schema filename, no raw errs.
+    assert "/home/" not in status, f"Dev path leaked into web status: {status!r}"
+    assert "geometry_schema" not in status, f"Schema filename leaked: {status!r}"
+    assert "서버 로그를 확인하세요" in status, f"Expected generic message, got {status!r}"
+    # Layout must be returned unchanged on validation failure.
+    assert new_layout is layout
+    assert fig is None
+    # Full detail must still be logged server-side.
+    assert any("geometry_schema" in r.getMessage() for r in caplog.records), (
+        "Expected the full validate_placement detail (with path) in the server log"
+    )
