@@ -25,6 +25,7 @@ from roomestim.model import (
     Point3,
     RoomModel,
     Surface,
+    wall_surfaces,
 )
 
 
@@ -168,7 +169,7 @@ def read_room_yaml(path: Path | str) -> RoomModel:
             f"(supported: '0.1-draft', '0.1', '0.2-draft')"
         )
 
-    return RoomModel(
+    room = RoomModel(
         name=name,
         floor_polygon=floor_polygon,
         ceiling_height_m=ceiling_height_m,
@@ -177,6 +178,21 @@ def read_room_yaml(path: Path | str) -> RoomModel:
         objects=objects,
         schema_version=schema_version,
     )
+
+    # OQ-44(b) / D69: bound each door/window's wall_index against the walls-only
+    # frame (the frame Object.wall_index resolves in — see ADR 0037 + D68).
+    # An out-of-range index would otherwise silently downgrade the whole-room
+    # RT60 to Eyring at predict time; reject it here at load instead.
+    n_walls = len(wall_surfaces(room))
+    for obj in room.objects:
+        if obj.kind in ("door", "window") and obj.wall_index is not None:
+            if not (0 <= obj.wall_index < n_walls):
+                raise ValueError(
+                    f"object wall_index={obj.wall_index} out of range "
+                    f"[0, {n_walls}); room '{room.name}' has {n_walls} walls."
+                )
+
+    return room
 
 
 __all__ = ["read_room_yaml"]

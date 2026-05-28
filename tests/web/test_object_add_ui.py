@@ -90,6 +90,47 @@ def test_on_add_object_column_to_lab_room(lab_room: RoomModel) -> None:
     assert "추가" in status or "객체" in status
 
 
+def test_on_add_object_rejects_out_of_range_wall_index(lab_room: RoomModel) -> None:
+    """A door whose wall_index exceeds the wall count is rejected with a
+    user-facing error and the room is returned unchanged (OQ-44(b) / D69)."""
+    n_walls = sum(1 for s in lab_room.surfaces if s.kind == "wall")
+    form_data = {
+        "anchor_x": 0.0,
+        "anchor_y": 0.0,
+        "anchor_z": 0.0,
+        "width_m": 0.9,
+        "height_m": 2.1,
+        "depth_m": 0.0,
+        "wall_index": n_walls + 5,  # out of range
+        "material": MaterialLabel.WALL_PAINTED.value,
+    }
+    same_room, status = _on_add_object(lab_room, "door", form_data)
+    # Room unchanged (same object, still empty objects), error surfaced.
+    assert same_room is lab_room
+    assert "오류" in status
+    assert "wall_index" in status
+    assert str(n_walls + 5) in status
+
+
+def test_on_add_object_accepts_in_range_wall_index(lab_room: RoomModel) -> None:
+    """An in-range wall_index door is added (the bound is not over-eager)."""
+    form_data = {
+        "anchor_x": 0.0,
+        "anchor_y": 0.0,
+        "anchor_z": 0.0,
+        "width_m": 0.9,
+        "height_m": 2.1,
+        "depth_m": 0.0,
+        "wall_index": 0,
+        "material": MaterialLabel.WALL_PAINTED.value,
+    }
+    new_room, status = _on_add_object(lab_room, "door", form_data)
+    assert new_room is not None
+    assert len(new_room.objects) == 1
+    assert new_room.objects[0].kind == "door"
+    assert new_room.objects[0].wall_index == 0
+
+
 def test_on_remove_object(lab_room: RoomModel) -> None:
     """Removing index 0 of a two-object room leaves the second object."""
     col_a = Object(

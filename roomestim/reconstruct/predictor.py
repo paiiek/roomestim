@@ -45,6 +45,7 @@ from roomestim.model import (
     Point3,
     RoomModel,
     Surface,
+    wall_surfaces,
 )
 from roomestim.reconstruct.image_source import image_source_rt60
 from roomestim.reconstruct.materials import (
@@ -155,7 +156,7 @@ def _shoebox_surface_areas_and_alphas(
 
     floor_surfs = [s for s in room.surfaces if s.kind == "floor"]
     ceil_surfs = [s for s in room.surfaces if s.kind == "ceiling"]
-    walls = [s for s in room.surfaces if s.kind == "wall"]
+    walls = wall_surfaces(room)
 
     if extra_surfaces:
         for extra in extra_surfaces:
@@ -336,7 +337,7 @@ def _shoebox_per_band_alphas(
     # this filtered list, not a stable surface ID. Stable per call; not stable
     # across mutations of room.surfaces ordering. See v0.15.1 code-review
     # MEDIUM-1 — promotion to a stable surf.id is OQ-31 follow-up if needed.
-    walls = [s for s in room.surfaces if s.kind == "wall"]
+    walls = wall_surfaces(room)
 
     extra_floor: list[Surface] = []
     extra_ceil: list[Surface] = []
@@ -458,7 +459,7 @@ def predict_rt60_default(
         )
         try:
             extras = _objects_to_surfaces(objects) if objects else None
-            base_walls = [s for s in room.surfaces if s.kind == "wall"]
+            base_walls = wall_surfaces(room)
             overrides = (
                 _objects_to_wall_alpha_overrides(objects, base_walls)
                 if objects
@@ -486,7 +487,8 @@ def predict_rt60_default(
                 predictor_name="eyring",
                 rationale=(
                     f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
-                    f"objects present, ISM fallback to Eyring ({type(exc).__name__})"
+                    f"objects present, ISM fallback to Eyring "
+                    f"({type(exc).__name__}: {exc})"
                 ),
             )
         rationale = (
@@ -532,7 +534,7 @@ def predict_rt60_default_per_band(
         )
         try:
             extras = _objects_to_surfaces(objects) if objects else None
-            base_walls = [s for s in room.surfaces if s.kind == "wall"]
+            base_walls = wall_surfaces(room)
             overrides = (
                 _objects_to_wall_alpha_overrides(objects, base_walls)
                 if objects
@@ -562,7 +564,7 @@ def predict_rt60_default_per_band(
                 rationale=(
                     f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
                     f"objects present, per-band ISM fallback to Eyring "
-                    f"({type(exc).__name__})"
+                    f"({type(exc).__name__}: {exc})"
                 ),
             )
         rationale = (

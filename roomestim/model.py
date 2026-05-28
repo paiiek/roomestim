@@ -166,6 +166,57 @@ class MountSurface:
 
 
 # --------------------------------------------------------------------------- #
+# Walls-only surface-index frame (the single authority — D68 / ADR 0037)
+# --------------------------------------------------------------------------- #
+
+
+def wall_surfaces(room: "RoomModel") -> list["Surface"]:
+    """Return the room's wall surfaces in ``room.surfaces`` order.
+
+    This is the ONE authority for the walls-only "surface index" frame that
+    :attr:`Object.wall_index` resolves against (predictor α overrides + the web
+    3D viewer). Adapters do not agree on the position of walls within the full
+    ``room.surfaces`` list (RoomPlan emits ``[floor, *ceilings, *walls]``, the
+    mesh adapter ``[floor, ceiling, *walls]``, the ACE adapter a trailing
+    floor), so the walls-relative ordinal must always be resolved through this
+    filter rather than re-derived ad hoc. See ADR 0037 + D68.
+    """
+    return [s for s in room.surfaces if s.kind == "wall"]
+
+
+def surface_index_for_wall(room: "RoomModel", wall_ordinal: int) -> int:
+    """Return the full ``room.surfaces`` index of the ``wall_ordinal``-th wall.
+
+    ``wall_ordinal`` is a walls-only index (the frame :attr:`Object.wall_index`
+    lives in). The returned value is the matching full-``room.surfaces`` index,
+    which is what :func:`roomestim.edit.evolve_room_material` consumes — i.e.
+    this bridges the two coexisting "surface index" frames so a wall-relative
+    edit lands on the correct surface regardless of adapter ordering.
+
+    Raises
+    ------
+    IndexError
+        When ``wall_ordinal`` is outside ``[0, len(wall_surfaces(room)))``.
+    """
+    walls = wall_surfaces(room)
+    n = len(walls)
+    if not (0 <= wall_ordinal < n):
+        raise IndexError(
+            f"wall_ordinal={wall_ordinal} is out of valid range [0, {n}); "
+            f"room '{room.name}' has {n} walls."
+        )
+    target = walls[wall_ordinal]
+    for full_index, surf in enumerate(room.surfaces):
+        if surf is target:
+            return full_index
+    # Unreachable: target came from room.surfaces, so identity match exists.
+    raise IndexError(
+        f"wall_ordinal={wall_ordinal}: matching wall surface not found in "
+        f"room '{room.name}' surfaces."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Obstacles (columns / doors / windows) — v0.17 schema extension per ADR 0034
 # --------------------------------------------------------------------------- #
 

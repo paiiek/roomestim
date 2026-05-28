@@ -298,12 +298,29 @@ class RoomPlanAdapter:
         # ------------------------------------------------------------------ #
         listener = default_listener_area(floor_polygon_2d)
 
+        objects = _extract_objects(data)
+
+        # OQ-44(b) / D69: bound each door/window's wall_index against the
+        # walls-only frame (ADR 0037 + D68). RoomPlanAdapter DOES emit objects
+        # (see _extract_objects), so this guard is live, not dead: an
+        # out-of-range index would otherwise silently downgrade the whole-room
+        # RT60 to Eyring at predict time. ``wall_surfaces`` is the local wall
+        # list built above, whose length is the wall count.
+        n_walls = len(wall_surfaces)
+        for obj in objects:
+            if obj.kind in ("door", "window") and obj.wall_index is not None:
+                if not (0 <= obj.wall_index < n_walls):
+                    raise ValueError(
+                        f"object wall_index={obj.wall_index} out of range "
+                        f"[0, {n_walls}); room '{name}' has {n_walls} walls."
+                    )
+
         return RoomModel(
             name=name,
             floor_polygon=floor_polygon_2d,
             ceiling_height_m=ceiling_height_m,
             surfaces=surfaces,
             listener_area=listener,
-            objects=_extract_objects(data),
+            objects=objects,
             schema_version="0.2-draft",
         )

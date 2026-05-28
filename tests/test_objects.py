@@ -187,6 +187,58 @@ def test_yaml_round_trip_with_column(lab_room: RoomModel, tmp_path: Path) -> Non
 
 
 # --------------------------------------------------------------------------- #
+# OQ-44(b): wall_index upper-bound enforced at load (reader)
+# --------------------------------------------------------------------------- #
+
+
+def test_read_room_yaml_rejects_out_of_range_wall_index(
+    lab_room: RoomModel, tmp_path: Path
+) -> None:
+    """A door whose wall_index exceeds the wall count is rejected at load.
+
+    The ``Object`` dataclass is context-free and cannot self-bound, so the read
+    path is an independent entry point that must enforce the walls-only-frame
+    bound (OQ-44(b) / D69). Without this guard the out-of-range index silently
+    downgrades the whole-room RT60 to Eyring at predict time."""
+    n_walls = sum(1 for s in lab_room.surfaces if s.kind == "wall")
+    bad_door = Object(
+        kind="door",
+        anchor=Point3(x=0.0, y=0.0, z=0.0),
+        width_m=0.9,
+        height_m=2.0,
+        depth_m=0.0,
+        wall_index=n_walls + 5,  # out of range
+        material=MaterialLabel.WALL_PAINTED,
+    )
+    room_with_bad = evolve_room_add_object(lab_room, bad_door)
+    out = tmp_path / "room_bad_wall_index.yaml"
+    write_room_yaml(room_with_bad, out, schema_version="0.2-draft")
+    with pytest.raises(ValueError, match="out of range"):
+        read_room_yaml(out)
+
+
+def test_read_room_yaml_accepts_in_range_wall_index(
+    lab_room: RoomModel, tmp_path: Path
+) -> None:
+    """An in-range wall_index round-trips cleanly (the guard is not over-eager)."""
+    door = Object(
+        kind="door",
+        anchor=Point3(x=0.0, y=0.0, z=0.0),
+        width_m=0.9,
+        height_m=2.0,
+        depth_m=0.0,
+        wall_index=0,
+        material=MaterialLabel.WALL_PAINTED,
+    )
+    room_with_door = evolve_room_add_object(lab_room, door)
+    out = tmp_path / "room_ok_wall_index.yaml"
+    write_room_yaml(room_with_door, out, schema_version="0.2-draft")
+    loaded = read_room_yaml(out)
+    assert len(loaded.objects) == 1
+    assert loaded.objects[0].wall_index == 0
+
+
+# --------------------------------------------------------------------------- #
 # Backward / forward compatibility
 # --------------------------------------------------------------------------- #
 

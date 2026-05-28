@@ -111,3 +111,25 @@ the YAML schema changes).
 - D39 — `roomestim/edit.py` placement decision
 - D40 — Manual Apply trigger decision
 - D43 — ADR 0009 invariant on evolved rooms (regression lock spec)
+
+## §Status-update-v0.21.0 (2026-05-28)
+
+`evolve_surface`'s band-promotion contract is refined under OQ-44(c) / D70.
+
+Previously a material change unconditionally set `absorption_bands =
+MaterialAbsorptionBands[material]`, promoting a single-band surface
+(`absorption_bands=None`, the `octave_band=False` ingest default) to per-band —
+silently shifting an edited room onto the per-band predictor branch. The
+band-promotion is now gated on the source already carrying bands
+(`surf.absorption_bands is not None`); the scalar `absorption_500hz` update
+stays UNCONDITIONAL (single-band rooms keep correct 500 Hz acoustics per §A's
+closed-enum lookup). Single-band surfaces stay single-band after a material edit;
+per-band surfaces still refresh their bands. The web Material Override path
+(`on_apply_overrides` → `evolve_room_materials_bulk`) on a single-band web room
+now keeps it single-band (more honest; `build_acoustic_report` handles both
+branches). The full-list-index semantics of `evolve_room_material` /
+`evolve_room_materials_bulk` are byte-identical (no signature change). This is a
+refinement of the existing accepted policy, not a new policy — no new ADR.
+Test-coupling: `tests/test_edit_room.py::test_evolve_surface_material_only` was
+split into single-band-stays-None + per-band-still-promotes cases (see D70 + the
+test docstrings for the revert coupling).

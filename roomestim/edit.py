@@ -90,7 +90,16 @@ def evolve_surface(
 
     if material is not None:
         new_absorption_500hz = MaterialAbsorption[material]
-        new_absorption_bands = MaterialAbsorptionBands[material]
+        # OQ-44(c) / D70: gate the per-band promotion on the source already
+        # carrying bands. A single-band surface (absorption_bands is None — the
+        # octave_band=False ingest default) stays single-band after a material
+        # edit; the unconditional scalar update above keeps its 500 Hz acoustics
+        # correct. A per-band surface still gets its bands refreshed. This stops
+        # a material edit from silently shifting a single-band room onto the
+        # per-band predictor branch. (Test-coupled: reverting this gate must
+        # revert tests/test_edit_room.py::test_evolve_surface_material_only_*.)
+        if surf.absorption_bands is not None:
+            new_absorption_bands = MaterialAbsorptionBands[material]
 
     new_polygon = surf.polygon
     if polygon is not None:

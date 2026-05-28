@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from roomestim.model import wall_surfaces
+
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
@@ -246,10 +248,11 @@ def _wall_attached_traces(
     """
     if obj.wall_index is None:
         return []
-    # wall_index is indexed against the WALLS-ONLY surface list (mirroring the
-    # predictor's _objects_to_wall_alpha_overrides), NOT the full surfaces
-    # array. See ADR 0037. Out-of-range still returns [] (robustness contract).
-    walls = [s for s in room.surfaces if s.kind == "wall"]
+    # wall_index is indexed against the WALLS-ONLY surface list (the shared
+    # wall_surfaces authority, mirroring the predictor's
+    # _objects_to_wall_alpha_overrides), NOT the full surfaces array. See ADR
+    # 0037 + D68. Out-of-range still returns [] (robustness contract).
+    walls = wall_surfaces(room)
     if not (0 <= obj.wall_index < len(walls)):
         return []
     wall: "Surface" = walls[obj.wall_index]

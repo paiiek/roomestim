@@ -1867,3 +1867,84 @@ non-functional API). A future v0.x reviving ambisonics gets a real impl + ADR.
 Not a breaking change in the D33 sense (never functional, never in CLI/dispatch).
 **Cross-refs**: ADR 0003 (ambisonics deferral); D33 (breaking-change discipline —
 N/A here).
+
+
+## D68 — shared `wall_surfaces` / `surface_index_for_wall` resolver (OQ-43 close, v0.21.0, 2026-05-28)
+
+Two "surface index" frames coexisted in the model with no shared authority:
+`evolve_room_material` / `evolve_room_materials_bulk` (`edit.py`) index the FULL
+`room.surfaces` list (correct for their only shipping caller — web
+`on_apply_overrides`, which feeds full-list indices from
+`_dataframe_to_changes_json`), while `Object.wall_index` resolves on the
+WALLS-ONLY filtered list (predictor α overrides + web 3D viewer; ADR 0037).
+Adapter surface order is NOT uniform (`roomplan.py` `[floor, *ceilings, *walls]`;
+`mesh.py` `[floor, ceiling, *walls]`; `ace_challenge.py` trailing floor), so a
+future "edit wall N" feature wiring a walls-relative index into
+`evolve_room_material` would patch the WRONG surface — the exact latent condition
+that produced the v0.19.0 defect. **Decision**: add two module-level read
+accessors to `roomestim/model.py` — `wall_surfaces(room) -> list[Surface]` (the
+ONE walls-only authority) and `surface_index_for_wall(room, wall_ordinal) -> int`
+(bridges the walls-only ordinal to its full-`room.surfaces` index; raises
+`IndexError` out of range). Route the existing walls-only filters
+(`predictor.py` ×4, `roomestim_web/viewer.py`) through `wall_surfaces` (identical
+result, single authority). **Additive + defensive only**:
+`evolve_room_material` / `_bulk` signatures + full-list-index semantics are
+byte-identical; no shipping caller passes a walls-relative index there yet. New
+characterization test `tests/test_surface_index_frame.py` pins
+`wall_surfaces(room)[k] is room.surfaces[surface_index_for_wall(room, k)]` across
+two adapter orderings (RoomPlan `[floor, ceiling, wall×4]` → ordinal 2 maps to
+full index 4; inline synthetic trailing-floor order). **Drivers**: removes the
+latent wrong-surface condition; the analogue of `test_wall_index_frame.py` for the
+edit lane. **Rejected**: placing the resolver in `roomestim/geom/` (depends only
+on polygon math, no model knowledge → would invert the layering). **Cross-refs**:
+ADR 0037 §Status-update-v0.21.0; D63 (wall-index canonicalization); OQ-43 (CLOSED).
+
+
+## D69 — predictor fallback rationale surfaces the offending wall_index + wall_index upper-bound at reader / web / adapter (OQ-44(a)+(b) close, v0.21.0, 2026-05-28)
+
+(a) An out-of-range `wall_index` on a door/window makes
+`_objects_to_wall_alpha_overrides` raise, which `predict_rt60_default` /
+`predict_rt60_default_per_band` catch and silently downgrade the WHOLE room
+ISM→Eyring — with the offending index (carried in the exception text) discarded
+from the rationale. **Decision (a)**: append the caught exception to the fallback
+rationale tail (`... ISM fallback to Eyring ({type(exc).__name__}: {exc})`).
+**Rationale-string-only** change: `rt60_s` is computed by `eyring_rt60` on the
+same inputs → byte-equal for the fallback path; the valid-input ISM numeric path
+is untouched (negative control `1.9190766987173207` byte-equal). (b)
+`Object.wall_index` had no upper bound at any entry point. **Decision (b)**: bound
+`0 <= wall_index < len(wall_surfaces(room))` for door/window objects at the three
+independent entry points — `read_room_yaml` (raise `ValueError` post object-parse;
+the reader is context-free per-object so the bound lives in `read_room_yaml`),
+`roomestim_web.object_add._on_add_object` (user-facing error string, room returned
+unchanged, no crash), and `RoomPlanAdapter._room_model_from_sidecar` (raise — the
+adapter DOES emit objects via `_extract_objects`, so the guard is LIVE, not dead).
+The graceful Eyring fallback is PRESERVED — (a) only makes the downgrade
+diagnosable, never fatal. **Drivers**: a bad index is now rejected at load /
+surfaced as a clean web error instead of silently changing RT60; the predictor
+fallback is now diagnosable. New observable error path → SemVer MINOR driver.
+**Rejected**: bounding inside the `Object` dataclass (context-free, cannot
+self-bound). **Cross-refs**: ADR 0037 §Status-update-v0.21.0; ADR 0031
+§Status-update-v0.21.0; D68 (`wall_surfaces` authority); OQ-44 (CLOSED).
+
+
+## D70 — `evolve_surface` band-promotion gated on the source already having bands (OQ-44(c) close, v0.21.0, 2026-05-28)
+
+`evolve_surface` (`edit.py`) unconditionally set
+`absorption_bands = MaterialAbsorptionBands[material]` on a material change,
+promoting a single-band surface (`absorption_bands=None`, the `octave_band=False`
+ingest default) to per-band — silently shifting an edited room onto the per-band
+predictor branch. **Decision**: gate the per-band lookup on
+`surf.absorption_bands is not None`; keep the scalar `absorption_500hz` update
+UNCONDITIONAL (single-band rooms still get correct 500 Hz acoustics). Single-band
+surfaces stay single-band after a material edit; per-band surfaces still carry
+per-band. **Commit-coupling (load-bearing)**: this gate necessarily changes the
+public contract of `test_evolve_surface_material_only`, which was split into
+`test_evolve_surface_material_only_single_band_stays_none` (None stays None) +
+`test_evolve_surface_material_only_per_band_promotes` (bands still refresh). If
+this gate is reverted, BOTH tests must revert with it — documented in the test
+docstrings + `RELEASE_NOTES_v0.21.0.md` so a future bisect does not decouple them.
+**Drivers**: a material edit no longer silently changes the predictor branch of a
+single-band room; observable contract change of a public `edit.py` helper → SemVer
+MINOR driver. **Rejected**: dropping band promotion entirely (per-band edited
+rooms would lose their refreshed bands). **Cross-refs**: ADR 0031
+§Status-update-v0.21.0; OQ-44 (CLOSED).

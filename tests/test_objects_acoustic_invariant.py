@@ -30,6 +30,7 @@ from roomestim.model import MaterialLabel, Point3, RoomModel
 from roomestim.reconstruct.predictor import (
     is_rectilinear_shoebox,
     predict_rt60_default,
+    predict_rt60_default_per_band,
 )
 
 
@@ -71,6 +72,38 @@ def test_lab_room_no_objects_unchanged(
     pred = predict_rt60_default(lab_room, area_dict)
     assert pred.rt60_s == pytest.approx(_LAB_ROOM_BASELINE_RT60_S, abs=1e-9)
     assert pred.predictor_name == "image_source"
+
+
+# --------------------------------------------------------------------------- #
+# OQ-44(a): the ISM→Eyring downgrade carries the offending wall_index
+# --------------------------------------------------------------------------- #
+
+
+def test_out_of_range_wall_index_rationale_carries_index(
+    lab_room: RoomModel,
+    area_dict: dict[MaterialLabel, float],
+) -> None:
+    """A door with an out-of-range wall_index → Eyring fallback whose rationale
+    surfaces the offending index (both scalar + per-band paths). The fallback is
+    still graceful (no crash); only the rationale string changes (OQ-44(a))."""
+    bad_door = Object(
+        kind="door",
+        anchor=Point3(x=1.0, y=0.0, z=-2.0),
+        width_m=0.9,
+        height_m=2.1,
+        depth_m=0.0,
+        wall_index=999,  # out of range → _objects_to_wall_alpha_overrides raises
+        material=MaterialLabel.WALL_PAINTED,
+    )
+    room_with_bad = evolve_room_add_object(lab_room, bad_door)
+
+    pred = predict_rt60_default(room_with_bad, area_dict)
+    assert pred.predictor_name == "eyring"
+    assert "999" in pred.rationale
+
+    pred_pb = predict_rt60_default_per_band(room_with_bad, area_dict)
+    assert pred_pb.predictor_name == "eyring"
+    assert "999" in pred_pb.rationale
 
 
 # --------------------------------------------------------------------------- #

@@ -64,3 +64,27 @@ gained a `description` documenting the walls-only frame and pointing here.
 ## Follow-ups
 
 None. `wall_index` semantics are now single-sourced.
+
+## §Status-update-v0.21.0 (2026-05-28)
+
+The walls-only reference frame this ADR established is now backed by a shared
+resolver and enforced at the model boundary (OQ-43 + OQ-44(b); D68 + D69).
+
+- **Shared resolver (D68)**: `roomestim/model.py` gained `wall_surfaces(room)`
+  (the single walls-only authority) and `surface_index_for_wall(room,
+  wall_ordinal)` (bridges a walls-only ordinal to its full-`room.surfaces`
+  index). The four predictor walls-only filters and the web viewer filter
+  (`_wall_attached_traces`) now route through `wall_surfaces` — identical
+  result, single source. New characterization test
+  `tests/test_surface_index_frame.py` pins the bridge across two adapter
+  orderings (the `edit.py`-side analogue of `tests/test_wall_index_frame.py`).
+- **Bound enforcement (D69)**: an out-of-range `wall_index` is now rejected at
+  load (`read_room_yaml`), surfaced as a clean web error
+  (`object_add._on_add_object`), and rejected by `RoomPlanAdapter` (which DOES
+  emit objects), instead of silently downgrading the whole-room RT60 to Eyring at
+  predict time. The viewer's out-of-range robustness contract (return `[]`) is
+  unchanged.
+
+No frame change; `wall_index` still resolves on the walls-only list exactly as
+decided here. This is additive (a shared authority + a bound), not a re-litigation
+of the frame.

@@ -725,7 +725,24 @@ semantics.
 
 ---
 
-**OQ-43** — `edit.py` dual "surface index" frame (the wall_index bug's TWIN).
+**OQ-43** — `edit.py` dual "surface index" frame (the wall_index bug's TWIN). — CLOSED v0.21.0
+
+**CLOSED (v0.21.0, 2026-05-28)** — shared resolver landed (D68; ADR 0037
+§Status-update-v0.21.0). `roomestim/model.py` gained `wall_surfaces(room)` (the
+single walls-only authority) + `surface_index_for_wall(room, wall_ordinal)`
+(bridges a walls-only ordinal to its full-`room.surfaces` index; `IndexError` out
+of range). The four predictor walls-only filters + the web viewer filter now route
+through `wall_surfaces`. `evolve_room_material` / `_bulk` full-list-index semantics
+are byte-identical (additive only; no shipping caller passes a walls-relative index
+there yet). Characterization test `tests/test_surface_index_frame.py` pins
+`wall_surfaces(room)[k] is room.surfaces[surface_index_for_wall(room, k)]` across
+two adapter orderings (RoomPlan `[floor, ceiling, wall×4]` → ordinal 2 = full index
+4; inline synthetic trailing-floor order — TODO 1 resolved: inline synthetic
+`RoomModel` chosen as cheapest, no mesh fixture / trimesh dependency). Revert-sanity
+confirmed the test fails under the naive identity resolver (load-bearing).
+
+---
+
 Surfaced by the v0.20.0 multi-perspective audit (critic). `evolve_room_material`
 (`roomestim/edit.py:218`) and `evolve_room_materials_bulk` (`:254-261`) index into
 the **full** `room.surfaces` list, while `Object.wall_index` resolves on the
@@ -745,7 +762,31 @@ index across all adapters' orderings (the analogue of `test_wall_index_frame.py`
 **Reverse-trigger**: any feature exposing a wall-relative material edit. Allocated
 v0.20.0 (audit).
 
-**OQ-44** — silent state/predictor changes on out-of-range or edited input.
+**OQ-44** — silent state/predictor changes on out-of-range or edited input. — CLOSED v0.21.0
+
+**CLOSED (v0.21.0, 2026-05-28)** — all three behaviors fixed (D69 + D70; ADR 0037
+§Status-update-v0.21.0; ADR 0031 §Status-update-v0.21.0). (a) The predictor
+ISM→Eyring fallback rationale now carries the offending exception
+(`... ISM fallback to Eyring ({type(exc).__name__}: {exc})`, ×2 sites) —
+rationale-string-only, `rt60_s` byte-equal for the fallback path; valid-input
+negative control byte-equal `1.9190766987173207`. New test
+`tests/test_objects_acoustic_invariant.py::test_out_of_range_wall_index_rationale_carries_index`
+pins `"999"` in both scalar + per-band rationale. (b) `wall_index` upper-bound
+`0 <= wall_index < len(wall_surfaces(room))` enforced at THREE independent entry
+points — `read_room_yaml` (raise), `object_add._on_add_object` (user-facing error,
+room unchanged), `RoomPlanAdapter._room_model_from_sidecar` (raise). TODO 3
+resolved: `RoomPlanAdapter` DOES emit objects (`_extract_objects` maps
+door/window/column with `wall_index`), so the adapter guard is LIVE, not dead.
+Revert-sanity confirmed the reader-bound test fails when the guard is removed
+(load-bearing). (c) `evolve_surface` band-promotion is now gated on
+`surf.absorption_bands is not None` (scalar `absorption_500hz` stays
+unconditional); `test_evolve_surface_material_only` split into
+single-band-stays-None + per-band-still-promotes (commit-coupled to the gate per
+D70). The graceful Eyring fallback is PRESERVED — (a) only makes the downgrade
+diagnosable, never fatal.
+
+---
+
 Surfaced by the v0.20.0 audit (critic, reproduced). (a) An out-of-range
 `wall_index` on a door/window makes `_objects_to_wall_alpha_overrides` raise, which
 `predict_rt60_default` catches (`predictor.py:479-491`) and silently downgrades the
@@ -784,3 +825,19 @@ lockfile + `pip-audit` in CI, scrub absolute paths/raw exceptions from web-facin
 errors, namespace the tempdir reaper per-PID, type-guard `on_apply_overrides`.
 **Reverse-trigger**: decision to expose the Gradio demo publicly. Allocated v0.20.0
 (audit).
+
+---
+
+## v0.21.0-edit-predict-correctness — executor open items - 2026-05-28
+
+Planner-pass implementation-choice items, resolved during the v0.21.0 executor
+pass (no reverse-trigger; not OQ-numbered project questions):
+
+- TODO 3 — RESOLVED: `RoomPlanAdapter` DOES emit `Object`s on its parse path
+  (`_extract_objects` maps door/window/column categories with `wall_index`), so
+  the adapter-side wall_index bound is LIVE, not a dead guard. Added in
+  `_room_model_from_sidecar` post-assembly.
+- TODO 1 — RESOLVED: inline synthetic trailing-floor `RoomModel` chosen as the
+  cheapest second-adapter ordering for `tests/test_surface_index_frame.py` (no
+  mesh fixture / trimesh dependency), proving `surface_index_for_wall`
+  ordering-independence alongside the RoomPlan `[floor, ceiling, wall×4]` case.

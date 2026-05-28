@@ -47,22 +47,68 @@ def lab_room() -> RoomModel:
     return room
 
 
+@pytest.fixture
+def lab_room_single_band() -> RoomModel:
+    """lab_room ingested single-band (octave_band=False → absorption_bands=None)."""
+    fixture = Path("tests/fixtures/lab_room.json")
+    if not fixture.exists():
+        pytest.skip("lab_room.json fixture not found")
+    from roomestim.adapters.roomplan import RoomPlanAdapter
+    room = RoomPlanAdapter().parse(fixture, scale_anchor=None, octave_band=False)
+    assert isinstance(room, RoomModel)
+    return room
+
+
 # --------------------------------------------------------------------------- #
 # Test cases
 # --------------------------------------------------------------------------- #
 
 
-def test_evolve_surface_material_only(lab_room: RoomModel) -> None:
-    """Material change → absorption_500hz and absorption_bands auto-lookup."""
+def test_evolve_surface_material_only_per_band_promotes(lab_room: RoomModel) -> None:
+    """Per-band source (octave_band=True): material edit refreshes the bands.
+
+    Commit-coupling note (D70 / OQ-44(c)): this test and
+    ``test_evolve_surface_material_only_single_band_stays_none`` together pin the
+    gated band-promotion contract. If the ``evolve_surface`` band-promotion gate
+    in ``roomestim/edit.py`` is reverted, BOTH must revert with it (single
+    commit-coupling). Do not decouple in a bisect.
+    """
     surf = lab_room.surfaces[0]
+    assert surf.absorption_bands is not None, "octave_band=True fixture must carry bands"
     new_surf = evolve_surface(surf, material=MaterialLabel.GLASS)
 
     assert new_surf.material == MaterialLabel.GLASS
     assert new_surf.absorption_500hz == MaterialAbsorption[MaterialLabel.GLASS]
+    # per-band source → bands still promoted/refreshed to the new material
     assert new_surf.absorption_bands == MaterialAbsorptionBands[MaterialLabel.GLASS]
     # polygon is unchanged
     assert new_surf.polygon == surf.polygon
     # kind is unchanged
+    assert new_surf.kind == surf.kind
+
+
+def test_evolve_surface_material_only_single_band_stays_none(
+    lab_room_single_band: RoomModel,
+) -> None:
+    """Single-band source (octave_band=False): material edit keeps bands None.
+
+    Commit-coupling note (D70 / OQ-44(c)): see
+    ``test_evolve_surface_material_only_per_band_promotes``. The scalar
+    ``absorption_500hz`` is still updated unconditionally; only the per-band
+    promotion is gated on the source already having bands, so a single-band
+    surface is NOT silently promoted onto the per-band predictor branch.
+    """
+    surf = lab_room_single_band.surfaces[0]
+    assert surf.absorption_bands is None, "octave_band=False fixture must be single-band"
+    new_surf = evolve_surface(surf, material=MaterialLabel.GLASS)
+
+    assert new_surf.material == MaterialLabel.GLASS
+    # scalar α still updated unconditionally
+    assert new_surf.absorption_500hz == MaterialAbsorption[MaterialLabel.GLASS]
+    # single-band source → NO promotion; bands stay None
+    assert new_surf.absorption_bands is None
+    # polygon + kind unchanged
+    assert new_surf.polygon == surf.polygon
     assert new_surf.kind == surf.kind
 
 

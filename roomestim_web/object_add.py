@@ -30,7 +30,7 @@ from roomestim import (
     evolve_room_add_object,
     evolve_room_remove_object,
 )
-from roomestim.model import MaterialLabel, Point3, RoomModel
+from roomestim.model import MaterialLabel, Point3, RoomModel, wall_surfaces
 
 _LOG = logging.getLogger("roomestim_web.object_add")
 
@@ -98,6 +98,16 @@ def _on_add_object(
             if raw_wall_index is None or raw_wall_index == "":
                 return room, f"오류: {kind} 추가 시 wall_index 가 필요합니다."
             wall_index = int(raw_wall_index)
+            # OQ-44(b) / D69: bound against the walls-only frame (ADR 0037 +
+            # D68) so an out-of-range index does not silently downgrade the
+            # whole-room RT60 to Eyring at predict time. User-facing error; the
+            # room is returned unchanged (no crash).
+            n_walls = len(wall_surfaces(room))
+            if not (0 <= wall_index < n_walls):
+                return room, (
+                    f"오류: wall_index={wall_index} 가 범위를 벗어남 "
+                    f"(벽 {n_walls}개, 0–{n_walls - 1} 유효)."
+                )
         raw_material = form_data.get("material") or DEFAULT_OBJECT_MATERIAL[kind].value
         material = MaterialLabel(raw_material)
         obj = Object(
