@@ -2050,3 +2050,43 @@ path); removing `_DEFAULT_ENGINE_SCHEMA_PATH` (ADR 0033 §B keeps it). **Version
 unchanged (`roomestim` 0.22.0 / `roomestim_web` 0.18-web.0 — same uncommitted
 release). **Cross-refs**: OQ-45 (CLOSED, completion); ADR 0038 §Decision/§Drivers
 (reworded); D71 (this completes it).
+
+## D73 — ADR 0030 §Status-update split mechanism + README schema-marker reconcile (OQ-39 closure, v0.22.1, 2026-05-28)
+
+OQ-39 (v0.18.2 deferral; v0.21-cycle re-evaluation cadence) had two trigger
+conditions: (a) ADR 0030 file > ~600 lines, OR (b) documented
+navigation-pain ≥ 1件. At HEAD `66d0f4b` the file is 477 lines (8% below the
+line threshold) but condition (b) is now satisfied — the v0.22.0
+multi-perspective security audit had to scroll past 10 §Status-update blocks
+to verify ADR 0030 §A–§E predictor cascade byte-equality. **Decision** —
+split via the **split-by-section** mechanism: §A–§E core decision (+
+§Consequences + §Reverse-criterion + §References) stays in
+`docs/adr/0030-predictor-default-switch.md`; all 10 §Status-update blocks
+(in original file order: v0.15.1, v0.15.2, v0.16, v0.16.1, v0.17, v0.18,
+v0.18.1, v0.18.4, v0.18.3, v0.18.2) relocate byte-equal to a NEW companion
+file
+`docs/adr/0030-predictor-default-switch-status-updates.md`. The forward-
+pointer block in the original file routes future readers. ADR 0039 NEW
+codifies the split mechanism as a reusable pattern (line > 400 AND blocks ≥ 6
+AND documented navigation-pain → split-by-section).
+
+**Also reconciled in the same patch**: README.md:399 stale
+`__schema_version__ = "0.1-draft"` → `"0.2-draft"` (ground truth in
+`roomestim/__init__.py:4`; stale since ADR 0034 §B / v0.17.0 schema bump). This
+extends D72's web-honesty-re-review spirit (D72 fixed README sdk_version in the
+same file; the schema-marker partial-reconcile was the missed sibling).
+
+**Drivers**: ADR 0030 readability for ongoing reviews (security audit cadence
+made it load-bearing); D22 audit-trail-discipline preserved (split = file
+relocation, NOT retroactive content edit); D72 honesty-re-review pattern
+extension (full file reconcile, not partial); OQ-39 explicit v0.21-cycle
+evaluation commitment now 1 cycle overdue. **Rejected**: (a) split-by-version
+(per-version files in a subdirectory) — proliferates files for marginal
+locality benefit, breaks single-grep-for-block-history; (b) permanent
+deferral — D26 forbidden-indefinite-deferral applies, the trigger fired;
+(c) collapsing/summarising §Status-update blocks — violates D22 audit-trail-
+discipline. **Versions**: `roomestim` 0.22.0 → 0.22.1 (PATCH — doc-only +
+1-line README fix); `roomestim_web` 0.18-web.0 unchanged (web byte-equal);
+`__schema_version__` 0.2-draft unchanged. **Cross-refs**: OQ-39 (CLOSED);
+ADR 0030 §A–§E (byte-equal); ADR 0039 NEW (split mechanism meta-ADR); D22
+(operational extension); D72 (honesty-re-review precedent).
