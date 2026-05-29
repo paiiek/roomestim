@@ -43,10 +43,18 @@ Space에 그대로 push하면 별도 설정 없이 빌드됩니다.
 ```bash
 pip install -e ".[dev]"
 
+# 5개 서브커맨드: ingest / place / export / run / edit
 python -m roomestim run \
     --backend roomplan \
     --input tests/fixtures/lab_room.usdz \
     --algorithm vbap --n-speakers 8 --layout-radius 2.0 \
+    --out-dir /tmp/roomestim_out
+
+# room.yaml + layout.yaml 재방출 (idempotent); 메시 포맷 export 도 지원
+python -m roomestim export \
+    --in-room /tmp/roomestim_out/room.yaml \
+    --in-placement /tmp/roomestim_out/layout.yaml \
+    --format gltf --with-acoustics-sidecar \
     --out-dir /tmp/roomestim_out
 
 # 기본 레인 테스트 (lab / web / e2e 픽스처 제외)
@@ -55,6 +63,15 @@ pytest -m "not lab and not web and not e2e" -v
 # CI 정직성 lint (honesty-leak 감사)
 python scripts/lint_tense.py
 ```
+
+서브커맨드: `ingest` (capture → RoomModel) · `place` (배치 → layout.yaml) ·
+`export` (room.yaml + layout.yaml 재방출, `--format {yaml,usdz,gltf,glb}` +
+`--with-acoustics-sidecar` 지원) · `run` (ingest+place+export 합성) ·
+`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam}` 이며,
+`polycam` 은 `MeshAdapter` alias 로 `.obj`/`.gltf`/`.glb`/`.ply` 를 처리합니다.
+`--format usdz` 는 `[usd]` extra (usd-core) 가 필요하며, 없으면 친절한 에러로
+안내합니다. export/edit 의 엔진 검증은 `--validate-engine PATH` /
+`--no-engine-validation` 으로 토글합니다 (ADR 0033).
 
 ### 출력 편집 — 스피커 nudge + layout round-trip (v0.18+)
 
@@ -72,8 +89,17 @@ python -m roomestim edit \
 
 `roomestim edit` 는 read → nudge → 엔진 재검증 (collector) → write + unified
 diff 를 수행한다. 고도각 delta 플래그는 항상 `--del-deg` 다 (`--del` 은 Python
-예약어와 충돌). 웹 UI 에서는 "스피커 조정" 탭에서 채널을 고른 뒤 Δ 를 입력하고
-**적용** 을 누르면 3D 뷰어가 재렌더된다.
+예약어와 충돌). 엔진 검증은 `--validate-engine PATH` / `--no-engine-validation`
+토글로 제어한다 (export 와 동일, ADR 0033). 웹 UI 에서는 "스피커 조정" 탭에서
+채널을 고른 뒤 Δ 를 입력하고 **적용** 을 누르면 3D 뷰어가 재렌더된다.
+
+CLI `edit` 서브커맨드는 스피커 nudge 만 노출한다. 그 밖의 편집 —
+표면 재질 교체 (`evolve_room_material` / `evolve_room_materials_bulk`),
+오브젝트 add·remove (`evolve_room_add_object` / `evolve_room_remove_object`),
+임의 surface/room/placement 필드 갱신 (`evolve_surface` / `evolve_room` /
+`evolve_placement`) — 은 `roomestim/edit.py` 의 `evolve_*` Python API 로
+제공된다 (모두 immutable copy 반환). 재질을 바꾸면 음향 recompute 가
+트리거된다 (ADR 0031).
 
 round-trip 충실도는 Level 1 (구조 동치): position / channel / regularity /
 WFS 메타 / aim 방향 ({VBAP, WFS}) 이 보존된다. `notes` 와 per-speaker `id`,
@@ -82,10 +108,15 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 ---
 
-## 현재 상태 (2026-05-16)
+## 현재 상태 (2026-05-29)
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.22.1** | 2026-05-29 | `66d0f4b`* | doc-only PATCH — ADR 0030 §Status-update 블록을 companion 파일([`0030-...-status-updates.md`](docs/adr/0030-predictor-default-switch-status-updates.md))로 분리 (OQ-39 CLOSED; D73 / [ADR 0039](docs/adr/0039-adr-status-update-split-mechanism.md) NEW); README `__schema_version__` 마커 `0.1-draft`→`0.2-draft` 정직성 정정. (\*릴리즈 노트는 v0.22.0 커밋 위에 작성됨) |
+| v0.22.0 | 2026-05-29 | `66d0f4b` | web 공개배포 하드닝 — security audit closure (D71/D72 NEW; OQ-45 CLOSED; OQ-46 NEW; [ADR 0038](docs/adr/0038-input-resource-bounds.md) NEW) |
+| v0.21.0 | 2026-05-28 | `dfca44d` | edit/predict correctness — `wall_index` frame 단일화 + 음향 입력 검증 (D68/D69/D70 NEW; OQ-43/44 CLOSED; [ADR 0037](docs/adr/0037-wall-index-reference-frame.md)) |
+| v0.20.0 | 2026-05-27 | `8cb693b` | robustness 하드닝 + 전체-엔진 다관점 감사 (D65/D66/D67 NEW; OQ-42/21 CLOSED) |
+| v0.15.0–v0.19.0 | 2026-05-17~26 | — | predictor-default 전환(Sabine→ISM, [ADR 0030](docs/adr/0030-predictor-default-switch.md)); 재질 override([ADR 0031](docs/adr/0031-material-override-policy.md)); 2D blueprint export([ADR 0032](docs/adr/0032-blueprint-2d-export.md)); 엔진검증 토글([ADR 0033](docs/adr/0033-engine-validation-toggle.md)); object schema([ADR 0034](docs/adr/0034-object-schema.md)); 메시 export([ADR 0035](docs/adr/0035-mesh-export-policy.md)); layout round-trip nudge([ADR 0036](docs/adr/0036-layout-round-trip-nudge.md)) |
 | **v0.14.0** | 2026-05-16 | `d23c118` | D27 HARD WALL CLOSURE — Vorländer α₅₀₀ verbatim citation honesty-leak fallback (path γ, [ADR 0028](docs/adr/0028-hardwall-closure-and-ism-adoption.md)); ISM 라이브러리 NEW (shoebox 전용, `roomestim/reconstruct/image_source.py` 603 LoC); conference ISM/Sabine = 5.05 → 시그너처 reframe; ACE Office_1 ratio = 2.01 → v0.15+ predictor-default 전환 강제 |
 | v0.12-web.2 | 2026-05-16 | `48c1b63` | (web 트랙) `polycam.py` mypy --strict 회귀 + tests/web 9개 ruff carryover 정리 |
 | v0.12-web.1 | 2026-05-16 | `0bef198` | (web 트랙) `MeshAdapter` 일반화 — `.obj` / `.gltf` / `.glb` / `.ply` 지원 ([ADR 0027](docs/adr/0027-mesh-format-generalisation.md)); `PolycamAdapter`는 deprecated alias로 보존 |
@@ -98,11 +129,16 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 | v0.5.0–v0.6.0 | 2026-05-04~05 | — | ACE 기하 검증 + MISC_SOFT enum + TASLP-MISC 표면 예산 |
 | v0.1–v0.4.0 | 2026-05-03~04 | — | 초기 부트스트랩 — RoomModel + VBAP/DBAP/WFS + RoomPlan + Octave + Eyring |
 
-> v0.14 가 **D27 cadence의 세 번째 사이클이자 HARD WALL CLOSURE**입니다.
+> v0.14 가 **D27 cadence의 세 번째 사이클이자 HARD WALL CLOSURE**였습니다.
 > Vorländer 2020 §11 / Appendix A "melamine foam panel" verbatim citation은
 > path γ (honesty-leak fallback, 다중 출처 envelope 채택)로 닫혔습니다.
-> 자세한 결정 맥락은 [`docs/adr/0028-hardwall-closure-and-ism-adoption.md`](docs/adr/0028-hardwall-closure-and-ism-adoption.md) 와
-> [`docs/adr/0019-melamine-foam-enum-addition.md`](docs/adr/0019-melamine-foam-enum-addition.md) §Status-update-2026-05-16 를 참조하세요.
+> v0.15.0 에서 shoebox default RT60 예측기가 Sabine → ISM 으로 전환되었고
+> ([ADR 0030](docs/adr/0030-predictor-default-switch.md), D26 forbidden-indefinite-deferral
+> 트리거 충족), 이후 v0.16~v0.22 사이클에서 export/edit 기능 확장과 robustness·security
+> 하드닝이 이어졌습니다. 위 표는 최신 행만 상세히, 이전 행은 요약으로 보존합니다.
+> 결정 맥락은 [`docs/adr/0028-hardwall-closure-and-ism-adoption.md`](docs/adr/0028-hardwall-closure-and-ism-adoption.md),
+> [`docs/adr/0030-predictor-default-switch.md`](docs/adr/0030-predictor-default-switch.md),
+> 그리고 [`RELEASE_NOTES_v0.22.1.md`](RELEASE_NOTES_v0.22.1.md) 를 참조하세요.
 
 ---
 
@@ -193,16 +229,25 @@ Ambisonics는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
 
 | 예측기 | 공식 / 출처 | 사용 시점 | 상태 |
 |---|---|---|---|
-| **Sabine** | `T₆₀ = 0.161 · V / Σ(αᵢ · Sᵢ)` | 저-흡음 발산 한계 (디폴트) | v0.1+ |
+| **ISM** | Image-Source Method, Allen & Berkley 1979 + Lehmann-Johansson 2008 | **shoebox default** — 가장 물리적, 가장 비쌈 | v0.14+ 도입 ([ADR 0028](docs/adr/0028-hardwall-closure-and-ism-adoption.md)); v0.15+ default ([ADR 0030](docs/adr/0030-predictor-default-switch.md)) |
+| **Eyring** | `T₆₀ = 0.161 · V / (−S · ln(1 − ᾱ))` | **non-shoebox default fallback** | v0.4+ ([ADR 0009](docs/adr/0009-eyring-parallel-predictor.md)) |
+| **Sabine** | `T₆₀ = 0.161 · V / Σ(αᵢ · Sᵢ)` | 저-흡음 발산 한계; side-by-side 비교용 | v0.1+ |
 | **Sabine (octave)** | 동일 공식, 6-밴드 αᵢ | 옥타브 분해가 필요할 때 ([D8](.omc/plans/decisions.md)) | v0.3+ |
-| **Eyring** | `T₆₀ = 0.161 · V / (−S · ln(1 − ᾱ))` | 중·고-흡음 영역 | v0.4+ ([ADR 0009](docs/adr/0009-eyring-parallel-predictor.md)) |
-| **ISM** | Image-Source Method, Allen & Berkley 1979 + Lehmann-Johansson 2008 | shoebox 전용, 가장 물리적, 가장 비쌈 | v0.14+ ([ADR 0028](docs/adr/0028-hardwall-closure-and-ism-adoption.md)) |
 
-v0.14 시점 default predictor는 Sabine입니다. polygon ISM은 v0.15+로 예정되어 있습니다.
-conference room ISM / Sabine 비율이 5.05로 발산하는 현상은 ADR 0028 §Decision 에서
-"glass-heavy room에 대한 Sabine-shoebox 근사"로 시그너처가 reframe되었습니다.
-ACE Office_1 ratio = 2.01 결과는 D26 forbidden-indefinite-deferral 절을 발화시켜
-v0.15+ 에서 default-predictor 전환을 강제합니다.
+v0.15.0 부터 `predict_rt60_default` 는 **shoebox 방이면 per-band ISM (max_order=50)**
+을, non-shoebox 방이면 Eyring 을 default 로 사용합니다 (ADR 0030 §A cascade).
+Sabine 은 더 이상 default 가 아니며 비교용 bar/JSON 필드로만 남습니다. 전환 근거는
+conference room ISM/Sabine = 5.05, ACE Office_1 = 2.01 의 systematic Sabine 과소추정이
+D26 forbidden-indefinite-deferral 절을 발화시킨 데 있습니다 (ADR 0030 §Context).
+
+실측 예 (`tests/fixtures/lab_room.obj`, V≈40 m³): default(ISM) RT60@500 Hz = 1.594 s,
+Sabine = 1.238 s, Eyring = 1.193 s. 이 단일-밴드 경로(`predict_rt60_default`)의 rationale
+문자열은 `"shoebox L=4.00 W=4.00 H=2.50: ISM (max_order=50)"` 형태이며, per-octave 변형
+(`predict_rt60_default_per_band`)은 `"... per-band ISM (max_order=50)"` 로 기록됩니다.
+
+**polygon ISM 은 여전히 미래 과제** (OQ-23) 로, non-shoebox 방은 ISM 대신 Eyring 으로
+silently route 됩니다 (ADR 0030 §Consequences). polygon ISM 이 landing 하면
+cascade 의 Eyring fallback 항목을 polygon ISM 으로 승격하는 것이 reverse-criterion 입니다.
 
 ### `MaterialLabel` enum — 10개 항목
 
@@ -238,7 +283,7 @@ v0.15+ 에서 default-predictor 전환을 강제합니다.
 |---|---|
 | 벽 위치 | ±10 cm |
 | 스피커 각도 | ±2–5° |
-| Sabine RT60 | ±20% |
+| RT60 (default 예측기) | ±20% |
 
 캡처 노이즈가 dominant 한 오차 원인이며, sub-cm 정밀도는 명시적인 reverse goal입니다.
 이 정밀도 목표를 위반하면 lab A11 / ACE A11 게이트가 실패합니다.
@@ -285,43 +330,101 @@ Phone scan
 
 설계 결정은 두 계층으로 추적됩니다.
 
-- **ADR (Architecture Decision Record)** — [`docs/adr/0001` ~ `0028`](docs/adr/) 까지 28개의 ADR이 있습니다.
-  최근 핵심:
-  - [ADR 0024](docs/adr/0024-web-demo-separate-package.md) — 웹 데모를 sibling package로 분리
-  - [ADR 0025](docs/adr/0025-binaural-demo-stack.md) — 바이노럴 데모 스택 (ISM + HUTUBS HRTF)
-  - [ADR 0026](docs/adr/0026-hrtf-dataset-selection.md) — HRTF 데이터셋 선택 (HUTUBS CC BY 4.0)
-  - [ADR 0027](docs/adr/0027-mesh-format-generalisation.md) — 메시 포맷 일반화 (.obj/.gltf/.glb/.ply)
+- **ADR (Architecture Decision Record)** — [`docs/adr/`](docs/adr/) 에 37개 파일이 있습니다
+  (0001~0039 번호대 + ADR 0030 의 §Status-update companion 파일 1개; 0034·0035 는 한 차례
+  재번호된 적이 있어 번호 최댓값은 0039 입니다). 최근 핵심:
   - [ADR 0028](docs/adr/0028-hardwall-closure-and-ism-adoption.md) — D27 HARD WALL CLOSURE + ISM 채택
-- **결정 로그 (D1 ~ D35)** — [`.omc/plans/decisions.md`](.omc/plans/decisions.md). 단일 이슈에 대해
+  - [ADR 0030](docs/adr/0030-predictor-default-switch.md) — shoebox default RT60 예측기 Sabine → ISM 전환
+  - [ADR 0031](docs/adr/0031-material-override-policy.md) — 재질 override + 음향 recompute 트리거
+  - [ADR 0032](docs/adr/0032-blueprint-2d-export.md) — 2D blueprint export
+  - [ADR 0033](docs/adr/0033-engine-validation-toggle.md) — 엔진 검증 토글 (`--validate-engine`/`--no-engine-validation`)
+  - [ADR 0034](docs/adr/0034-object-schema.md) — Object schema (Column/Door/Window)
+  - [ADR 0035](docs/adr/0035-mesh-export-policy.md) — 메시 export (USDZ via usd-core; glTF via trimesh)
+  - [ADR 0036](docs/adr/0036-layout-round-trip-nudge.md) — layout round-trip + 스피커 nudge
+  - [ADR 0037](docs/adr/0037-wall-index-reference-frame.md) — `Object.wall_index` walls-only 참조 프레임
+  - [ADR 0038](docs/adr/0038-input-resource-bounds.md) — adapter 단계 untrusted-input 리소스 바운드
+  - [ADR 0039](docs/adr/0039-adr-status-update-split-mechanism.md) — ADR §Status-update 분리 메커니즘
+- **결정 로그 (D1 ~ D73)** — [`.omc/plans/decisions.md`](.omc/plans/decisions.md). 단일 이슈에 대해
   Yes/No로 종결된 의사 결정과 reverse-criterion을 기록합니다. 최근 추가:
-  - **D26** — Predictor-adoption deferral policy (characterise first, decide second)
-  - **D27** — Verbatim-pending closure cadence
-  - **D28** — Audit-trail process meta-rules (P1 hybrid pattern + P2 re-deferral cadence)
-  - **D29 / D30** — 웹 트랙 parallel 출시 (filename routing + versioning)
-  - **D31** — HRTF licensing & bundling policy
-  - **D32** — Tempdir lifecycle (bounded deque + atexit reaper)
-  - **D33** — MeshAdapter 단일 canonical class; PolycamAdapter는 deprecated subclass
-  - **D34** — v0.14 ADR + OQ 재번호 audit-trail (0022/0023 → 0028/0029)
-  - **D35** — v0.14.0 hard-wall closure under path γ
-- **Open Questions** — [`.omc/plans/open-questions.md`](.omc/plans/open-questions.md)
+  - **D38** — predictor-default cascade policy (ADR 0030)
+  - **D62** — test-only deprecated alias 마이그레이션
+  - **D68/D69/D70** — `wall_index` frame 단일화 + 음향 입력 검증 (v0.21.0)
+  - **D71/D72** — web 공개배포 security/honesty 하드닝 (v0.22.0)
+  - **D73** — ADR §Status-update split-by-section 메커니즘 (ADR 0039, v0.22.1)
+- **Open Questions (OQ-1 ~ OQ-46)** — [`.omc/plans/open-questions.md`](.omc/plans/open-questions.md).
+  최근: OQ-39 CLOSED (ADR 0030 split), OQ-45 CLOSED, OQ-46 NEW (v0.22.0 재검토 발견).
 
 ---
 
 ## 테스트 + 검증
 
+canonical 테스트 환경은 miniforge 입니다: `/home/seung/miniforge3/bin/python -m pytest`
+(PATH 의 `.local/bin/pytest` 는 web extras 가 없어 misreport 합니다).
+
 | 레인 | 명령 | 비고 |
 |---|---|---|
-| Default | `pytest -m "not lab and not web"` | 152개 default-lane 테스트 — Linux CI에서 항상 실행 |
-| Web | `pytest -m web` | 37개 + 1 skip — `[web]` extras 필요 |
+| Default | `pytest -m "not lab and not web and not e2e"` | 287 passed / 5 skipped (v0.22.1) — Linux CI에서 항상 실행 |
+| Web | `pytest -m web` | 67 passed / 4 skipped (v0.22.1) — `[web]` extras 필요 |
 | Lab | `pytest -m lab` | A10/A11 — `tests/fixtures/lab_real.usdz` + ground-truth 필요 (human-gated) |
 | E2E | `pytest -m e2e` | ACE Challenge / SoundCam 외부 코퍼스 (env-var gated) |
 
 추가 도구:
 
 - `python scripts/lint_tense.py` — present-tense 정직성 leak 감사 ([ADR 0020](docs/adr/0020-ci-lint-tense-policy.md))
-- `mypy --strict roomestim/` — 32개 파일 baseline clean (v0.13+ 강제)
+- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.22.1 시점 38개 파일)
 - `ruff check` — clean
 
+### 전체 게이트 한 번에 (권장 GREEN 확인)
+
+```bash
+PY=/home/seung/miniforge3/bin/python   # canonical env
+$PY -m pytest -m "not lab and not web and not e2e" -q   # default: 287 passed / 5 skipped
+$PY -m pytest -m web -q                                  # web:     67 passed / 4 skipped
+ruff check                                               # clean
+$PY scripts/lint_tense.py                                # honesty-leak: clean (exit 0)
+```
+
+### 기능 스모크 테스트 가이드 (엔드투엔드 수동 검증)
+
+각 기능을 픽스처로 직접 끝까지 돌려보는 절차다. canonical env(`PY`)를 쓰고, 산출물은 `/tmp` 에 떨군다.
+
+```bash
+PY=/home/seung/miniforge3/bin/python
+OUT=/tmp/roomestim_smoke; rm -rf $OUT; mkdir -p $OUT
+
+# 1) run 복합 (ingest+place+export) — VBAP 8스피커
+$PY -m roomestim run --backend polycam --input tests/fixtures/lab_room.obj \
+    --algorithm vbap --n-speakers 8 --layout-radius 2.0 --out-dir $OUT/run_vbap
+
+# 2) ingest (octave-band 6밴드 흡음) + place dbap/wfs
+$PY -m roomestim ingest --backend polycam --input tests/fixtures/lab_room.obj --octave-band --out-dir $OUT/ingest
+$PY -m roomestim place --in-room $OUT/ingest/room.yaml --algorithm dbap --n-speakers 12 --layout-radius 2.5 --out-dir $OUT/dbap
+$PY -m roomestim place --in-room $OUT/ingest/room.yaml --algorithm wfs --n-speakers 16 --layout-radius 2.0 --wfs-f-max-hz 600 --out-dir $OUT/wfs
+#   ↑ WFS 는 spatial-aliasing bound 를 강제한다. f-max 가 너무 높으면(기본 8000) 안전 f_max/n_speakers 안내와 함께 종료(정상 동작).
+
+# 3) export 포맷 — gltf / glb (+ acoustics sidecar). usdz 는 [usd] extra 필요(없으면 친절한 에러).
+$PY -m roomestim export --in-room $OUT/ingest/room.yaml --in-placement $OUT/run_vbap/layout.yaml --format gltf --with-acoustics-sidecar --out-dir $OUT/gltf
+
+# 4) edit — 채널0 스피커 방위 +5° / 고도 +3° nudge (unified diff 출력)
+$PY -m roomestim edit --in-placement $OUT/run_vbap/layout.yaml --speaker 0 --daz 5 --del-deg 3 --out-dir $OUT/edit
+
+# 5) 음향 예측기 3종 + 웹 산출물(리포트/바이노럴/PDF/3D뷰어) — Python API
+$PY - <<'EOF'
+from roomestim.io.room_yaml_reader import read_room_yaml
+from roomestim.reconstruct.predictor import predict_rt60_default, room_volume, is_rectilinear_shoebox
+room = read_room_yaml("/tmp/roomestim_smoke/ingest/room.yaml")
+print("V=", round(room_volume(room),2), "shoebox=", is_rectilinear_shoebox(room))
+from roomestim_web.report import build_acoustic_report
+r = build_acoustic_report(room)
+print("default(ISM) RT60@500=", round(r.default_rt60_500hz_s,3), "predictor=", r.default_predictor_name)
+EOF
+```
+
+기대 결과: 1–4 는 `wrote <path>` 출력(WFS 는 기본 f-max 에서 의도적 bound-violation 에러), 5 는
+`V=40.0 shoebox=True / default(ISM) RT60@500=1.594 predictor=image_source`. 웹 데모 자체는
+`$PY -m roomestim_web.app` → http://127.0.0.1:7860 에서 업로드→3D뷰어→리포트→바이노럴→ZIP 흐름으로 확인한다.
+
+전체 기능·구현·시장 비교·향후 TODO 종합은 [`docs/project_status_and_roadmap_2026-05-29.md`](docs/project_status_and_roadmap_2026-05-29.md) 참조.
 자세한 weekly progress 내러티브는 [`docs/weekly_progress_report_2026-05-11.md`](docs/weekly_progress_report_2026-05-11.md) 참조.
 
 ---
@@ -342,7 +445,8 @@ python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,web]"
 | `[dev]` | pytest + ruff + mypy + hypothesis |
 | `[web]` | gradio + plotly + pyroomacoustics + pysofaconventions + reportlab + soundfile |
 | `[viz]` | matplotlib (정적 시각화) |
-| `[usd]` | pyusd (USDZ parser) |
+| `[usd]` | usd-core (USDZ parse + export) |
+| `[mesh-export]` | usd-core (메시 export 경로; ADR 0035) |
 | `[colmap]` | pycolmap (experimental capture backend) |
 
 ---
@@ -356,13 +460,13 @@ app.py                      # HF Spaces 진입점 (roomestim_web.app:build_demo 
 proto/                      # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked)
 tests/                      # pytest, fixtures, hypothesis property tests
 tests/fixtures/             # lab_room.usdz, ace_*/, soundcam_synthesized/, web/
-tests/web/                  # 웹 데모 테스트 (37 + 1 skip)
+tests/web/                  # 웹 데모 테스트 (67 passed / 4 skip @ v0.22.1)
 scripts/lint_tense.py       # honesty-leak lint (ADR 0020)
-docs/                       # architecture, room_yaml_spec, ADR 0001-0028, 주간 보고서
-docs/adr/                   # 28개 architecture decision records
+docs/                       # architecture, room_yaml_spec, ADR 0001-0039, 주간 보고서
+docs/adr/                   # 37개 ADR 파일 (0001~0039 번호대 + 0030 status-update companion)
 docs/perf_verification_*.md # 버전별 perf 스냅샷
 docs/protocol_a10b_*.md     # in-situ 캡처 프로토콜 DOC
-.omc/plans/                 # 설계 계획 (v0-design ~ v0.14-design) + decisions.md (D1-D35) + open-questions.md
+.omc/plans/                 # 설계 계획 + decisions.md (D1-D73) + open-questions.md (OQ-1~OQ-46)
 RELEASE_NOTES_v*.md         # 버전별 릴리즈 노트
 ```
 
@@ -372,7 +476,7 @@ RELEASE_NOTES_v*.md         # 버전별 릴리즈 노트
 
 trivial 하지 않은 변경은 모두 `planner → executor → code-reviewer → verifier` 네 단계를 거칩니다.
 자세한 운영 메모는 `/home/seung/.claude/projects/-home-seung-mmhoa-roomestim/memory/MEMORY.md` 에 있습니다.
-v0.11.0이 네 단계를 명시적으로 거친 첫 릴리즈이며, 이후 v0.12 ~ v0.14 모두 동일한 파이프라인으로
+v0.11.0이 네 단계를 명시적으로 거친 첫 릴리즈이며, 이후 v0.12 ~ v0.22 모두 동일한 파이프라인으로
 release되었습니다.
 
 ---
@@ -389,14 +493,14 @@ release되었습니다.
 
 ## Tag 정책 (D11)
 
-모든 git tag (`v0.1.1` ~ `v0.14.0` + `v0.12-web.0` ~ `v0.12-web.2`)는 **로컬 전용**입니다.
+모든 git tag (`v0.1.1` ~ `v0.22.1` + `v0.12-web.*` 웹 트랙 태그)는 **로컬 전용**입니다.
 커밋만 `origin/main` 으로 push되고, tag push는 별도 ratification gate (현재 미정의)를 통해야 합니다.
 
 ---
 
 ## Schema marker
 
-- `__schema_version__ = "0.1-draft"` (Stage-1 permissive)
+- `__schema_version__ = "0.2-draft"` (Stage-1 permissive; bumped v0.17.0 per ADR 0034 §B)
 - Stage-2 strict flip은 A10b in-situ 캡처에 묶여 있으며 ([ADR 0016](docs/adr/0016-stage2-schema-flip-via-substitute.md) §Reverse-criterion + [ADR 0018](docs/adr/0018-soundcam-substitute-disagreement-record.md)),
   v0.12+ 스코프에서 user-volunteer 캡처 후에 재개됩니다.
 

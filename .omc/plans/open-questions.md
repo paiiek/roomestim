@@ -599,6 +599,31 @@ functional gain 에 audit-trail discipline (D22 — append-only, no retroactive 
 
 **Cross-refs**: ADR 0030, D22 audit-trail-discipline.
 
+### OQ-39 §Status-update-v0.22.1 (2026-05-28 — CLOSED, D73)
+
+D26 forced-decision satisfied. Trigger condition (b) fired: the v0.22.0
+multi-perspective security audit produced documented navigation-pain reading
+ADR 0030 §A–§E under 10 §Status-update blocks (477 lines). v0.21-cycle
+re-evaluation cadence was 1 cycle overdue (v0.22.0 absorbed security focus,
+not eligible).
+
+**Resolution**: split-by-section (Option 1 from this OQ's Resolution
+candidates). §A–§E + §Consequences + §Reverse-criterion + §References stay in
+`docs/adr/0030-predictor-default-switch.md` (~145 lines post-split); 10
+§Status-update blocks (in original file order: v0.15.1, v0.15.2, v0.16,
+v0.16.1, v0.17, v0.18, v0.18.1, v0.18.4, v0.18.3, v0.18.2) relocate
+byte-equal to NEW companion
+`docs/adr/0030-predictor-default-switch-status-updates.md`. ADR 0039 NEW
+codifies the split mechanism as reusable. D22 preserved (relocation, not
+retroactive edit).
+
+**[x] CLOSED**. Decision: D73. ADR refs: ADR 0030 (split landing), ADR 0039
+(meta-ADR).
+
+**Reverse-criterion (재개 조건)**: companion file > 800 lines, OR
+documented navigation-pain in the companion file → escalate to per-version
+subdirectory split per ADR 0039 §Reverse-criterion item 1.
+
 ---
 
 ## v0.18.4 OQ status-updates (2026-05-25)
@@ -883,3 +908,59 @@ pass (no reverse-trigger; not OQ-numbered project questions):
   cheapest second-adapter ordering for `tests/test_surface_index_frame.py` (no
   mesh fixture / trimesh dependency), proving `surface_index_for_wall`
   ordering-independence alongside the RoomPlan `[floor, ceiling, wall×4]` case.
+
+---
+
+## Feature-expansion 설계 사이클 (2026-05-29 — 설계 문서, 미구현)
+
+> 멀티-페이즈 자율 작업 (`.omc/plans/feature-expansion-roadmap.md`). 산출물은 **설계 ADR draft**
+> (Status=PROPOSED); 코드/테스트는 아직 없다. 각 ADR 은 architect 설계 + critic 리뷰를 거쳤다.
+
+- **(OQ-23 재기재 / B4 Polygon ISM)** — polygon/non-rectilinear ISM RT60 예측. OQ-23 은 v0.14.0
+  NEW 였으나 curated open-questions 에서 누락되어 있었다 → 여기 재기재. **설계 = [ADR 0040](../../docs/adr/0040-polygon-ism-design.md)**
+  (REVISED, critic 1 CRITICAL + 3 MAJOR 반영). 권장: pyroomacoustics 재사용(선택지 b) + core
+  lazy-import fallback(§C2) + 3-티어 predictor cascade(shoebox ISM / polygon ISM / Eyring).
+  ADR 0030 §Reverse-criterion item 3 충족 경로. 구현 deferred (PR1-4 제안; PR1 degenerate-shoebox
+  스파이크 게이트 통과 전 cascade 연결 금지). **Status: 설계 완료, 구현 OPEN.**
+  - 파생 신규 OQ 제안: coupled-space marker 필드(RoomModel), non-shoebox 측정 GT 코퍼스,
+    pra `measure_rt60` sparse-RIR fit 신뢰성, lazy-import 재현성 비대칭 — 모두 ADR 0040 §OQ 참조.
+
+- **(B5 Ambisonics 배치 / OQ-38 연결)** — AMBISONICS enum stub 정식화.
+  **설계 = [ADR 0041](../../docs/adr/0041-ambisonics-placement-design.md)** (REVISED,
+  critic ACCEPT-WITH-RESERVATIONS: 0 CRITICAL + 3 MAJOR 반영; citation 정확도 100%).
+  권장: (a)안 = Ambisonics를 "디코더용 규칙적 스피커 리그 배치" 기하 알고리즘으로 정의,
+  실제 SH 디코딩은 engine 책임(`ipc_schema.md:21-22` `/sys/ambi_order` 확인). 리그 =
+  t-design 우선·platonic 폴백(VBAP dome 재사용 부적합). **OQ-38 종결 제안**: `x_target_algorithm`
+  extension key writer/reader (cadence 초과 + D26 forced-decision 근거). 구현 deferred —
+  **PR2 착수 전 gate: engine이 IRREGULAR ambisonics 리그를 디코더로 라우팅하는 메커니즘
+  합의 필요(§D-3a)**; require.md는 아직 ambisonics를 mandatory로 안 함(ADR 0003 precondition 미충족).
+  - 파생 신규 OQ 제안: ambisonics order↔n_speakers 추론/라운딩 규칙, t-design 좌표 출처/라이선스,
+    engine 식별·라우팅 합의 — 모두 ADR 0041 §OQ 참조.
+
+- **(B6 Live-mesh corner 추출 / OQ-13e 부분 resolution)** — synthesized-shoebox tautology를
+  실제 메시 코너 추출로 대체. **설계 = [ADR 0042](../../docs/adr/0042-live-mesh-corner-extraction.md)**
+  (REVISED, critic ACCEPT-WITH-RESERVATIONS: 2 CRITICAL + 3 MAJOR 반영). 권장: floor polygon
+  추출 = **alpha-shape(concave hull)**, convex(현 `mesh.py:135`)는 `alpha=None` literal
+  short-circuit 으로 default 보존(회귀 0), alpha-shape 는 opt-in. 벽 = extrusion 재사용(RANSAC
+  미채택). 신규 의존 0(scipy/shapely/trimesh 기존). **핵심 정정**: convex-hull deferral 출처는
+  D6 아닌 **ADR 0027 + OQ-13e(ii)** (D6=capture-device; repo 전반 mislabel — D74 로 cleanup 기록 제안).
+  비볼록 simple polygon 은 downstream(geom/listener/roomplan)에서 이미 지원, self-intersecting 만
+  미지원. 검증 = 합성 L-shape 메시(SoundCam access 불요; 단 비-tautological 위해 interior/벽/천장
+  vertex 포함 + jitter 게이트 필요 — PR2 deliverable). OQ-13e (i)SoundCam access는 **확인 불가** →
+  A10a 비-tautological 승격(PR4)만 그 조건에 잔류.
+  - 파생 신규 OQ 제안: point-cloud 직접 입력 허용(0-faces 가드 완화), D74(alpha-shape 채택 + D6 mislabel cleanup).
+
+- **(B7 흡음 가구 ObjectKind 확장 / OQ-33 연결)** — ObjectKind(column/door/window)→흡음 가구 확장.
+  **설계 = [ADR 0043](../../docs/adr/0043-absorptive-furniture-objectkind.md)** (REVISED, critic
+  REVISE: 1 CRITICAL + 2 MAJOR 반영). 권장: B7-A(enum 확장)/B7-B(자동인식) 분리. 가구 흡음 모델 =
+  ACE equivalent-absorption-area 패턴(ADR 0013), 단 **ISM shoebox 경로는 sabin 직접 누적(B-2)
+  필수** — 합성 surface(B-1)는 area-weighted-α 를 희석할 뿐 sabin 미주입(critic CRITICAL,
+  predictor.py:155/180 확인). 자동인식: RoomPlan sidecar category 확장만 저비용, mesh BoundingBox
+  클러스터링은 **OQ-33 deferred 유지**(D26 trigger 미충족). **D26-YAGNI 긴장(사용자 보고 0건)**:
+  검증(가구 흡음 RT60 영향 측정)을 enum 확장보다 **선행**해 ±20% 잠식 입증 시에만 enum 개방.
+  - 파생: sofa/curtain A_500 provenance(honesty-marked source 필요), ADR 0034 §D "≥3 kind" 정책
+    정합(planner 판단), 비-shoebox door/window α-override 제외 동작(report.py:42) 별도 추적.
+
+> **Feature-expansion 설계 사이클 종합 (2026-05-29)**: B4~B7 4개 ADR(0040~0043) 설계 완료, 모두
+> critic 리뷰 반영 REVISED, tense-lint clean. 전부 Status=PROPOSED(구현 미착수). 구현 우선순위
+> 권고는 `.omc/plans/feature-expansion-roadmap.md` Phase 6 참조.
