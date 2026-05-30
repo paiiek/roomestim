@@ -964,3 +964,37 @@ pass (no reverse-trigger; not OQ-numbered project questions):
 > **Feature-expansion 설계 사이클 종합 (2026-05-29)**: B4~B7 4개 ADR(0040~0043) 설계 완료, 모두
 > critic 리뷰 반영 REVISED, tense-lint clean. 전부 Status=PROPOSED(구현 미착수). 구현 우선순위
 > 권고는 `.omc/plans/feature-expansion-roadmap.md` Phase 6 참조.
+
+---
+
+## RIR Auralization 설계 사이클 (2026-05-30 — 설계 문서, 미구현)
+
+> Hybrid 물리-기반 RIR estimation 을 auralization(청취) 용도로 추가하는 연구+설계 사이클.
+> 추적 = `.omc/plans/rir-estimation-roadmap.md`; 리서치 전문 = `.omc/research/rir-estimation-2026-05-30.md`.
+> **설계 = [ADR 0044](../../docs/adr/0044-rir-auralization-design.md)** (Status=PROPOSED, REVISED;
+> critic ACCEPT-WITH-RESERVATIONS, 0 CRITICAL+0 MAJOR 반영). Phase A = RAZR 식 ISM early +
+> filtered-noise late + BRIR, web-tier, 신규 패키지 0, 측정/학습데이터 0.
+
+**OQ-47** — diffuse late-tail 바이노럴화(ADR 0044 §D: 2-HRIR decorrelation + IC target curve
+`sinc(2πf·d/c)`)의 **지각충실** 검증. IC 목표곡선은 설계변수로 지정 가능하나 그 결과의 perceptual
+fidelity 는 미검증 — Phase A 최대 불확실성. **Reverse-trigger**: filtered-noise tail 이 perceptual/JND
+검증 통과 시 neural 보정 불요(ADR 0044 Reverse-criterion #3). Allocated 2026-05-30.
+
+**OQ-48** — `compute_rir()` 선결 spike: (i) sparse-ISM-RIR `measure_rt60` 가
+`predict_rt60_default_per_band` 와 RT60 일관(T20/T30 ±5%)한가(ADR 0040:67 연계),
+(ii) broadband 반환에서 per-band RIR 추출(band-separability) 가능한가. 둘 다 GREEN 아니면
+image-source 직접 조립(`pra_source.damping` per-band, `binaural.py:309`) 폴백. ADR 0044 §E / blocking gate #2.
+
+**OQ-49** — Phase A auralization 평가 metric 선정: 어느 objective(EDT/C50/C80/DRR/EDC fit/log-spectral)
+가 지각품질과 best 상관 + 잔향 JND 임계. 리서치 Q2 미해결(method-centric corpus) → **추가 문헌조사
+필요**. 미선정 시 Phase A acceptance 가 회귀 게이트 외에는 falsifiable 하지 않음(critic stakeholder 지적).
+
+**OQ-50** — 대상 방당 ~12 측정 RIR 확보 현실성(DiffRIR few-shot 예산). Phase C(differentiable fitting)
+gate. **Reverse-trigger**: 확보 불가 시 Phase C 미실시, blind Phase A 만 유효(ADR 0044 Reverse-criterion #1).
+
+**OQ-51** — mixing-time analytic `√V` 근사가 비-shoebox/coupled-space(예: Building_Lobby)에서 충분한가,
+echo-density profile 필요한가. ADR 0044 §A.
+
+> **RIR 사이클 종합 (2026-05-30)**: 리서치(20 confirmed/5 refuted; EDC-neural perceptual 등가 주장
+> 반박됨) → 실현가능성 스파이크(GO-WITH-CAVEATS) → ADR 0044 draft(REVISED). Status=PROPOSED, 구현
+> 미착수. 구현 착수 전 blocking gate(§D 합의 + §E spike + §A splice-continuity + 회귀 0) 충족 필요.
