@@ -358,3 +358,39 @@ predictor cascade (ADR 0030 §A–§E) byte-equal — doc-only 사이클; acoust
 
 regression lock: `tests/test_oq33_residual_lock.py` NEW (MeshAdapter + ACEChallenge
 adapter `objects==[]` invariant + `evolve_room_add_object` YAML round-trip).
+
+## §Status-update-v0.22.2 (2026-05-31)
+
+D22 audit-trail-discipline 패턴 (위 모든 블록 precedent). 본 블록은 v0.18.2
+블록 아래에 append; retroactive 수정 없음. **이 블록은 split(v0.22.1) 이후 첫
+추가이며, 동시에 ADR 0030 의 첫 *behavior-changing* §Status-update** 이다 (앞선
+블록들은 대부분 doc-only / 부수 closure). 변경 출처: 2026-05-30 코드베이스 9영역
+감사 발견 MAJOR-1 (D74).
+
+**Item — default predictor adaptive max_order (FIX-1 / D74)**
+
+증거: α=0.05 shoebox 5×4×2.8 에서 Eyring=1.944 인데 ISM@max_order=50=1.675 →
+런타임 불변식 `image_source_rt60 ≥ eyring_rt60 − 1e-6` (ADR 0028 §Decision
+sub-item 2) 위반. 저흡음 방에서 ISM 에너지 적분이 late tail 을 과소계수한다.
+
+변경: 저수준 `image_source_rt60(max_order=N)` 는 deterministic 으로 **불변**
+(`test_image_source.py` order-고정 검증 유지; materials.eyring_rt60 와의
+circular-dependency 회피). 고수준 `predict_rt60_default` /
+`predict_rt60_default_per_band` 만 적응적으로 동작한다:
+
+- `_ISM_MAX_ORDER_LADDER = (50, 100, 200)` 사다리를 단계 상향하며 ISM 재계산.
+- 불변식 (ISM ≥ Eyring − `_ISM_EYRING_INVARIANT_TOL`=1e-6) 충족하는 첫 order 채택.
+- per-band 는 band 마다 독립적으로 escalate + band 별 Eyring 하한과 비교.
+- cap(200) 에서도 미충족이면 Eyring 으로 fallback (single-band) / 해당 band 만
+  Eyring 값 치환 (per-band); rationale 에 "ISM non-converged at max_order=200 →
+  Eyring fallback" 정직 명시.
+- rationale 의 `max_order=` 표기는 실제 사용 order 를 반영한다.
+
+실측 회귀: α=0.05 에서 order 100 으로 escalate 해 ISM=2.299 ≥ Eyring=1.944 충족
+(`tests/test_predict_rt60_default.py::test_low_absorption_ism_meets_eyring_lower_bound_single_band`
++ `_per_band`).
+
+성능: 200³ lattice 는 저흡음 방에서만 트리거 (고흡음 방은 order 50 에서 수렴 →
+비용 불변). predictor cascade 선택 로직 (ADR 0030 §A–§E ISM>Eyring) 자체는 불변;
+ISM 분기 내부의 order 결정만 적응화. `roomestim.__version__` `0.22.1` → `0.22.2`
+(PATCH). `__schema_version__` `0.2-draft` 불변.

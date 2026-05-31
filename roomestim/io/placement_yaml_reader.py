@@ -54,37 +54,55 @@ def read_placement_yaml(path: Path | str) -> PlacementResult:
     Raises
     ------
     ValueError
-        If required keys are missing.
+        If the YAML is malformed or required keys are missing.
     """
     path = Path(path)
-    with path.open("r", encoding="utf-8") as fh:
-        data: dict[str, Any] = yaml.safe_load(fh)
+    # FIX-3 / D76: yaml.YAMLError is not a ValueError subclass and a missing
+    # required key raises KeyError; both escaped the CLI handler as a raw
+    # traceback. Wrap to honor the documented ValueError contract.
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data: dict[str, Any] = yaml.safe_load(fh)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"layout '{path}': invalid YAML — {exc}") from exc
 
-    layout_name = str(data["name"])
-    layout_version = str(data.get("version", "1.0"))
-    regularity_hint = str(data["regularity_hint"])
-
-    # Infer target_algorithm from regularity_hint (best-effort; not stored in YAML)
-    # Use x_wfs_f_alias_hz presence as the WFS discriminator.
-    wfs_f_alias_hz: float | None = None
-    if "x_wfs_f_alias_hz" in data:
-        wfs_f_alias_hz = float(data["x_wfs_f_alias_hz"])
-        target_algorithm = "WFS"
-    elif regularity_hint == "LINEAR":
-        target_algorithm = "WFS"
-    else:
-        target_algorithm = "VBAP"
-
-    speakers: list[PlacedSpeaker] = []
-    for sp in data["speakers"]:
-        position = _point3_from_speaker(sp)
-        speakers.append(
-            PlacedSpeaker(
-                channel=int(sp["channel"]),
-                position=position,
-                aim_direction=_aim_from_speaker(sp),
-            )
+    # Guard: empty file → None; top-level list → list. data["name"] would raise
+    # TypeError (not ValueError/KeyError), escaping the CLI handler as a traceback.
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"layout '{path}': expected a YAML mapping, got {type(data).__name__}"
         )
+
+    try:
+        layout_name = str(data["name"])
+        layout_version = str(data.get("version", "1.0"))
+        regularity_hint = str(data["regularity_hint"])
+
+        # Infer target_algorithm from regularity_hint (best-effort; not stored in
+        # YAML). Use x_wfs_f_alias_hz presence as the WFS discriminator.
+        wfs_f_alias_hz: float | None = None
+        if "x_wfs_f_alias_hz" in data:
+            wfs_f_alias_hz = float(data["x_wfs_f_alias_hz"])
+            target_algorithm = "WFS"
+        elif regularity_hint == "LINEAR":
+            target_algorithm = "WFS"
+        else:
+            target_algorithm = "VBAP"
+
+        speakers: list[PlacedSpeaker] = []
+        for sp in data["speakers"]:
+            position = _point3_from_speaker(sp)
+            speakers.append(
+                PlacedSpeaker(
+                    channel=int(sp["channel"]),
+                    position=position,
+                    aim_direction=_aim_from_speaker(sp),
+                )
+            )
+    except KeyError as exc:
+        raise ValueError(
+            f"layout '{path}': missing required key {exc}"
+        ) from exc
 
     return PlacementResult(
         target_algorithm=target_algorithm,

@@ -112,6 +112,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.22.2** | 2026-05-31 | (uncommitted) | 감사 발견 확정결함 PATCH — ISM 기본 predictor 저흡음 적응적 max_order(Eyring 하한 불변식, D74 / [ADR 0030](docs/adr/0030-predictor-default-switch-status-updates.md) §Status-update-v0.22.2); 비-shoebox binaural DOA 축 스왑 + extrusion 렌더러 경로 활성화(D75); CLI ValidationError/YAMLError 포착(reader 가 ValueError 로 wrap, D76); `run` engine-validation 토글(D77); 자기교차 floor 거부(D78). MINOR-2(OQ-30)는 비수정. |
 | **v0.22.1** | 2026-05-29 | `66d0f4b`* | doc-only PATCH — ADR 0030 §Status-update 블록을 companion 파일([`0030-...-status-updates.md`](docs/adr/0030-predictor-default-switch-status-updates.md))로 분리 (OQ-39 CLOSED; D73 / [ADR 0039](docs/adr/0039-adr-status-update-split-mechanism.md) NEW); README `__schema_version__` 마커 `0.1-draft`→`0.2-draft` 정직성 정정. (\*릴리즈 노트는 v0.22.0 커밋 위에 작성됨) |
 | v0.22.0 | 2026-05-29 | `66d0f4b` | web 공개배포 하드닝 — security audit closure (D71/D72 NEW; OQ-45 CLOSED; OQ-46 NEW; [ADR 0038](docs/adr/0038-input-resource-bounds.md) NEW) |
 | v0.21.0 | 2026-05-28 | `dfca44d` | edit/predict correctness — `wall_index` frame 단일화 + 음향 입력 검증 (D68/D69/D70 NEW; OQ-43/44 CLOSED; [ADR 0037](docs/adr/0037-wall-index-reference-frame.md)) |
@@ -351,6 +352,7 @@ Phone scan
   - **D68/D69/D70** — `wall_index` frame 단일화 + 음향 입력 검증 (v0.21.0)
   - **D71/D72** — web 공개배포 security/honesty 하드닝 (v0.22.0)
   - **D73** — ADR §Status-update split-by-section 메커니즘 (ADR 0039, v0.22.1)
+  - **D74~D78** — 감사 확정결함 PATCH (ISM 적응적 max_order / binaural DOA 축 / CLI 입력검증 / `run` 토글 / 자기교차 floor, v0.22.2)
 - **Open Questions (OQ-1 ~ OQ-46)** — [`.omc/plans/open-questions.md`](.omc/plans/open-questions.md).
   최근: OQ-39 CLOSED (ADR 0030 split), OQ-45 CLOSED, OQ-46 NEW (v0.22.0 재검토 발견).
 
@@ -363,15 +365,15 @@ canonical 테스트 환경은 miniforge 입니다: `/home/seung/miniforge3/bin/p
 
 | 레인 | 명령 | 비고 |
 |---|---|---|
-| Default | `pytest -m "not lab and not web and not e2e"` | 287 passed / 5 skipped (v0.22.1) — Linux CI에서 항상 실행 |
-| Web | `pytest -m web` | 67 passed / 4 skipped (v0.22.1) — `[web]` extras 필요 |
+| Default | `pytest -m "not lab and not web and not e2e"` | 300 passed / 5 skipped (v0.22.2) — Linux CI에서 항상 실행 |
+| Web | `pytest -m web` | 68 passed / 4 skipped (v0.22.2) — `[web]` extras 필요 |
 | Lab | `pytest -m lab` | A10/A11 — `tests/fixtures/lab_real.usdz` + ground-truth 필요 (human-gated) |
 | E2E | `pytest -m e2e` | ACE Challenge / SoundCam 외부 코퍼스 (env-var gated) |
 
 추가 도구:
 
 - `python scripts/lint_tense.py` — present-tense 정직성 leak 감사 ([ADR 0020](docs/adr/0020-ci-lint-tense-policy.md))
-- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.22.1 시점 38개 파일)
+- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.22.2 시점 38개 파일)
 - `ruff check` — clean
 
 ### 전체 게이트 한 번에 (권장 GREEN 확인)
@@ -460,7 +462,7 @@ app.py                      # HF Spaces 진입점 (roomestim_web.app:build_demo 
 proto/                      # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked)
 tests/                      # pytest, fixtures, hypothesis property tests
 tests/fixtures/             # lab_room.usdz, ace_*/, soundcam_synthesized/, web/
-tests/web/                  # 웹 데모 테스트 (67 passed / 4 skip @ v0.22.1)
+tests/web/                  # 웹 데모 테스트 (68 passed / 4 skip @ v0.22.2)
 scripts/lint_tense.py       # honesty-leak lint (ADR 0020)
 docs/                       # architecture, room_yaml_spec, ADR 0001-0039, 주간 보고서
 docs/adr/                   # 37개 ADR 파일 (0001~0039 번호대 + 0030 status-update companion)
@@ -493,7 +495,7 @@ release되었습니다.
 
 ## Tag 정책 (D11)
 
-모든 git tag (`v0.1.1` ~ `v0.22.1` + `v0.12-web.*` 웹 트랙 태그)는 **로컬 전용**입니다.
+모든 git tag (`v0.1.1` ~ `v0.22.2` + `v0.12-web.*` 웹 트랙 태그)는 **로컬 전용**입니다.
 커밋만 `origin/main` 으로 push되고, tag push는 별도 ratification gate (현재 미정의)를 통해야 합니다.
 
 ---

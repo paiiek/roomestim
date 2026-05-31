@@ -55,6 +55,16 @@ from roomestim.reconstruct.materials import (
 
 PredictorName = Literal["image_source", "eyring"]
 
+# FIX-1 / D74 / ADR 0030 §Status-update-v0.22.2: max_order escalation ladder for
+# the high-level default predictors. The ISM energy integration under-counts the
+# late tail at the default order in low-absorption rooms, returning an RT60 below
+# the Eyring diffuse-field lower bound (invariant violation, ADR 0028 §Decision
+# sub-item 2). The high-level predictors escalate the order until the invariant
+# holds; the cap-exceeded case falls back to Eyring with an honest rationale. The
+# low-level `image_source_rt60(max_order=N)` stays deterministic (untouched).
+_ISM_MAX_ORDER_LADDER: tuple[int, ...] = (50, 100, 200)
+_ISM_EYRING_INVARIANT_TOL: float = 1e-6
+
 __all__ = [
     "PredictorName",
     "RT60Prediction",
@@ -470,6 +480,10 @@ def predict_rt60_default(
                 extra_surfaces=extras,
                 wall_overrides=overrides,
             )
+            # FIX-1 / D74: escalate max_order until the ISM result meets the
+            # Eyring diffuse-field lower bound; fall back to Eyring at the cap.
+            eyring_target = eyring_rt60(volume_m3, surface_areas_by_material)
+            used_order = max_order
             rt60 = image_source_rt60(
                 volume_m3=volume_m3,
                 dimensions_m=dims,
@@ -477,6 +491,33 @@ def predict_rt60_default(
                 absorption_coeffs=alphas,
                 max_order=max_order,
             )
+            if rt60 < eyring_target - _ISM_EYRING_INVARIANT_TOL:
+                for order in _ISM_MAX_ORDER_LADDER:
+                    if order <= max_order:
+                        continue
+                    used_order = order
+                    rt60 = image_source_rt60(
+                        volume_m3=volume_m3,
+                        dimensions_m=dims,
+                        surface_areas=areas,
+                        absorption_coeffs=alphas,
+                        max_order=order,
+                    )
+                    if rt60 >= eyring_target - _ISM_EYRING_INVARIANT_TOL:
+                        break
+            if rt60 < eyring_target - _ISM_EYRING_INVARIANT_TOL:
+                # Cap reached and still below the lower bound: honest fallback.
+                return RT60Prediction(
+                    rt60_s=eyring_target,
+                    rt60_per_band_s={},
+                    predictor_name="eyring",
+                    rationale=(
+                        f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
+                        f"ISM non-converged at max_order={used_order} "
+                        f"(ISM={rt60:.4f} < Eyring={eyring_target:.4f}) "
+                        f"→ Eyring fallback"
+                    ),
+                )
         except (ValueError, IndexError) as exc:
             # Robust guard (D47): column / override ISM mapping failed —
             # fall back to Eyring with explanatory rationale.
@@ -493,7 +534,7 @@ def predict_rt60_default(
             )
         rationale = (
             f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
-            f"ISM (max_order={max_order})"
+            f"ISM (max_order={used_order})"
         )
         if column_count:
             rationale += f"; objects: +{column_count * 5} column surfaces"
@@ -545,15 +586,51 @@ def predict_rt60_default_per_band(
                 extra_surfaces=extras,
                 wall_overrides=overrides,
             )
-            rt60_band: dict[int, float] = {}
+            # FIX-1 / D74: per-band Eyring lower-bound targets; escalate the ISM
+            # max_order per band until each band meets its bound, else fall back
+            # to that band's Eyring value (honest per-band substitution).
+            eyring_band = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
+            # Both dicts are keyed by the same OCTAVE_BANDS_HZ set (both produced
+            # from per_band_alphas / surface_areas_by_material over the same
+            # OCTAVE_BANDS_HZ constant).  Assert equality so a mismatch is loud,
+            # not a silent invariant skip via .get() returning None.
+            assert eyring_band.keys() == per_band_alphas.keys(), (
+                f"band key mismatch: ISM={set(per_band_alphas)} "
+                f"Eyring={set(eyring_band)}"
+            )
+            rt60_band = {}
+            max_used_order = max_order
+            non_converged_bands: list[int] = []
             for band_hz, alphas in per_band_alphas.items():
-                rt60_band[band_hz] = image_source_rt60(
+                target = eyring_band[band_hz]
+                used_order = max_order
+                value = image_source_rt60(
                     volume_m3=volume_m3,
                     dimensions_m=dims,
                     surface_areas=areas,
                     absorption_coeffs=alphas,
                     max_order=max_order,
                 )
+                if value < target - _ISM_EYRING_INVARIANT_TOL:
+                    for order in _ISM_MAX_ORDER_LADDER:
+                        if order <= max_order:
+                            continue
+                        used_order = order
+                        value = image_source_rt60(
+                            volume_m3=volume_m3,
+                            dimensions_m=dims,
+                            surface_areas=areas,
+                            absorption_coeffs=alphas,
+                            max_order=order,
+                        )
+                        if value >= target - _ISM_EYRING_INVARIANT_TOL:
+                            break
+                max_used_order = max(max_used_order, used_order)
+                if value < target - _ISM_EYRING_INVARIANT_TOL:
+                    # Ladder cap reached and still below bound: substitute Eyring.
+                    value = target
+                    non_converged_bands.append(band_hz)
+                rt60_band[band_hz] = value
         except (ValueError, IndexError) as exc:
             # Robust guard (D47): column / override ISM mapping failed.
             rt60_band_fb = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
@@ -569,8 +646,13 @@ def predict_rt60_default_per_band(
             )
         rationale = (
             f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
-            f"per-band ISM (max_order={max_order})"
+            f"per-band ISM (max_order={max_used_order})"
         )
+        if non_converged_bands:
+            rationale += (
+                f"; ISM non-converged at ladder cap → Eyring fallback for bands: "
+                f"[{', '.join(str(b) for b in non_converged_bands)}]"
+            )
         if fallback_surfaces:
             rationale += (
                 f"; per-band α fallback used for surfaces: "

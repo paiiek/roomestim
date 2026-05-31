@@ -13,7 +13,9 @@ from typing import Any
 
 import yaml
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 
+from roomestim.geom.polygon import is_simple_polygon
 from roomestim.model import (
     DEFAULT_OBJECT_MATERIAL,
     ListenerArea,
@@ -134,16 +136,48 @@ def read_room_yaml(path: Path | str) -> RoomModel:
         If the YAML does not conform to the schema or contains unknown values.
     """
     path = Path(path)
-    with path.open("r", encoding="utf-8") as fh:
-        data: dict[str, Any] = yaml.safe_load(fh)
+    # FIX-3 / D76: yaml.YAMLError and jsonschema.ValidationError are NOT
+    # ValueError subclasses; without this wrap the documented "Raises ValueError"
+    # contract was false and the CLI let a raw traceback escape on malformed
+    # input. Catch both at the read boundary and re-raise as ValueError so the
+    # docstring is true and main()'s handler maps them to `error: <msg>` exit 1.
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data: dict[str, Any] = yaml.safe_load(fh)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"room '{path}': invalid YAML — {exc}") from exc
+
+    # Guard: empty file parses to None; top-level list parses to list — neither
+    # is a mapping, so data.get(...) would raise AttributeError (not ValueError)
+    # and escape the CLI handler as a raw traceback. Reject explicitly here.
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"room '{path}': expected a YAML mapping, got {type(data).__name__}"
+        )
 
     schema_version: str = str(data.get("version", "0.1-draft"))
     schema = _load_schema(schema_version)
-    Draft202012Validator(schema).validate(data)
+    try:
+        Draft202012Validator(schema).validate(data)
+    except ValidationError as exc:
+        raise ValueError(
+            f"room '{path}': schema validation failed — {exc.message}"
+        ) from exc
 
     name = str(data["name"])
     ceiling_height_m = float(data["ceiling_height_m"])
     floor_polygon = [_point2(p) for p in data["floor_polygon"]]
+
+    # FIX-5 / D78: reject self-intersecting (bow-tie) floor polygons. The
+    # shoelace area magnitude returns a non-zero garbage volume for such rings
+    # while shapely correctly reports area 0.0; a malformed floor would silently
+    # poison every downstream area/volume/RT60 computation. Validate at the read
+    # boundary instead (shapely is already a hard dependency).
+    if not is_simple_polygon([(p.x, p.z) for p in floor_polygon]):
+        raise ValueError(
+            f"room '{name}': floor_polygon is self-intersecting or degenerate "
+            "(not a simple polygon); self-intersecting floors are unsupported."
+        )
 
     la_raw: dict[str, Any] = data["listener_area"]
     listener_area = ListenerArea(

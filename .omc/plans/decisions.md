@@ -2090,3 +2090,125 @@ discipline. **Versions**: `roomestim` 0.22.0 → 0.22.1 (PATCH — doc-only +
 `__schema_version__` 0.2-draft unchanged. **Cross-refs**: OQ-39 (CLOSED);
 ADR 0030 §A–§E (byte-equal); ADR 0039 NEW (split mechanism meta-ADR); D22
 (operational extension); D72 (honesty-re-review precedent).
+
+## D74 — ISM default predictor adaptive max_order (Eyring lower-bound invariant, v0.22.2, 2026-05-31)
+
+감사 발견 MAJOR-1 (`.omc/research/codebase-audit-2026-05-30.md`): α=0.05
+shoebox 5×4×2.8 에서 Eyring=1.944 인데 ISM@max_order=50=1.675 → 런타임 불변식
+(`image_source_rt60 ≥ eyring_rt60 - 1e-6`, ADR 0028 §Decision sub-item 2)
+위반. 저흡음 방에서 ISM 에너지 적분이 late tail 을 과소계수해 발생. **결정** —
+저수준 `image_source_rt60(max_order=N)` 는 deterministic 으로 **불변**
+(`test_image_source.py` 가 order 고정으로 검증; circular-dependency 회피). 고수준
+`predict_rt60_default` / `predict_rt60_default_per_band` 만 적응적: max_order 를
+`_ISM_MAX_ORDER_LADDER = (50, 100, 200)` 로 단계 상향하며 ISM 재계산, 불변식
+(ISM ≥ Eyring − 1e-6) 충족하는 첫 order 채택. per-band 는 band 별 escalate +
+band 별 Eyring 하한 비교 (band 마다 독립). cap(200)에서도 미충족이면 **Eyring 으로
+fallback** (single-band) / 해당 band 만 Eyring 값으로 치환 (per-band) + rationale
+에 "ISM non-converged at max_order=200 → Eyring fallback" 정직 명시. rationale
+의 `max_order=` 는 실제 사용 order 반영. 실측: α=0.05 에서 order 100 으로 escalate
+해 ISM=2.299 ≥ Eyring=1.944 충족 (회귀 테스트 GREEN).
+
+**Drivers**: 불변식 위반 = ADR 0028/0009 물리 정합 위반, 저흡음 방에서 RT60 과소추정.
+**Rejected**: (a) 저수준 함수 default order 단순 상향 (50→200) — 고흡음 방까지
+200³ lattice 비용 강제, deterministic 테스트 contract 파손; (b) 불변식을 저수준
+함수 안에 enforce — materials.eyring_rt60 와 circular dependency. **성능**: 200³
+lattice 는 저흡음 방에서만 트리거 (고흡음은 50 에서 수렴 → 비용 불변).
+**Versions**: `roomestim` 0.22.1 → 0.22.2 (PATCH). **Cross-refs**: ADR 0028
+§Decision sub-item 2 (불변식 출처); ADR 0009 (Eyring parallel predictor);
+ADR 0030 §Status-update-v0.22.2 (이 변경 기록); 신규 회귀 테스트
+`tests/test_predict_rt60_default.py::test_low_absorption_ism_meets_eyring_lower_bound_*`.
+
+## D75 — 비-shoebox binaural DOA az/el 축 스왑 수정 (+ extrusion 렌더러 경로 활성화, v0.22.2, 2026-05-31)
+
+감사 발견 MAJOR-2: `roomestim_web/binaural.py` `_to_pra` 는 경로별로 다른 pra
+frame 을 생성한다 — shoebox `[x, height, depth]`, extrusion `[x, depth, height]`.
+그러나 DOA 계산은 shoebox 규약(`az=atan2(rel[0],rel[2])`, `el=atan2(rel[1],…)`)을
+무조건 가정 → extrusion 경로에서 height/depth 축이 뒤바뀌어 머리 위 소스가 el≈0
+으로 렌더된다. **결정** — DOA 를 경로별 올바른 축으로: 양 경로 모두 `side=rel[0]`;
+shoebox `up=rel[1], front=rel[2]`; extrusion `up=rel[2], front=rel[1]`;
+`az=atan2(side, front)`, `el=atan2(up, sqrt(side²+front²))`.
+
+**Cross-fix (필수 선행조건)**: extrusion 렌더러 경로가 설치 환경(pyroomacoustics
+0.10.1)에서 **아예 실행 불가** 상태였다 — (1) `room.extrude(materials=[floor,ceil])`
+리스트 형식이 0.10.x 에서 `TypeError` (dict `{'floor','ceiling'}` 요구); (2)
+`from_corners` 가 world 좌표를 쓰는데 `_to_pra`/image-containment 는 `(min_x,min_z)`
+오프셋 frame 을 가정 → 모든 소스가 polygon 밖으로 떨어져 `add_source` 가 raise.
+두 잠재결함을 최소수정 (extrude→dict, from_corners→offset frame) 으로 정합화해야
+"실제 렌더러 경로 통과" 테스트(공식 재구현 금지 요건)가 성립. 이는 FIX-2 의 DOA
+축 스왑이 그동안 무방비였던 직접 원인이기도 하다.
+
+**Drivers**: 비-shoebox 방 바이노럴 데모의 공간 정위 오류 (위/측면 혼동).
+**Rejected**: 공식 재구현 단위테스트만 강화 (가짜신뢰 — 기존
+`test_binaural_doa_axis_mapping` 가 정확히 그 함정). **Versions**: `roomestim`
+0.22.1 → 0.22.2; `roomestim_web` byte 변경 (web lane). **Cross-refs**: ADR 0025
+(binaural demo stack); 신규 테스트
+`tests/web/test_binaural_renderer.py::test_binaural_doa_elevation_nonshoebox_real_path`
+(실제 렌더러 경로 + `nearest_hrir` spy).
+
+## D76 — CLI ValidationError/YAMLError 미포착 수정 (reader 가 ValueError 로 wrap, v0.22.2, 2026-05-31)
+
+감사 발견 MAJOR-3: `cli.main` 의 catch tuple 은 `(ValueError, OSError,
+RuntimeError, IndexError)` 인데, `room_yaml_reader` 의 `yaml.safe_load`→
+`yaml.YAMLError` 와 `Draft202012Validator.validate`→`jsonschema.ValidationError`
+는 둘 다 `ValueError` 비서브클래스 → 스키마위반/malformed room.yaml 입력 시 raw
+traceback 이 escape. 또한 reader 독스트링의 "Raises ValueError" 가 거짓.
+**결정** — reader 경계에서 wrap (CLI tuple 확장보다 깔끔; 독스트링도 참이 됨):
+`read_room_yaml` 이 `yaml.YAMLError`/`ValidationError` 를 잡아
+`raise ValueError(...) from exc`. layout reader(`read_placement_yaml`)도 동일
+점검 — `yaml.YAMLError` + 필수키 `KeyError` 를 ValueError 로 wrap (독스트링 정합).
+결과: 스키마위반 room.yaml → `place` exit 1 + `error: <msg>` (traceback 없음).
+
+**Drivers**: CLI robustness (사용자 입력 오류에 traceback 노출 = UX 결함);
+독스트링 정직성. **Rejected**: `cli.main` catch tuple 에 두 예외 직접 추가 —
+동작은 같지만 독스트링 거짓 유지 + 예외 타입 누수가 CLI 계층까지 도달.
+**Versions**: `roomestim` 0.22.1 → 0.22.2 (PATCH). **Cross-refs**: 신규 테스트
+`tests/test_cli_input_validation.py` (schema-violation / malformed-yaml → exit 1,
+no traceback; reader ValueError contract).
+
+**D76 addendum (code-reviewer MINOR, 2026-05-31)**: empty file (`safe_load` →
+`None`) 과 top-level list (`safe_load` → `list`) 는 `YAMLError`/`ValidationError`
+를 발생시키지 않아 wrap 범위를 빠져나갔다 — `None.get(...)` → `AttributeError`,
+`list['name']` → `TypeError` 로 traceback escape. `safe_load` 직후 양 reader 에
+`if not isinstance(data, dict): raise ValueError(... "expected a YAML mapping")` 추가.
+신규 회귀 테스트 4개 (empty + list × room/place): `test_place_on_empty_room_yaml_exits_one_no_traceback`,
+`test_place_on_list_room_yaml_exits_one_no_traceback`,
+`test_read_room_yaml_empty_file_is_value_error`,
+`test_read_room_yaml_list_is_value_error`. 실증: 가드 없이 `None.get` → `AttributeError`
+/ `list['name']` → `TypeError` 확인됨 (load-bearing). Default gate 296→300.
+
+## D77 — `run` 서브커맨드 engine-validation 토글 추가 (export/edit 동등, v0.22.2, 2026-05-31)
+
+감사 발견 MINOR-1: `export` / `edit` 는 `--validate-engine` /
+`--no-engine-validation` 상호배타 그룹(D42 / ADR 0033)을 갖지만 `run` 은 없어,
+composite `run` 으로 layout.yaml 을 쓸 때 엔진검증을 끌 방법이 없었다. **결정** —
+`_add_run_parser` 에 동일 mutually-exclusive 그룹 추가 + `_cmd_run` 이
+`write_layout_yaml(validate=not no_validation, schema_path_override=cli_engine_path)`
+로 thread (D42 precedence: CLI flag > ENV > default ON — `_cmd_export` 와 동일).
+**Drivers**: 서브커맨드 간 토글 일관성. **Rejected**: 없음 (순수 누락 보완).
+**Versions**: `roomestim` 0.22.1 → 0.22.2 (PATCH). **Cross-refs**: ADR 0033
+(engine-validation toggle); D42; 신규 테스트
+`tests/test_cli_input_validation.py::test_run_accepts_no_engine_validation`
++ `test_run_validate_engine_and_no_validation_mutually_exclusive`.
+
+## D78 — 자기교차 polygon floor 거부 (read 경계 shapely validity, v0.22.2, 2026-05-31)
+
+감사 발견 MINOR-3: `geom/polygon.py` 의 shoelace `abs()` 는 bow-tie (자기교차)
+polygon 에 nonzero garbage area 를 반환 → volume·RT60 전부 오염, 그러나 shapely
+는 정확히 area 0.0 로 판정. **결정** — `read_room_yaml` 경계에서 shapely validity
+체크로 self-intersecting floor 거부 (`ValueError`). 신규 헬퍼
+`roomestim.geom.polygon.is_simple_polygon(coords)` (shapely `Polygon(coords).is_valid`;
+shapely 는 이미 hard dependency). `shoelace_2d` / `room_volume` 는 불변 (저수준
+deterministic 유지; 검증은 read 경계에서). **Drivers**: malformed floor 가 조용히
+모든 하류 면적/부피/RT60 계산을 오염시키는 것 차단. **Rejected**: `room_volume`
+안에서 shapely 로 교체 — 저수준 함수에 shapely import + 동작 변경, read 경계 검증이
+더 명확. **Versions**: `roomestim` 0.22.1 → 0.22.2 (PATCH). **Cross-refs**:
+`room_volume` Notes (bow-tie 미지원 명시, 기존); 신규 테스트
+`tests/test_cli_input_validation.py::test_bowtie_floor_polygon_rejected`
++ `test_simple_floor_polygon_accepted` (negative control).
+
+## 비수정 (의도적, v0.22.2 사이클)
+
+감사 발견 MINOR-2 (ISM per-wall α 면적-가중 평균) = OQ-30 기지 한계. 코드 변경
+아님 — 현 per-band α 는 wall row 별 area-weighted 평균이며, 이는 ADR 0030 §A–§E
+predictor 설계의 알려진 단순화다. trigger 미충족 (0 user reports). OQ-30 status
+불변.

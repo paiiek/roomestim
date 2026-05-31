@@ -12,7 +12,9 @@
 - **ACTIVE PHASE**: Phase 2 ✅ DONE — ADR 0044 REVISED. 사이클 일시 정지(설계 완료, 구현 미착수). 사용자 다음 지시 대기.
 - **마지막 GREEN 게이트**: tense-lint EXIT=0 (docs/adr/ 전체, REVISE 반영 후 재확인). 코드 무변경.
 - **완료 산출물**: Phase 1 리서치 + Phase 1.5 스파이크 + **ADR 0044 REVISED** (`docs/adr/0044-rir-auralization-design.md`; critic ACCEPT-WITH-RESERVATIONS 0C+0M 반영) + open-questions.md **OQ-47~51 정식 등록**.
-- **다음 행동 (사용자 지시 시)**: (옵션) planner 확정 → blocking gate(§D 합의 + §E spike OQ-48 + §A splice-continuity + 회귀0) → Phase A 구현. 또는 OQ-49(평가 metric/JND) 추가 문헌조사. 커밋은 사용자 명시 요청 시에만(현재 미커밋, 작업트리에 남김).
+- **커밋됨**: `fea1242` (main, doc-only; ADR 0044 + OQ-47~51 + roadmap). 작업트리 clean.
+- **인터럽트(2026-05-30)**: Phase A 구현 보류 → 사용자 지시로 **기존 구현 전체 기능 Claude게이트+codex 병렬 검증** 먼저 수행 中. 완료 후 Phase A(§E spike부터) 재개.
+- **다음 행동 (사용자 지시 시)**: (옵션) planner 확정 → blocking gate(§D 합의 + §E spike OQ-48 + §A splice-continuity + 회귀0) → Phase A 구현. 또는 OQ-49(평가 metric/JND) 추가 문헌조사(토큰 무거움, 한도 여유 시).
 - **확정 사실(재확인 불요)**: ADR=**0044 REVISED**. OQ=**47~51 등록완료**. tense-lint clean. 재질·ISM=6-band. 판정=GO-WITH-CAVEATS. critic agentId=aca25e5c9f10f7cce(이어쓰기 가능). 세션한도 리셋 6:50am Asia/Seoul.
 
 ### 재개에 필요한 핸들 (워크플로우 복원용)

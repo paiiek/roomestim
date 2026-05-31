@@ -147,9 +147,16 @@ def _build_extrusion_room(
 ) -> Any:
     """Build a pra.Room via from_corners + extrude for non-shoebox rooms."""
 
-    # pra uses (x, z) floor corners (2D), then extrudes along y
+    # pra uses (x, z) floor corners (2D), then extrudes along y. FIX-2 cross-fix:
+    # offset corners by the polygon min so they share the frame that `_to_pra`
+    # (and the image-containment back-conversion at the call site) assume — the
+    # prior un-offset corners placed every source outside the room polygon, so
+    # `add_source` raised before any DOA could be computed.
+    pts = room.floor_polygon
+    min_x = min(p.x for p in pts)
+    min_z = min(p.z for p in pts)
     corners = np.array(
-        [[p.x, p.z] for p in room.floor_polygon],
+        [[p.x - min_x, p.z - min_z] for p in pts],
         dtype=np.float64,
     ).T  # shape (2, N)
 
@@ -166,7 +173,14 @@ def _build_extrusion_room(
     floor_mat = _build_pra_material(floor_surf) if floor_surf else pra.Material(0.10)
     ceil_mat = _build_pra_material(ceil_surf) if ceil_surf else pra.Material(0.10)
 
-    room_pra.extrude(room.ceiling_height_m, materials=[floor_mat, ceil_mat])
+    # pyroomacoustics >= 0.7 expects extrude(materials=...) as a dict keyed by
+    # 'floor'/'ceiling' (a list raises TypeError on 0.10.x). FIX-2 cross-fix:
+    # the prior list form left the whole extrusion (non-shoebox) renderer path
+    # un-runnable, which is why the DOA axis swap below went unguarded.
+    room_pra.extrude(
+        room.ceiling_height_m,
+        materials={"floor": floor_mat, "ceiling": ceil_mat},
+    )
     return room_pra
 
 
@@ -335,11 +349,24 @@ def render_binaural_demo(
             if dist < 1e-6:
                 continue
 
-            # Azimuth: atan2(x, z) → front=0, right=+90
-            az_deg = math.degrees(math.atan2(float(rel[0]), float(rel[2])))
-            # Elevation: atan2(y, sqrt(x²+z²))
-            horiz = math.sqrt(float(rel[0]) ** 2 + float(rel[2]) ** 2)
-            el_deg = math.degrees(math.atan2(float(rel[1]), horiz))
+            # FIX-2 / D75: DOA axes are geometry-path dependent because _to_pra
+            # lays out the pra frame differently per path:
+            #   shoebox   → [x, height, depth] : up=rel[1], front=rel[2]
+            #   extrusion → [x, depth, height] : up=rel[2], front=rel[1]
+            # side=rel[0] in both. The pre-fix code assumed the shoebox layout
+            # unconditionally, swapping az/el on the extrusion (non-shoebox) path.
+            side = float(rel[0])
+            if is_shoebox_path:
+                up = float(rel[1])
+                front = float(rel[2])
+            else:
+                up = float(rel[2])
+                front = float(rel[1])
+            # Azimuth: atan2(side, front) → front=0, right=+90
+            az_deg = math.degrees(math.atan2(side, front))
+            # Elevation: atan2(up, sqrt(side²+front²))
+            horiz = math.sqrt(side ** 2 + front ** 2)
+            el_deg = math.degrees(math.atan2(up, horiz))
 
             hrir_l, hrir_r = nearest_hrir(hrtf, az_deg, el_deg)
 

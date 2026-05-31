@@ -14,9 +14,31 @@ from __future__ import annotations
 
 import math
 
+from shapely.geometry import Polygon as _ShapelyPolygon
+
 from roomestim.model import RoomModel
 
-__all__ = ["polygon_area_3d", "room_volume", "shoelace_2d"]
+__all__ = ["is_simple_polygon", "polygon_area_3d", "room_volume", "shoelace_2d"]
+
+
+def is_simple_polygon(coords: list[tuple[float, float]]) -> bool:
+    """True if the 2-D ring is a simple (non-self-intersecting) polygon.
+
+    Uses shapely's validity check (already a hard dependency). A self-
+    intersecting ring (bow-tie) is *not* simple: shapely reports it invalid
+    and computes area 0.0 while the shoelace magnitude returns a non-zero
+    garbage value (see :func:`room_volume` Notes). Rings with fewer than 3
+    points are not polygons and return ``False``.
+
+    Parameters
+    ----------
+    coords:
+        List of ``(x, y)`` 2-D coordinate pairs (the unclosed ring; shapely
+        closes it implicitly).
+    """
+    if len(coords) < 3:
+        return False
+    return bool(_ShapelyPolygon(coords).is_valid)
 
 
 def shoelace_2d(coords: list[tuple[float, float]]) -> float:

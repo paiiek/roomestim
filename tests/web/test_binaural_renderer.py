@@ -159,6 +159,79 @@ def test_binaural_doa_axis_mapping() -> None:
 
 
 @pytest.mark.web
+def test_binaural_doa_elevation_nonshoebox_real_path(
+    synthetic_hrtf: object,
+    synthetic_source_wav: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FIX-2 / D75: in a NON-shoebox (extrusion) room, a source placed directly
+    above the listener must yield a positive DOA elevation.
+
+    Runs the real renderer and spies on the actual ``nearest_hrir`` calls (no
+    re-implementation of the DOA formula). The pre-fix code assumed the shoebox
+    pra-axis layout unconditionally, mapping the extrusion height axis to the
+    azimuth plane, so an overhead source rendered at el≈0 instead of el>0.
+    """
+    import roomestim_web.hrtf_io as hrtf_io
+
+    from roomestim.model import PlacedSpeaker, PlacementResult, Point3
+    from tests.fixtures.synthetic_rooms import l_shape_room
+
+    room = l_shape_room()
+    assert not _is_extrusion_shoebox(room), "L-shape fixture must be non-shoebox"
+
+    # Single speaker placed ~0.8 m directly above the listener centroid.
+    centroid = room.listener_area.centroid
+    listener_h = room.listener_area.height_m
+    overhead = PlacedSpeaker(
+        channel=0,
+        position=Point3(centroid.x, listener_h + 0.8, centroid.z),
+    )
+    layout = PlacementResult(
+        target_algorithm="VBAP",
+        regularity_hint="REGULAR",
+        speakers=[overhead],
+        layout_name="overhead_single",
+    )
+
+    captured: list[tuple[float, float]] = []
+    real_nearest = hrtf_io.nearest_hrir
+
+    def _spy(table: object, az_deg: float, el_deg: float) -> object:
+        captured.append((az_deg, el_deg))
+        return real_nearest(table, az_deg, el_deg)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(hrtf_io, "nearest_hrir", _spy)
+
+    from roomestim_web.binaural import render_binaural_demo
+
+    render_binaural_demo(
+        room,  # type: ignore[arg-type]
+        layout,  # type: ignore[arg-type]
+        synthetic_source_wav,
+        tmp_path / "out.wav",
+        hrtf=synthetic_hrtf,  # type: ignore[arg-type]
+        max_order=1,
+        duration_s=1.0,
+    )
+
+    assert captured, "renderer must compute at least one DOA"
+    max_el = max(el for _, el in captured)
+    assert max_el > 45.0, (
+        "overhead source in a non-shoebox room must produce a high positive "
+        f"elevation DOA; got max el={max_el:.1f}° across {len(captured)} images. "
+        "A near-zero max elevation indicates the az/el axis swap (FIX-2)."
+    )
+
+
+def _is_extrusion_shoebox(room: object) -> bool:
+    from roomestim_web.binaural import _is_rectilinear_shoebox
+
+    return _is_rectilinear_shoebox(room.floor_polygon)  # type: ignore[attr-defined]
+
+
+@pytest.mark.web
 @pytest.mark.skipif(
     not (
         Path("roomestim_web/data/hrtf/hutubs_pp1.sofa").exists()
