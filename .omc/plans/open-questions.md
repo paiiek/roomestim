@@ -1006,3 +1006,59 @@ echo-density profile 필요한가. ADR 0044 §A.
 > **RIR 사이클 종합 (2026-05-30)**: 리서치(20 confirmed/5 refuted; EDC-neural perceptual 등가 주장
 > 반박됨) → 실현가능성 스파이크(GO-WITH-CAVEATS) → ADR 0044 draft(REVISED). Status=PROPOSED, 구현
 > 미착수. 구현 착수 전 blocking gate(§D 합의 + §E spike + §A splice-continuity + 회귀 0) 충족 필요.
+
+---
+
+## image/video → room geometry 설계 사이클 (2026-06-01 — 설계 문서, 미구현)
+
+> 설치공간 사진/영상에서 `RoomModel` geometry 를 복원하는 `[vision]` capture backend 추가
+> 사이클. **신규 방향 아님 — ADR 0001 이 v0.3 로 보류한 image/COLMAP 브랜치의 만기 연속.**
+> 추적 = 리서치 `.omc/research/image-to-geometry-feasibility-2026-06-01.md`; Phase-0 스파이크
+> 아티팩트 `/home/seung/mmhoa/spike-image-geometry/`; 결정 D81.
+> **설계 = [ADR 0045](../../docs/adr/0045-image-to-geometry-capture-backend.md)** (Status=PROPOSED,
+> draft). Phase-0 스파이크 VERDICT = **FALLBACK (conditional)**: single-pano(HorizonNet st3d,
+> out-of-domain)는 ≤15 cm 게이트 미달(PERFECT ScaleAnchor median 18 cm, 43–45% 방만 ≤15 cm) →
+> single-pano = rough tier, multi-view(MASt3R/VGGT) = 1급 정확도 경로.
+
+**OQ-52** — in-domain(residential, Structured3D-domain) 체크포인트로 single-pano 가 calibrated
+cam_h 에서 residential 방 ≲15 cm median 에 도달하는가. 스파이크가 사용한 out-of-domain `st3d`
+가중치의 정확도 gap(S2D3D 5.09% CE / PanoContext 8.46% CE vs in-domain ~0.76% CE)이 체크포인트
+귀속인지 확인 필요(접근 불가하여 스파이크가 직접 미확인). **single-pano install-grade 승격 gate**
+(ADR 0045 blocking gate #1). 미달 시 single-pano 는 rough tier 영구 고정(Reverse-criterion #5).
+Allocated 2026-06-01.
+
+**OQ-53** — multi-view(MASt3R metric pointmap / VGGT) metric-scale 실현가능성: multi-point
+anchor(ArUco/측정 reference)로 scale 을 single-pano 단일 cam_h 스칼라(±10 cm → median 32–38 cm
+민감)보다 안정적으로 해소하는가 + point cloud → RANSAC/Manhattan plane fit + floor-ring 추출이
+계약(`floor_polygon` + `ceiling_height_m` + vertical-rect walls)을 산출하는가. **1급 정확도
+경로 gate**(ADR 0045 blocking gate #2). 미개선 시 1급 경로 미착수(Reverse-criterion #3). Allocated 2026-06-01.
+
+**OQ-54** — provenance/confidence 태그 스키마: `measured | reconstructed | assumed` 를
+`RoomModel`/`Surface`(`model.py:275/143`, `schema_version` 선례)에 추가하는 형태·하위호환·CLI/web
+"estimated" 라벨링·하류 소비자(ADR 0044 auralization) 영향. **honesty 리뷰 gate**(ADR 0045 blocking
+gate #3). 합의 전 image backend 출력 노출 금지 — 구분 불가한 reconstructed 치수가 measured 로
+둔갑하면 위험(Reverse-criterion #4). 설계 작업으로 플래그만, 미구현. Allocated 2026-06-01.
+
+**OQ-55** — 시각 재질 분류 viability: 설치공간 사진에서 저신뢰 visual material *제안*이 의미 있는
+신호를 주는가(auto-commit 금지 전제, SAP-Net=topology-image / CRNN=measured-IR 도메인 불일치).
+미충족 시 ADR 0045 §E 의 manual/UNKNOWN(`MaterialLabel.UNKNOWN` 정직 fallback)만 유지. Allocated 2026-06-01.
+
+**OQ-56** — non-Manhattan / multi-height 방 처리: HorizonNet 계약 caveat(Manhattan + 단일 평면
+천장 가정 → non-Manhattan 은 silently 사각화)에 대해 rough tier 의 Manhattan-assumption flag 로
+충분한가, AtlantaNet-class 또는 multi-view(ADR 0045 §C)가 필요한가. silent 사각화 방지 정책. Allocated 2026-06-01.
+
+**OQ-57** — per-corner 불확실성 도출·교정 방법: ADR 0045 §B 는 rough tier 출력에 per-corner 불확실성을
+동반할 것을 예정하나, 스파이크가 산출한 aggregate ~18 cm SHAPE 잔차를 per-corner confidence 로 변환하는
+방법이 미정이다(모델 출력에서 직접 얻는가, 경험적 분포에서 교정하는가, 별도 교정 셋이 필요한가). rough
+tier 수용기준(blocking gate) 과 연동해야 한다. ADR 0045 §B / blocking gate 관련. Allocated 2026-06-01.
+
+**OQ-58** — cam_h 현장 측정 신뢰성: tier-1 스케일 경로 전체가 카메라/삼각대 높이 스칼라 1개에 의존하고,
+스파이크는 ±10 cm cam_h 불확실성이 median 오차를 18 cm → 32–38 cm 로 두 배 이상 키움을 보였다 —
+single-pano 의 지배적 실세계 오차원. 현장 사용자가 필요한 정밀도로 cam_h 를 측정하는 방법, 잘못
+추정했을 때의 실패 모드·경고 경로가 미정의이다. rough tier 의 scale-source disclosure(ADR 0045 §B)
+설계 전에 다뤄야 한다. ADR 0045 §B/§C 관련. Allocated 2026-06-01.
+
+> **image→geometry 사이클 종합 (2026-06-01)**: 리서치(파이프라인 순위 — 360 파노 layout-net 1차 /
+> multi-view MASt3R·VGGT 2차) → Phase-0 스파이크(166 GT 방, verdict FALLBACK-conditional) → ADR 0045
+> draft. Status=PROPOSED, 구현 미착수. 착수 전 blocking gate(in-domain 검증 + multi-view spike +
+> provenance 스키마 합의 + core/web 경계 보존) 충족 필요. OQ-52~58 신규. ADR 0001 image 브랜치 closure 진행.

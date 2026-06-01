@@ -197,3 +197,4 @@ it does not depend on A10.
 | [0003](adr/0003-placement-algorithm-priority.md) | Placement algorithm priority (VBAP → DBAP → WFS → Ambisonics v0.3) |
 | [0004](adr/0004-room-yaml-schema-lockin.md) | `room.yaml` two-stage schema lock-in timing |
 | [0005](adr/0005-tech-stack.md) | Tech stack (Python ≥3.10, shapely, trimesh, jsonschema, ruff, mypy) |
+| [0045](adr/0045-image-to-geometry-capture-backend.md) | image/video → room geometry (`[vision]` capture backend; tiered, provenance-tagged; ADR 0001 image-branch 연속) — PROPOSED |

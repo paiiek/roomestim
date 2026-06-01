@@ -2309,3 +2309,44 @@ LEFT 우세 = 버그), post-fix 통과(+x → R=1.834 vs L=0.044). 기존 self-r
 300p/5s, web 84→86p/4s(+2 ILD), ruff clean, mypy --strict roomestim 38파일 clean
 (binaural.py clean), tense-lint clean. **Cross-refs**: `roomestim/coords.py`
 (pipeline_to_ambix 권위); D75(동일 DOA 헬퍼 축 로직); ADR 0044 §D(diffuse tail 무관).
+
+## D81 — image/video → room geometry 실현가능성 스파이크 + ADR 0045 PROPOSED (`[vision]` capture backend, doc-only, 2026-06-01)
+
+설계+리서치 사이클(미구현). roomestim frontier = 설치공간 사진/영상 → `RoomModel` geometry 복원
+을 위한 `[vision]` capture backend 를 **정직성-우선 tiered** 아키텍처로 제안 — 신규 방향이 아니라
+**ADR 0001 이 v0.3 로 보류한 image/COLMAP 브랜치의 만기 연속**(ADR 0001 §Follow-ups line 45:
+"COLMAP scale-anchor work = v0.3 scope"; `base.py` 의 `CaptureAdapter` Protocol + `ScaleAnchor`
+이미 pre-wired; `pyproject.toml:47` `colmap` extra 선언됨).
+
+**Phase-0 스파이크 (수행됨; 아티팩트 `/home/seung/mmhoa/spike-image-geometry/` —
+`final_spike_summary.json`, `metric_s2d3d_results.json`)**: HorizonNet(single-pano room-layout
+net, HF-미러 `resnet50_rnn__st3d`, Structured3D 학습)을 166 실측 GT 방(PanoContext 53 residential
++ Stanford2D3D 113 office/conf/hall — **둘 다 해당 체크포인트에 out-of-domain**)에 forward.
+- Standard: S2D3D 5.09% Corner-Err / 62.6% 3D-IoU; PanoContext 8.46% CE / 61.5% IoU
+  (vs in-domain README ~0.76% CE / ~83% IoU).
+- Metric cm(카메라높이 ScaleAnchor 후): nominal cam_h → median wall 35–57 cm; **PERFECT
+  ScaleAnchor → median 18 cm, 단 43–45% 방만 ≤15 cm**; ±10 cm cam_h 불확실성 → 32–38 cm.
+  오차 분해 = ~34–40 cm SCALE 성분(ScaleAnchor-resolvable) + ~18 cm SHAPE 성분(축소불가 corner).
+- 기준선 RoomPlan LiDAR ~8.5 cm avg; 결정 게이트 ≲10–15 cm. 엔지니어링 경로 de-risk(GPU
+  ~0.25 s/img, net 출력 1:1 `RoomModel` 매핑, 스케일=카메라높이 스칼라 1개 = 기존 ScaleAnchor
+  `known_distance`). 계약 caveat: HorizonNet 은 Manhattan + 단일 평면 천장 가정.
+
+**VERDICT = FALLBACK (conditional)**: single-pano(st3d, out-of-domain)는 ≤15 cm 게이트를 신뢰성
+있게 통과하지 못함. gap 은 (a) out-of-domain 체크포인트 (b) cam_h scale 민감도 (c) floor-boundary
+elevation 오차 귀속 — **원리적 기각 아님**(접근 불가한 in-domain 체크포인트라면 borderline 개연).
+
+**Decision (ADR 0045 PROPOSED, Status-update 시제 = 제안/예정)**: single-pano = **rough-estimate /
+assisted-measure / pre-scan tier**(per-corner 불확실성 + Manhattan-assumption flag + scale-source
+disclosure + 엔지니어 확인 후 layout/RIR 투입); multi-view(MASt3R/VGGT) = *better-than-rough* 1급
+정확도 경로(spike 선행); 출력 geometry `provenance=reconstructed(image)` 태그(measured/assumed 와
+구분, install-grade 측정으로 미제시); 모델 의존은 `[vision]`/`[colmap]` extra 뒤(core 의존 0 불변,
+`[web]` 선례); ADR 0001 `--experimental` 게이트 상속; 재질 manual/UNKNOWN 유지(시각→흡음 install-grade
+아님, 저신뢰 제안만); provenance 스키마 추가는 **설계 작업으로 플래그만, 미구현**.
+
+**doc-only**: 코드/테스트/version bump 0. `docs/adr/0045-image-to-geometry-capture-backend.md`
+(PROPOSED, draft), 신규 OQ-52~58(open-questions.md), 본 D81, ADR-index 행 추가(docs/architecture.md).
+ADR 0001 의 image 브랜치 closure 진행.
+**Cross-refs**: ADR 0001(capture priority — 보류 브랜치), ADR 0002(room repr), ADR 0027/0042
+(mesh adapter seam), ADR 0044(image-derived geometry 하류 소비자), D26(forbidden-indefinite-deferral);
+리서치 `.omc/research/image-to-geometry-feasibility-2026-06-01.md`. **Gates(doc-only)**: tense-lint
+EXIT 0; source/test 무변경(`git status` = docs/adr/ + docs/architecture.md + .omc/plans/ 만).
