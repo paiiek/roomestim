@@ -2274,3 +2274,38 @@ EDC 적합 구간에서는 비균일 RT60 룸(painted shoebox 는 밴드별 ~1.1
 축소·slope 오류가 즉시 탈락). BRIR spliced tail 은 energy-continuity 재가중(A12)으로
 밴드 균형이 의도적으로 변하므로 broadband RT60 미주장; 대신 A11b 가 tail 이 실제
 감쇠함을 확인.
+
+## D80 — 바이노럴 렌더러 HRTF 좌/우 채널 스왑 수정 (coords.pipeline_to_ambix 단일권위 경유, v0.23.1, 2026-06-01)
+
+확정결함(고신뢰, 증거기반). 바이노럴 렌더러는 *pipeline* 관례 azimuth(RIGHT=+az,
+`az = atan2(side, front)`, `side = rel[0] = world x`)를 산출하지만 `nearest_hrir`
+는 *SOFA/AmbiX* 관례 azimuth(LEFT=+az)로 HRIR 을 선택한다. 로드된 KEMAR 데이터에서
+실증: SOFA az=90° → LEFT 귀 39.5× 우세, az=270° → RIGHT 우세. 따라서 listener
+오른쪽(+x) 소스가 pipeline +90° 그대로 lookup 되어 LEFT-우세 HRIR 을 골랐다 —
+모든 측방 정위 성분이 L↔R 거울반전.
+
+레포 자신의 단일권위 `roomestim/coords.py:pipeline_to_ambix(az)= −az`(라인 28-30)
+가 바로 이 변환(pipeline→SOFA 는 az 부호반전)을 문서화하지만 `roomestim_web/binaural.py`
+가 적용하지 않은 것이 원인. **수정**: DOA azimuth 를 `nearest_hrir` 에 넘기기 직전
+`coords.pipeline_to_ambix` 경유 → SOFA lookup 이 SOFA 관례 az 를 받음. coords.py 를
+실제 frame-변환 단일 진실원천으로 만든다(그 모듈의 본래 목적). el 은 관례 불변(영향
+없음). 두 렌더 경로 동일 적용:
+
+- `_doa_az_el_deg`(synthesize_brir 의 early/직접부가 사용) — SOFA 관례 az 반환으로 변경.
+- `render_binaural_demo` 인라인 DOA 블록(`_doa_az_el_deg` 미호출) — 동일 헬퍼 호출로
+  교체(geometry 재유도 제거 → 양 경로가 헬퍼 공유 = 변환 단일소스화).
+
+**Blast radius**: 두 경로 동일 결함. synthesize_brir 의 **diffuse late tail**(대칭
+decorrelation, DOA 없음)은 무영향 — 의도적으로 미변경(D79/ADR 0044 §D). **Regression
+proof**: 신규 dataset-grounded ILD 테스트 2종(`test_binaural_ild_right_source_sofa`,
+`..._render_path`) — 실제 HRIR 데이터/실제 render 경로에 대해 +x 소스의 RIGHT 채널
+에너지 > LEFT(−x 는 거울) 단언. pre-fix 실패 확인(render-path: +x → L=1889 vs R=46.7,
+LEFT 우세 = 버그), post-fix 통과(+x → R=1.834 vs L=0.044). 기존 self-referential
+`test_binaural_doa_axis_mapping`(렌더러 자체 공식 재구현 → 결함 포착 불가)은 실제
+`_doa_az_el_deg` 출력(SOFA 관례, +x → az≈270°)에 대한 단언으로 강화.
+
+**Versions**: `roomestim` 0.23.0 → 0.23.1 (PATCH, web-tier correctness fix). core
+`roomestim/` 무변경(기본 게이트 300p/5s 불변 = 회귀 0). **Gates(2026-06-01)**: default
+300p/5s, web 84→86p/4s(+2 ILD), ruff clean, mypy --strict roomestim 38파일 clean
+(binaural.py clean), tense-lint clean. **Cross-refs**: `roomestim/coords.py`
+(pipeline_to_ambix 권위); D75(동일 DOA 헬퍼 축 로직); ADR 0044 §D(diffuse tail 무관).

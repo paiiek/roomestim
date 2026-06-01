@@ -185,18 +185,27 @@ def _build_extrusion_room(
 
 
 def _doa_az_el_deg(rel: np.ndarray, is_shoebox_path: bool) -> tuple[float, float]:
-    """Compute (az_deg, el_deg) for a listener-relative pra-frame vector.
+    """Compute SOFA-convention (az_deg, el_deg) for a listener-relative pra-frame
+    vector, ready to hand to :func:`nearest_hrir`.
 
     Shared DOA geometry extracted from ``render_binaural_demo`` (binaural.py
     DOA block, D75 axis logic) so ``synthesize_brir`` reuses the same math
-    without duplicating it. The demo call site is intentionally left inline and
-    UNCHANGED (no behaviour change there).
+    without duplicating it.
 
     Axis layout (D75):
         shoebox   → pra frame [x, height, depth] : up=rel[1], front=rel[2]
         extrusion → pra frame [x, depth, height] : up=rel[2], front=rel[1]
         side=rel[0] in both.
+
+    D80: ``atan2(side, front)`` is *pipeline*-convention azimuth (RIGHT=+az),
+    but ``nearest_hrir`` indexes HRIRs by *SOFA/AmbiX* azimuth (LEFT=+az). The
+    single sign-flip authority ``roomestim.coords.pipeline_to_ambix`` (az→−az)
+    bridges the two; bypassing it mirrors every lateral component L↔R. Elevation
+    is convention-invariant. We route through the authority here so coords.py is
+    the actual single source of truth for the frame conversion.
     """
+    from roomestim.coords import pipeline_to_ambix
+
     side = float(rel[0])
     if is_shoebox_path:
         up = float(rel[1])
@@ -204,10 +213,11 @@ def _doa_az_el_deg(rel: np.ndarray, is_shoebox_path: bool) -> tuple[float, float
     else:
         up = float(rel[2])
         front = float(rel[1])
-    az_deg = math.degrees(math.atan2(side, front))
+    az_pipe = math.atan2(side, front)
     horiz = math.sqrt(side ** 2 + front ** 2)
-    el_deg = math.degrees(math.atan2(up, horiz))
-    return az_deg, el_deg
+    el = math.atan2(up, horiz)
+    az_sofa, el_sofa = pipeline_to_ambix(az_pipe, el)
+    return math.degrees(az_sofa), math.degrees(el_sofa)
 
 
 def _resample_audio(
@@ -375,24 +385,13 @@ def render_binaural_demo(
             if dist < 1e-6:
                 continue
 
-            # FIX-2 / D75: DOA axes are geometry-path dependent because _to_pra
-            # lays out the pra frame differently per path:
-            #   shoebox   → [x, height, depth] : up=rel[1], front=rel[2]
-            #   extrusion → [x, depth, height] : up=rel[2], front=rel[1]
-            # side=rel[0] in both. The pre-fix code assumed the shoebox layout
-            # unconditionally, swapping az/el on the extrusion (non-shoebox) path.
-            side = float(rel[0])
-            if is_shoebox_path:
-                up = float(rel[1])
-                front = float(rel[2])
-            else:
-                up = float(rel[2])
-                front = float(rel[1])
-            # Azimuth: atan2(side, front) → front=0, right=+90
-            az_deg = math.degrees(math.atan2(side, front))
-            # Elevation: atan2(up, sqrt(side²+front²))
-            horiz = math.sqrt(side ** 2 + front ** 2)
-            el_deg = math.degrees(math.atan2(up, horiz))
+            # FIX-2 / D75: DOA axes are geometry-path dependent (see
+            # _doa_az_el_deg). D80: that helper also routes the azimuth through
+            # coords.pipeline_to_ambix so the SOFA lookup gets SOFA-convention
+            # azimuth (RIGHT=+az pipeline → LEFT=+az SOFA). The demo path now
+            # shares the helper instead of re-deriving the geometry, making the
+            # frame conversion single-sourced for both render paths.
+            az_deg, el_deg = _doa_az_el_deg(rel, is_shoebox_path)
 
             hrir_l, hrir_r = nearest_hrir(hrtf, az_deg, el_deg)
 

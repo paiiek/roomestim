@@ -135,27 +135,145 @@ def test_binaural_render_peak_at_minus_1_dbfs(
 
 @pytest.mark.web
 def test_binaural_doa_axis_mapping() -> None:
-    """Sanity-check the per-image-source DOA axis convention.
+    """Guard the per-image-source DOA axis + frame convention via the REAL
+    helper ``_doa_az_el_deg`` (no re-implementation of its formula).
 
-    A source placed 1 m to the right of the listener at the same height MUST
-    produce az≈+90°, el≈0°. This guards against axis swaps in _to_pra.
+    D80: the renderer hands azimuth to ``nearest_hrir`` in SOFA/AmbiX convention
+    (LEFT=+az). A source 1 m to the listener's RIGHT (+x, shoebox path) is +90°
+    in pipeline convention, which ``coords.pipeline_to_ambix`` negates to az≈270°
+    in SOFA convention. Elevation is convention-invariant. A right source
+    returning az≈+90° here would mean the pipeline→SOFA negation was bypassed
+    (the pre-D80 L↔R swap). The energy-grounded proof lives in
+    ``test_binaural_ild_right_source_sofa`` and ``..._render_path`` below.
     """
-    import math
+    from roomestim_web.binaural import _doa_az_el_deg
 
-    # Mimic the renderer's DOA computation on a synthetic relative vector.
-    # Listener at origin in pra-relative frame; source at (+1, 0, 0).
-    rel = np.array([1.0, 0.0, 0.0])
-    az_deg = math.degrees(math.atan2(float(rel[0]), float(rel[2])))
-    horiz = math.sqrt(float(rel[0]) ** 2 + float(rel[2]) ** 2)
-    el_deg = math.degrees(math.atan2(float(rel[1]), horiz))
-    assert abs(az_deg - 90.0) < 0.1
+    # Source to the RIGHT (+x) at ear height, shoebox pra frame [x, height, depth].
+    az_deg, el_deg = _doa_az_el_deg(np.array([1.0, 0.0, 0.0]), is_shoebox_path=True)
+    assert abs((az_deg % 360.0) - 270.0) < 0.1, (
+        "right source must map to SOFA az≈270° (pipeline +90° negated); "
+        f"got {az_deg:.1f}° — pipeline→SOFA negation bypassed (D80 swap)."
+    )
     assert abs(el_deg) < 0.1
 
-    # Source 1 m directly above (y=+1) → el=+90°.
-    rel = np.array([0.0, 1.0, 0.0])
-    horiz = math.sqrt(float(rel[0]) ** 2 + float(rel[2]) ** 2)
-    el_deg = math.degrees(math.atan2(float(rel[1]), horiz)) if horiz > 0 else 90.0
-    assert el_deg > 85.0
+    # Mirror: source to the LEFT (-x) → SOFA az≈+90°.
+    az_left, _ = _doa_az_el_deg(np.array([-1.0, 0.0, 0.0]), is_shoebox_path=True)
+    assert abs((az_left % 360.0) - 90.0) < 0.1
+
+    # Source 1 m directly above (shoebox up=rel[1]) → el≈+90°.
+    _, el_up = _doa_az_el_deg(np.array([0.0, 1.0, 0.0]), is_shoebox_path=True)
+    assert el_up > 85.0
+
+
+@pytest.mark.web
+def test_binaural_ild_right_source_sofa() -> None:
+    """D80 dataset-grounded ILD regression — asserts against the real HRIR data,
+    not the renderer's own formula.
+
+    A source to the listener's RIGHT (+x) must, after the pipeline→SOFA azimuth
+    conversion, select an HRIR whose RIGHT-ear energy exceeds the LEFT-ear energy
+    (and the mirror for -x). This FAILS on the pre-D80 swapped code (which fed
+    SOFA-lookup a pipeline-convention azimuth, mirroring L↔R) and PASSES after.
+    """
+    from roomestim.coords import pipeline_to_ambix
+    from roomestim_web.binaural import _doa_az_el_deg
+    from roomestim_web.hrtf_io import load_default_hrtf, nearest_hrir
+
+    try:
+        hrtf = load_default_hrtf()
+    except FileNotFoundError:
+        pytest.skip("no default HRTF (HUTUBS/KEMAR) bundled in this checkout")
+
+    # Right source (+x): real renderer DOA → real nearest_hrir on real data.
+    az_r, el_r = _doa_az_el_deg(np.array([1.0, 0.0, 0.0]), is_shoebox_path=True)
+    l_r, r_r = nearest_hrir(hrtf, az_r, el_r)
+    eL_r = float(np.sum(l_r ** 2))
+    eR_r = float(np.sum(r_r ** 2))
+    assert eR_r > eL_r, (
+        f"right (+x) source: RIGHT-ear energy must dominate; got L={eL_r:.4g} "
+        f"R={eR_r:.4g} at SOFA az={az_r:.1f}°. R<L means the L↔R swap (D80)."
+    )
+
+    # Left source (-x): mirror — LEFT-ear energy dominates.
+    az_l, el_l = _doa_az_el_deg(np.array([-1.0, 0.0, 0.0]), is_shoebox_path=True)
+    l_l, r_l = nearest_hrir(hrtf, az_l, el_l)
+    eL_l = float(np.sum(l_l ** 2))
+    eR_l = float(np.sum(r_l ** 2))
+    assert eL_l > eR_l, (
+        f"left (-x) source: LEFT-ear energy must dominate; got L={eL_l:.4g} "
+        f"R={eR_l:.4g} at SOFA az={az_l:.1f}°."
+    )
+
+    # The conversion authority itself: pipeline +90° (right) negates to 270°.
+    az_sofa, _ = pipeline_to_ambix(np.pi / 2.0, 0.0)
+    assert abs((np.degrees(az_sofa) % 360.0) - 270.0) < 1e-6
+
+
+@pytest.mark.web
+def test_binaural_ild_right_source_render_path() -> None:
+    """D80 end-to-end ILD regression through ``render_binaural_demo``.
+
+    Places a single speaker 1 m to the listener's RIGHT (+x) in a shoebox and
+    runs the REAL render path with the REAL default HRTF. The direct sound is the
+    dominant component, so the RIGHT output channel must carry more energy than
+    the LEFT. Mirror for -x. Fails pre-D80 (swapped), passes after.
+    """
+    from roomestim.model import PlacedSpeaker, PlacementResult, Point3
+    from roomestim_web.binaural import render_binaural_demo
+    from roomestim_web.hrtf_io import load_default_hrtf
+    from tests.fixtures.synthetic_rooms import shoebox
+
+    try:
+        hrtf = load_default_hrtf()
+    except FileNotFoundError:
+        pytest.skip("no default HRTF (HUTUBS/KEMAR) bundled in this checkout")
+
+    import tempfile
+
+    room = shoebox(width=6.0, depth=6.0, height=2.8)
+    listener_h = room.listener_area.height_m
+
+    def _render_channel_energy(dx: float) -> tuple[float, float]:
+        spk = PlacedSpeaker(
+            channel=0,
+            position=Point3(dx, listener_h, 0.0),  # +x = right, same height/front
+        )
+        layout = PlacementResult(
+            target_algorithm="VBAP",
+            regularity_hint="REGULAR",
+            speakers=[spk],
+            layout_name="ild_single",
+        )
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "src.wav"
+            sr = 48000
+            n = sr  # 1 s
+            np.random.seed(0)
+            sig = (0.3 * np.random.randn(n)).astype(np.float32)
+            sf.write(str(src), sig, sr, subtype="PCM_16")
+            out = render_binaural_demo(
+                room,  # type: ignore[arg-type]
+                layout,  # type: ignore[arg-type]
+                src,
+                Path(td) / "out.wav",
+                hrtf=hrtf,
+                max_order=0,  # direct sound only — isolate the DOA component
+                duration_s=1.0,
+            )
+            audio, _ = sf.read(str(out), dtype="float64")
+        return float(np.sum(audio[:, 0] ** 2)), float(np.sum(audio[:, 1] ** 2))
+
+    eL_right, eR_right = _render_channel_energy(+2.0)
+    assert eR_right > eL_right, (
+        "right (+x) speaker: RIGHT channel must dominate the rendered output; "
+        f"got L={eL_right:.4g} R={eR_right:.4g}. R<L means the L↔R swap (D80)."
+    )
+
+    eL_left, eR_left = _render_channel_energy(-2.0)
+    assert eL_left > eR_left, (
+        "left (-x) speaker: LEFT channel must dominate; "
+        f"got L={eL_left:.4g} R={eR_left:.4g}."
+    )
 
 
 @pytest.mark.web
