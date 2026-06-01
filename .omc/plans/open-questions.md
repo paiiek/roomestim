@@ -979,21 +979,29 @@ pass (no reverse-trigger; not OQ-numbered project questions):
 `sinc(2πf·d/c)`)의 **지각충실** 검증. IC 목표곡선은 설계변수로 지정 가능하나 그 결과의 perceptual
 fidelity 는 미검증 — Phase A 최대 불확실성. **Reverse-trigger**: filtered-noise tail 이 perceptual/JND
 검증 통과 시 neural 보정 불요(ADR 0044 Reverse-criterion #3). Allocated 2026-05-30.
+> **STATUS-UPDATE (D79, v0.23.0, 2026-05-31)** — 합성 경로 **SHIPPED**(`synthesize_brir`: early per-DOA HRIR + late 2-HRIR decorrelation IC 목표 `sinc(2πf·d/c)`). 그러나 *지각충실*은 여전히 **OPEN**(verification-deferred) — diffuse tail 은 *plausible* 로만 기술(honesty scope). OQ-49 metric 선정이 검증 선행조건.
 
 **OQ-48** — `compute_rir()` 선결 spike: (i) sparse-ISM-RIR `measure_rt60` 가
 `predict_rt60_default_per_band` 와 RT60 일관(T20/T30 ±5%)한가(ADR 0040:67 연계),
 (ii) broadband 반환에서 per-band RIR 추출(band-separability) 가능한가. 둘 다 GREEN 아니면
 image-source 직접 조립(`pra_source.damping` per-band, `binaural.py:309`) 폴백. ADR 0044 §E / blocking gate #2.
+> **RESOLVED by planner spike (2026-05-31, pra 0.10.1, canonical python; throwaway scripts removed)** — **둘 다 RED**:
+> (i) `compute_rir()` 는 (mic,src) 당 **broadband 1-D 단일 RIR** 반환(`ndim==1`, 예 shape (7365,)); per-band RIR 필드 부재 → band-separability **불가**.
+> (ii) `measure_rt60()` 는 broadband 스칼라 1개(0.125 s)로, 500 Hz 밴드 Sabine 기대값(~0.734 s)과 **~6× 불일치** → RT60 일관성 **실패**(ADR 0040:67 플래그 실증 확인).
+> → **결정: image-source 직접 조립 채택, `compute_rir`/`measure_rt60` 미사용.** 추가 발견: pra 가 `fs` 에서 octave 그리드를 **8밴드**(125…4k + 8k/16k)로 확장 → `damping` shape (8, N); 선행 6밴드는 `OCTAVE_BANDS_HZ` 와 정확히 일치 → `rir.py` 가 `damping[0:6]` 슬라이스 + band-grid guard. **정식 CLOSE 는 구현 GREEN 후 D79 에서** (계획 `.omc/plans/rir-auralization-phase-a.md`).
+> **CLOSED (D79, v0.23.0, 2026-05-31)** — Phase A 구현 GREEN(default 300p/web 82p/ruff·mypy·tense EXIT0). image-source 직접 조립이 `roomestim_web/rir.py::assemble_early_rir_per_band` 로 shipped; `compute_rir`/`measure_rt60` 미사용 확정. `damping[0:6]` 슬라이스 + band-grid guard 구현.
 
 **OQ-49** — Phase A auralization 평가 metric 선정: 어느 objective(EDT/C50/C80/DRR/EDC fit/log-spectral)
 가 지각품질과 best 상관 + 잔향 JND 임계. 리서치 Q2 미해결(method-centric corpus) → **추가 문헌조사
 필요**. 미선정 시 Phase A acceptance 가 회귀 게이트 외에는 falsifiable 하지 않음(critic stakeholder 지적).
+> **STATUS-NOTE (D79, v0.23.0, 2026-05-31)** — 여전히 **OPEN**. Phase A 구현은 회귀 게이트(RT60-consistency per-band, splice-continuity, 결정성, 6-band 유지) 로 falsifiable 하나, perceptual metric 선정(OQ-47 검증 선행조건)은 미해결. 추가 문헌조사 필요.
 
 **OQ-50** — 대상 방당 ~12 측정 RIR 확보 현실성(DiffRIR few-shot 예산). Phase C(differentiable fitting)
 gate. **Reverse-trigger**: 확보 불가 시 Phase C 미실시, blind Phase A 만 유효(ADR 0044 Reverse-criterion #1).
 
 **OQ-51** — mixing-time analytic `√V` 근사가 비-shoebox/coupled-space(예: Building_Lobby)에서 충분한가,
 echo-density profile 필요한가. ADR 0044 §A.
+> **STATUS-NOTE (D79, v0.23.0, 2026-05-31)** — `√V` mixing time 이 v1 로 **SHIPPED**(`rir.py::mixing_time_s = 1e-3·√(room_volume)`). 비-shoebox/coupled-space 적정성은 여전히 **OPEN**(echo-density estimator 부재로 v1 은 analytic 근사만; Building_Lobby 등 결합공간 검증 미실시).
 
 > **RIR 사이클 종합 (2026-05-30)**: 리서치(20 confirmed/5 refuted; EDC-neural perceptual 등가 주장
 > 반박됨) → 실현가능성 스파이크(GO-WITH-CAVEATS) → ADR 0044 draft(REVISED). Status=PROPOSED, 구현

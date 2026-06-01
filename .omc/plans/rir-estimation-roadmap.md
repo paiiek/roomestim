@@ -9,12 +9,13 @@
 
 ## 현재 위치 (RESUME POINTER)
 
-- **ACTIVE PHASE**: Phase 2 ✅ DONE — ADR 0044 REVISED. 사이클 일시 정지(설계 완료, 구현 미착수). 사용자 다음 지시 대기.
-- **마지막 GREEN 게이트**: tense-lint EXIT=0 (docs/adr/ 전체, REVISE 반영 후 재확인). 코드 무변경.
-- **완료 산출물**: Phase 1 리서치 + Phase 1.5 스파이크 + **ADR 0044 REVISED** (`docs/adr/0044-rir-auralization-design.md`; critic ACCEPT-WITH-RESERVATIONS 0C+0M 반영) + open-questions.md **OQ-47~51 정식 등록**.
-- **커밋됨**: `fea1242` (main, doc-only; ADR 0044 + OQ-47~51 + roadmap). 작업트리 clean.
-- **인터럽트(2026-05-30)**: Phase A 구현 보류 → 사용자 지시로 **기존 구현 전체 기능 Claude게이트+codex 병렬 검증** 먼저 수행 中. 완료 후 Phase A(§E spike부터) 재개.
-- **다음 행동 (사용자 지시 시)**: (옵션) planner 확정 → blocking gate(§D 합의 + §E spike OQ-48 + §A splice-continuity + 회귀0) → Phase A 구현. 또는 OQ-49(평가 metric/JND) 추가 문헌조사(토큰 무거움, 한도 여유 시).
+- **ACTIVE PHASE**: ✅ **Phase 3 (구현) 완료 — RIR auralization Phase A v0.23.0**. planner(gate해소)→executor(구현)→code-reviewer(MAJOR발견)→executor(fix)→verifier(독립 APPROVE, MAJOR fix load-bearing 증명). 커밋/푸시 진행. Phase B(neural late) / Phase C(differentiable fitting)는 여전히 out-of-scope deferred.
+- **진행상태**: planner ✅ blocking gate 전부 해소 — §E spike 실측(compute_rir broadband-only + measure_rt60 ~6× 오차 → **image-source 직접조립** 확정, OQ-48 RESOLVED), §D 수용(OQ-47 verification-deferred), §A 5ms-window energy-continuity 규약. 플랜 `.omc/plans/rir-auralization-phase-a.md`(5 step, 12 accept test A1~A12, 버전→0.23.0). **executor 구현 中**.
+- **plan 핸들**: planner agentId=a7c923cf108cb3b73. executor agentId=a22fe74da0c7e6df1. 편차3건(D1 8-band 슬라이스 damping[0:6], D2 compute_rir 기각, D3 rng default_rng(seed+band)).
+- **executor ✅**: rir.py(222L)+late_reverb.py(152L)+binaural.synthesize_brir(additive, 데모경로 무변경) + 14 web 테스트(A1~A12+A11b). 버전 0.23.0, D79, ADR0044 §SU(Proposed→Accepted), OQ-48 CLOSED. 게이트 GREEN(default 300p/5s=core회귀0, web 82p/4s, ruff/mypy/tense EXIT0). **A11 deviation**: plan의 "broadband decay=max RT60±10%"는 비균일 RT60룸에서 물리적으로 거짓 → per-band contract(각 밴드 자기 RT60 ±10%)로 정정 + A11b 추가. → code-reviewer ✅(A11 deviation LEGITIMATE 확인). **MAJOR 1건**: Gate3 splice-continuity 가 real-HRTF BRIR 에서 위반(ch1 3.22dB>3dB), A12는 mono경로만 검증·BRIR테스트는 synthetic unit-impulse HRTF라 scale mismatch 가려짐. + MINOR(silent-band tail drop, dead import, ADR 문구, n_bands). → executor 수정 ✅(MAJOR: per-channel late-tail energy renorm, ch1 3.22dB→0.033dB; silent-band fallback; dead import 제거; ADR/D79 문구정정; n_bands drop; +2 load-bearing test). 게이트 GREEN(default 300p/5s, web 84p/4s, ruff/mypy/tense EXIT0). code-reviewer agentId=a74ea0316e7928b3b, fix executor agentId=a63f7a0a3af525c11. → verifier 최종검증 中.
+- **마지막 GREEN 게이트**: v0.22.2 전체 GREEN(default 300p/5s, web 68p/4s, ruff/mypy/tense EXIT0), 커밋 `2eae5eb` 푸시됨.
+- **완료 산출물**: Phase 1 리서치 + Phase 1.5 스파이크 + **ADR 0044 REVISED** + OQ-47~51 등록.
+- **다음 행동**: planner 플랜 → executor(rir.py + late_reverb.py 신규, web-tier, 신규패키지0) → code-reviewer → verifier(전체 게이트) → green까지 반복. 커밋은 사용자 요청대로 진행.
 - **확정 사실(재확인 불요)**: ADR=**0044 REVISED**. OQ=**47~51 등록완료**. tense-lint clean. 재질·ISM=6-band. 판정=GO-WITH-CAVEATS. critic agentId=aca25e5c9f10f7cce(이어쓰기 가능). 세션한도 리셋 6:50am Asia/Seoul.
 
 ### 재개에 필요한 핸들 (워크플로우 복원용)

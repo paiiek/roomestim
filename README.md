@@ -112,6 +112,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.23.0** | 2026-05-31 | (uncommitted) | RIR auralization Phase A (MINOR, additive, web-tier 한정·신규 패키지 0) — image-source 직접 조립 early per-band mono-RIR + filtered-noise late tail + 2-채널 convolvable BRIR (D79 / [ADR 0044](docs/adr/0044-rir-auralization-design.md) §Status-update-v0.23.0; OQ-48 CLOSED; OQ-47/49/51 status-update). `roomestim_web/rir.py` + `roomestim_web/late_reverb.py` + `binaural.synthesize_brir`; RT60 단일 진실원천 `predict_rt60_default_per_band` 6-band 유지; per-band energy-continuity splice. core 무변경(회귀 0). |
 | **v0.22.2** | 2026-05-31 | (uncommitted) | 감사 발견 확정결함 PATCH — ISM 기본 predictor 저흡음 적응적 max_order(Eyring 하한 불변식, D74 / [ADR 0030](docs/adr/0030-predictor-default-switch-status-updates.md) §Status-update-v0.22.2); 비-shoebox binaural DOA 축 스왑 + extrusion 렌더러 경로 활성화(D75); CLI ValidationError/YAMLError 포착(reader 가 ValueError 로 wrap, D76); `run` engine-validation 토글(D77); 자기교차 floor 거부(D78). MINOR-2(OQ-30)는 비수정. |
 | **v0.22.1** | 2026-05-29 | `66d0f4b`* | doc-only PATCH — ADR 0030 §Status-update 블록을 companion 파일([`0030-...-status-updates.md`](docs/adr/0030-predictor-default-switch-status-updates.md))로 분리 (OQ-39 CLOSED; D73 / [ADR 0039](docs/adr/0039-adr-status-update-split-mechanism.md) NEW); README `__schema_version__` 마커 `0.1-draft`→`0.2-draft` 정직성 정정. (\*릴리즈 노트는 v0.22.0 커밋 위에 작성됨) |
 | v0.22.0 | 2026-05-29 | `66d0f4b` | web 공개배포 하드닝 — security audit closure (D71/D72 NEW; OQ-45 CLOSED; OQ-46 NEW; [ADR 0038](docs/adr/0038-input-resource-bounds.md) NEW) |
@@ -164,6 +165,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 - `layout.yaml` — `spatial_engine/proto/geometry_schema.json` 검증을 통과한 스피커 좌표
 - `setup_card.pdf` — 사용자가 인쇄해서 설치할 수 있는 안내 PDF (per-speaker 좌표 + 각도)
 - `binaural_demo.wav` — HUTUBS HRTF + pyroomacoustics ISM으로 합성한 30초 바이노럴 데모
+- **convolvable BRIR (auralization Phase A, v0.23.0)** — `roomestim_web.binaural.synthesize_brir` 가 geometry + 6-band 재질 + ISM 만으로 2-채널 임펄스 응답을 합성한다 (image-source 직접 조립 early + filtered-noise late tail + 2-HRIR decorrelation; RT60 단일 진실원천 = `predict_rt60_default_per_band`). diffuse tail 은 *plausible* 수준으로 기술하며 지각충실은 미검증(OQ-47). [ADR 0044](docs/adr/0044-rir-auralization-design.md)
 - `acoustic_report.json` — Sabine / Eyring / ISM RT60 + 옥타브 밴드별 결과
 - **3D 뷰어 (Plotly)** — 방 + 스피커 배치 인터랙티브 시각화
 - ZIP 아카이브 — 위 산출물 일괄 다운로드
@@ -365,15 +367,15 @@ canonical 테스트 환경은 miniforge 입니다: `/home/seung/miniforge3/bin/p
 
 | 레인 | 명령 | 비고 |
 |---|---|---|
-| Default | `pytest -m "not lab and not web and not e2e"` | 300 passed / 5 skipped (v0.22.2) — Linux CI에서 항상 실행 |
-| Web | `pytest -m web` | 68 passed / 4 skipped (v0.22.2) — `[web]` extras 필요 |
+| Default | `pytest -m "not lab and not web and not e2e"` | 300 passed / 5 skipped (v0.23.0) — Linux CI에서 항상 실행 |
+| Web | `pytest -m web` | 84 passed / 4 skipped (v0.23.0; +16 RIR auralization acceptance A1–A12 + real-HRTF splice + silent-band tail) — `[web]` extras 필요 |
 | Lab | `pytest -m lab` | A10/A11 — `tests/fixtures/lab_real.usdz` + ground-truth 필요 (human-gated) |
 | E2E | `pytest -m e2e` | ACE Challenge / SoundCam 외부 코퍼스 (env-var gated) |
 
 추가 도구:
 
 - `python scripts/lint_tense.py` — present-tense 정직성 leak 감사 ([ADR 0020](docs/adr/0020-ci-lint-tense-policy.md))
-- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.22.2 시점 38개 파일)
+- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.23.0 시점 38개 파일)
 - `ruff check` — clean
 
 ### 전체 게이트 한 번에 (권장 GREEN 확인)
@@ -462,7 +464,7 @@ app.py                      # HF Spaces 진입점 (roomestim_web.app:build_demo 
 proto/                      # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked)
 tests/                      # pytest, fixtures, hypothesis property tests
 tests/fixtures/             # lab_room.usdz, ace_*/, soundcam_synthesized/, web/
-tests/web/                  # 웹 데모 테스트 (68 passed / 4 skip @ v0.22.2)
+tests/web/                  # 웹 데모 테스트 (84 passed / 4 skip @ v0.23.0)
 scripts/lint_tense.py       # honesty-leak lint (ADR 0020)
 docs/                       # architecture, room_yaml_spec, ADR 0001-0039, 주간 보고서
 docs/adr/                   # 37개 ADR 파일 (0001~0039 번호대 + 0030 status-update companion)

@@ -135,3 +135,67 @@ mono early-RIR 조립에서 `room_pra.compute_rir()` 는 fractional-delay splatt
 ---
 
 *본 ADR 은 설계 제안이며 코드/테스트는 존재하지 않는다. 확정·구현은 critic 리뷰 및 planner 승인, blocking gate 충족 후 별도 진행한다.*
+
+---
+
+## §Status-update-v0.23.0 (Proposed → Accepted/Implemented, 2026-05-31)
+
+> 본 섹션은 ADR 0030 §Status-update split 관례(D73)에 따라 **추가**되며, 위 Proposed 본문은
+> 설계 제안의 역사적 기록으로 보존한다. Phase A 가 구현·테스트되어 **존재**하므로 본 섹션의
+> 시제는 과거/현재(tense-lint honesty scope, ADR 0020)를 사용한다.
+
+**Status**: **Accepted / Implemented** (Phase A; v0.23.0, MINOR bump 0.22.2 → 0.23.0).
+구현은 web-tier 한정, 신규 패키지 0(scipy+numpy), core `roomestim/` 무변경(기본 게이트
+300p/5s 회귀 0). 계획 `.omc/plans/rir-auralization-phase-a.md`, 결정 D79.
+
+### 구현 산출물
+
+- `roomestim_web/rir.py` — `assemble_early_rir_per_band`(image-source 직접 조립,
+  per-band mono-RIR), `mixing_time_s`(Lindau `1e-3·√V`), `total_rir_length_samples`
+  (`max(RT60_band)` −60 dB; 2 s 상수 미상속), `assemble_mono_rir_per_band`
+  (truncate-and-paste splice + per-band energy-continuity 정규화).
+- `roomestim_web/late_reverb.py` — `per_band_decay_envelope`, `synthesize_late_tail_per_band`
+  (seeded `default_rng(seed+band)`), `recombine_bands`(power-complementary octave
+  필터뱅크, single-pass Butterworth −3 dB 기하 크로스오버).
+- `roomestim_web/binaural.synthesize_brir` — 2-채널 convolvable BRIR; early per-DOA
+  `nearest_hrir`(공유 헬퍼 `_doa_az_el_deg`, 데모 콜사이트 불변), late 2-HRIR
+  decorrelation IC 목표 `sinc(2πf·d/c)`. 데모 `render_binaural_demo` /
+  `_resolve_damping_scalar` 불변.
+- 테스트 `tests/web/test_rir_auralization.py` — A1–A12 acceptance + real-HRTF BRIR
+  splice continuity + silent-band tail 보존(web-marked, load-bearing; web 게이트 82→84p).
+
+### Gate 해소
+
+- **§E spike (OQ-48) CLOSED**: `compute_rir()` 는 (mic,src) 당 broadband 1-D 단일 RIR 만
+  반환(band-separability 불가), `measure_rt60()` 는 sparse-ISM-RIR 에서 ~6× 오차(RT60
+  일관성 실패; ADR 0040:67 플래그 실증). 두 GREEN 조건 모두 RED → **image-source 직접 조립**
+  채택, `compute_rir`/`measure_rt60` **미사용**(deviation D2: 조건부-허용 제거, 확정 기각).
+- **8-band vs 6-band(deviation D1)**: pra 가 fs=48000 에서 octave 그리드를 8밴드로 확장
+  (`damping` shape (8, N); 125…4k + 8k/16k). `rir.py` 는 `damping[0:6]` 슬라이스 +
+  band-grid guard(선행 6밴드가 `OCTAVE_BANDS_HZ` 와 불일치 시 `ValueError`).
+- **Gate 1 (§D 바이노럴화)**: 2-HRIR decorrelation + IC 목표 `sinc(2πf·d/c)` 를 v1 합성
+  경로로 수용. OQ-47(지각충실)은 verification-deferred — 여전히 OPEN, *plausible* 로만 기술.
+- **Gate 3 (§A splice)**: per-band energy-continuity(5 ms 윈도우, 대표 shoebox 에서 6
+  밴드 모두 ≤3 dB 불연속) 구현·테스트(A12). mono per-band splice 는 HRIR-free early
+  mono RIR 기준 정규화이나, BRIR 각 채널 early 는 방향-의존 HRIR 에너지를 추가로 운반해
+  실제 BRIR 불연속이 production HRTF 에서 한 채널 ~3.22 dB(>3 dB)였다 → late tail 을
+  채널별 early BRIR pre-`t_mix` 윈도우 에너지로 재정규화해 양 채널 ≤3 dB 로 해소
+  (real-HRTF A12 테스트가 load-bearing: 수정 전 FAIL, 후 PASS).
+- **deviation D3 (RNG)**: 신규 late 경로는 `np.random.default_rng(seed+band)`(byte-equal),
+  데모의 process-global `np.random.seed` 불변.
+
+### A11 invariant 정정 (구현 발견)
+
+계획 A11 "broadband decay = max(RT60_band) ±10%" 는 측정 대상인 −15..−45 dB EDC 적합
+구간에서는 비균일-RT60 룸에 대해 성립하지 않는다(에너지-가중 밴드 recombination 이라
+이 구간 기울기는 광대역 high band 가 지배 — deep-tail asymptote 자체는 max(RT60)에
+점근하지만 ±10% 적합 구간에서 그 점근값을 회복할 수 없다). 따라서 원래 불변식은 이
+적합-구간 한정으로 불가성립이며, A11 을 **per-band tail 감쇠 = 해당 밴드 RT60 ±10%**
+(6 밴드 각각)로 정정 — §C handoff 의 정확한 계약이며 더 load-bearing. BRIR spliced
+tail 은 energy-continuity 재가중(A12)으로 밴드 균형이 의도적으로 변하므로 broadband
+RT60 미주장(A11b 가 tail 감쇠만 확인).
+
+### Out-of-scope (불변)
+
+FDN late(§B follow-on), neural late(Phase B), differentiable fitting(Phase C: OQ-50)
+는 deferred 유지. Reverse-criterion 불변.

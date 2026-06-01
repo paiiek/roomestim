@@ -2212,3 +2212,65 @@ deterministic 유지; 검증은 read 경계에서). **Drivers**: malformed floor
 아님 — 현 per-band α 는 wall row 별 area-weighted 평균이며, 이는 ADR 0030 §A–§E
 predictor 설계의 알려진 단순화다. trigger 미충족 (0 user reports). OQ-30 status
 불변.
+
+## D79 — RIR auralization Phase A 구현 (rir.py + late_reverb.py + synthesize_brir; OQ-48 CLOSE, v0.23.0, 2026-05-31)
+
+ADR 0044 Phase A 를 web-tier 한정·신규 패키지 0(scipy+numpy)으로 구현했다. core
+`roomestim/` 무변경(기본 게이트 300p/5s 불변 = 회귀 0). 신규 2 모듈 + binaural 1
+함수(additive):
+
+- `roomestim_web/rir.py` — pra image-source 직접 조립 early per-band mono-RIR
+  (`pra_source.images` 도달시간 + `pra_source.damping` per-band 감쇠), analytic
+  Lindau `t_mix[s]=1e-3·√V`(`room_volume` 재사용), per-band energy-continuity
+  splice(5 ms 윈도우, ≤3 dB 불연속), 총길이 = `max(RT60_band)` −60 dB 도달(데모
+  2 s 상수 미상속).
+- `roomestim_web/late_reverb.py` — per-band 지수감쇠 filtered-noise tail
+  (`decay=10^(−3t/RT60_band)`), power-complementary octave 필터뱅크(Butterworth
+  −3 dB 기하 크로스오버, single-pass `sosfilt` → 크로스오버 합산 ≤0.02 dB),
+  seeded `np.random.default_rng(seed+band)` byte-equal 결정성. 노이즈 대역제한 후
+  envelope 적용(역순은 필터 임펄스응답이 감쇠를 오염시켜 per-band RT60 깨짐).
+- `roomestim_web/binaural.synthesize_brir` — 2-채널 convolvable BRIR. early(pre-`t_mix`)
+  per-image DOA→`nearest_hrir`(공유 헬퍼 `_doa_az_el_deg`, 데모 콜사이트 불변),
+  late(post-`t_mix`) recombine→2-HRIR decorrelation IC 목표 `sinc(2πf·d/c)`.
+  pra per-band damping 확보 위해 신규 경로는 surface 를 6-band 재질로 승격(additive,
+  데모 빌더 불변).
+
+**OQ-48 CLOSED**: §E spike 가 `compute_rir`(broadband 1-D 단일 RIR, band-separability
+불가) + `measure_rt60`(~6× 오차) 둘 다 RED 로 확인 → image-source 직접 조립 채택,
+`compute_rir`/`measure_rt60` 미사용. RT60 단일 진실원천 = `predict_rt60_default_per_band`
+(predictor.py:559), 6 밴드 유지(500 Hz 스칼라 축소 배제).
+
+**8-band 모호성 플래그(deviation D1)**: pra 는 fs=48000 에서 octave 그리드를
+8밴드(125…4k + 8k/16k)로 확장 → `damping` shape (8, N). `rir.py` 는 `damping[0:6]`
+슬라이스 + band-grid guard(선행 6밴드가 `OCTAVE_BANDS_HZ` 와 불일치 시 `ValueError`,
+fail-loud). 데모의 `_resolve_damping_scalar`(binaural.py:80-94) 축소는 신규 경로에서
+미사용·불변.
+
+**Drivers**: room geometry+재질만으로 측정/학습 0 의 convolvable BRIR 합성(auralization).
+**Rejected**: `compute_rir` 단독(broadband-only, per-band handoff 불가); FDN-first late
+(신규 L + coloration 리스크, Phase B 로 deferred). **Honesty(ADR 0020)**: diffuse-tail
+바이노럴화는 *plausible* 로만 기술(지각충실 미검증 = OQ-47). **Versions**: `roomestim`
+0.22.2 → 0.23.0 (MINOR, additive feature surface). **Cross-refs**: ADR 0044
+§Status-update-v0.23.0; OQ-47/49/51 status-update; 계획 `.omc/plans/rir-auralization-phase-a.md`;
+16 acceptance 테스트 `tests/web/test_rir_auralization.py` (A1–A12 + real-HRTF splice
+continuity + silent-band tail 보존, web-marked; web 게이트 82→84p).
+
+### Deviation D2 (compute_rir 확정 기각) / D3 (RNG API)
+
+ADR §E 는 compute_rir 을 조건부-허용으로 두었으나 spike 가 두 조건 모두 RED →
+계획이 조건 제거하고 image-source 직접 조립으로 확정(D2). 신규 late 경로는
+process-global `np.random.seed`(데모, order-fragile) 대신 `np.random.default_rng(seed+band)`
+사용(D3, byte-equal 견고성); 데모 경로의 `np.random.seed(seed)` 는 불변.
+
+### A11 invariant 정정 (구현 발견)
+
+계획 A11 은 "broadband decay = max(RT60_band) ±10%" 였으나, 측정 대상인 −15..−45 dB
+EDC 적합 구간에서는 비균일 RT60 룸(painted shoebox 는 밴드별 ~1.1–1.9 s)에 대해
+성립하지 않는다: recombined broadband EDC 는 에너지-가중 혼합이라 이 구간 기울기를
+광대역 high band 가 지배한다. deep-tail asymptote 자체는 max(RT60)에 점근하지만 ±10%
+적합 구간에서 그 점근값을 회복할 수 없으므로, 원래 불변식은 이 적합-구간 한정으로
+불가성립이다. 따라서 A11 을 **per-band tail 감쇠 = 해당 밴드 RT60 ±10%**(6 밴드 각각,
+§C handoff 의 정확한 계약)로 정정 — 더 강하고 load-bearing(밴드 인덱스 오류·scalar
+축소·slope 오류가 즉시 탈락). BRIR spliced tail 은 energy-continuity 재가중(A12)으로
+밴드 균형이 의도적으로 변하므로 broadband RT60 미주장; 대신 A11b 가 tail 이 실제
+감쇠함을 확인.
