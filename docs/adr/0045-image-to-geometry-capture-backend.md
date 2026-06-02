@@ -70,6 +70,8 @@ Phase-0 스파이크 verdict(FALLBACK, conditional)에 근거하여, single-pano
 
 *better-than-rough* geometry 가 필요할 때의 1급 정확도 경로로 multi-view(MASt3R metric pointmap / VGGT feed-forward)를 예정한다. 근거: multi-point anchor(ArUco/측정 reference)로 scale 을 해소하므로 single-pano 의 단일 cam_h 스칼라보다 scale 민감도가 낮고(스파이크가 노출한 ~34–40 cm SCALE 성분 / ±10 cm cam_h 민감도를 완화), non-Manhattan/clutter 방을 더 잘 다룬다. 비용: point cloud → RANSAC/Manhattan plane fit + floor-ring 추출이 진짜 BUILD 작업이며(mesh adapter seam 재사용), multi-view metric-scale 실현가능성은 별도 스파이크가 선행한다(OQ-53). **라이선싱 주의**: MASt3R 및 VGGT 공개 가중치는 non-commercial 라이선스를 포함할 수 있으므로, 스파이크(OQ-53) 착수 전 라이선스 조건을 확인해야 한다 — 상업적 배포가 필요한 경우 후보 목록에서 제외하거나 대안을 탐색해야 할 수 있다(OQ-53 의 선행조건으로 포함).
 
+> **스파이크 결과 (2026-06-02, §Status-update-2026-06-02 / D83 참조)**: VGGT-1B multi-view 스파이크가 scale 하위질문을 PASS(median scale error 1.6%, 6/10 ≤5%)로 닫아 §C 의 핵심 risk(scale 민감도)를 해소했다. 단 ≤15 cm floor-geometry 는 out-of-the-box FALLBACK(median 22.4 cm; periphery under-coverage 가 root cause, scale 아님)이므로, multi-view 를 *조건부* 1급 경로로 두되 install-grade ship 전에 집중된 floor-extraction front-end 스파이크(OQ-59)를 선행한다.
+
 ### §D — 의존성 격리 (core 게이트 불오염)
 
 무거운 모델 의존(HorizonNet/MASt3R/VGGT 런타임)은 optional extra 뒤에 둔다 — `[vision]` 신규 선언 또는 기존 `[colmap]` 확장(`pyproject.toml:47`) 중 택일을 예정한다. core `roomestim/` 의 의존 0 을 불변으로 유지하여(`[web]`/`[colmap]` 선례, §Context (4)), 기본 게이트를 오염시키지 않는다. ADR 0001 의 `--experimental` 게이트를 상속하여 experimental 경로로 노출한다.
@@ -148,4 +150,28 @@ image backend 가 복원하는 `Surface.material`(`model.py:152`, required field
 
 ---
 
-*본 ADR 은 설계 제안이며 backend 코드/테스트는 존재하지 않는다(Phase-0 스파이크는 throwaway 아티팩트로 수행됨, repo 무변경). 확정·구현은 critic 리뷰 및 planner/사용자 승인, blocking gate 충족 후 별도 진행한다.*
+## §Status-update-2026-06-02 (multi-view 스파이크 → blocking gate #2 부분 충족; header PROPOSED 유지)
+
+**Blocking gate #2(multi-view metric-scale 스파이크, OQ-53)의 scale 하위질문이 PASS 로 닫혔고, ≤15 cm floor-geometry 정확도 하위질문은 FALLBACK 으로 OPEN 유지된다 — 따라서 §C 의 multi-view 1급 경로는 *조건부* 로 진행하되, ADR header 는 PROPOSED 에 머문다(gate #2 의 정확도 절반 미충족 + OQ-52/OQ-54 미해소).** 본 스파이크는 결정 D83 으로 기록되고, repo 밖 throwaway 아티팩트(`/home/seung/mmhoa/spike-vggt-multiview/` — `VERDICT.md`, `vggt_spike_verdict.json`)로 수행되어 repo 는 byte-for-byte 무변경이다.
+
+**스파이크 (수행됨; 사실 기술 — 과거 시제).** VGGT-1B(`facebook/VGGT-1B`, 비상업 research 체크포인트 — feasibility VERDICT 용; 별도의 gated VGGT-1B-Commercial 폼이 존재하나 본 verdict 에 불필요)를 feed-forward 로 돌려 dense pointmap + camera extrinsics(similarity scale)를 얻고, camera-baseline anchor 로 metric scale 을 복원한 뒤 floor-band → concave-hull footprint 를 추출해 GT 와 비교했다. 데이터는 ARKitScenes `raw` Validation split(Apple ML research 라이선스 — research VERDICT 용도)의 **10 개 별개 물리 방, 48 view** 로, 실제 handheld parallax 가 있는 posed RGB + ARKit metric trajectory + 등록된 3DOD room mesh(=floor GT)를 갖춘 **genuine multi-view + metric GT**(semi-synthetic 아님)이다.
+
+**VERDICT = FALLBACK.** 두 하위질문의 결과가 갈린다:
+
+- **Scale 하위질문 (gate #2 의 핵심 risk) = PASS.** Multi-view 는 single-pano 의 단일 cam_h 스칼라가 전체 metric scale 을 좌우하던 single-point-of-failure 를 제거했다(prior 스파이크: ±10 cm cam_h → median corner 18 cm → 32–38 cm). Parallax 로부터 scale 을 직접 복원하여 **median scale error 1.6%, 10 방 중 6 방이 best-fit similarity 대비 5% 이내** 를 순수 camera-baseline anchor 만으로 달성했다. OQ-53 의 scale 하위질문은 이로써 **해소(YES)** 된다.
+- **≤15 cm install-grade floor-geometry gate = out-of-the-box FAIL.** Median corner error **22.4 cm**(nv48) / 24.7 cm(nv32); **10 방 중 2 방만 ≤15 cm**, 8/10 ≤30 cm; RoomPlan LiDAR ~8.5 cm baseline 대비 ~2.6×. Median floor-area error 는 **43% undershoot**(방 periphery 의 체계적 under-coverage). 2/10 방(long-thin / low-parallax sweep)은 VGGT pose/baseline degeneracy 를 겪어 1 방이 96.5 cm outlier 였다.
+
+**Root cause = scale 가 아니라 periphery under-coverage.** 지배적 오차원은 sparse handheld sweep 이 far wall/corner 를 under-reconstruct 하는 coverage 문제이며, 스파이크의 naive concave-hull front-end 도 일부 기여한다 — 둘 다 tractable 한 front-end 문제로, **VGGT 의 scale·geometry 능력에 대한 원리적 기각이 아니다**(예: scene 41142278 은 scale error 0.4% / pose RMSE 4 cm 로 거의 완벽하나 4.9×6.9 m floor 중 3.1×5.8 m 만 cover).
+
+**권장 (§C 갱신).**
+
+1. **Gate #2 scale-stability = met** → OQ-53 의 scale 하위질문 RESOLVED 로 표기.
+2. **≤15 cm floor-geometry gate = FALLBACK(out-of-the-box)** → VGGT 를 **as-is drop-in install-grade 경로로 ship 하지 않는다**. 동시에 "VGGT 가 불가능하다" 는 결론도 내리지 않는다 — 실패는 coverage/front-end 이지 모델의 scale·geometry 능력이 아니다.
+3. **최고가치 다음 실험 = 집중된 floor-extraction front-end 스파이크**(OQ-59 신규): raw concave hull 대신 RANSAC wall-plane corner 추출, coverage-aware capture guidance, multi-view TSDF fusion, 또는 fuller coverage 를 위한 VGGT-Omega 체크포인트.
+4. **실용 product call**: image/video → geometry 를 **HONEST metric scale + 가시적 per-corner uncertainty 를 동반한 rough-estimate tier** 로 둔다(single-pano 보다 엄격히 우월 — scale honest, cam_h 추측 불요). ≤15 cm 주장은 LiDAR/RoomPlan 에 유보한다. 이는 본 ADR 의 provenance/honesty framing(measured vs reconstructed vs assumed) 및 OQ-54 와 정합한다.
+
+**Header PROPOSED 유지 근거.** gate #2 의 정확도 절반(≤15 cm)이 미충족이고 blocking gate #1(OQ-52 in-domain 검증)·#3(OQ-54 provenance 스키마)이 미해소이므로, header 를 Accepted 로 전환하지 않는다.
+
+---
+
+*본 ADR 은 설계 제안이며 backend 코드/테스트는 존재하지 않는다(Phase-0 스파이크 및 multi-view 스파이크는 throwaway 아티팩트로 수행됨, repo 무변경). 확정·구현은 critic 리뷰 및 planner/사용자 승인, blocking gate 충족 후 별도 진행한다.*

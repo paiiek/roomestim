@@ -2404,3 +2404,54 @@ full `pytest -q` 399p/8s, ruff clean, mypy --strict roomestim 38파일 clean, te
 code-review APPROVE-WITH-NITS(반영), independent verifier PASS.
 **Cross-refs**: ADR 0042(설계; §Status-update-v0.24.0), ADR 0027(convex-hull-of-projection 출처),
 ADR 0040(non-shoebox RT60 짝트랙), ADR 0038(mesh 입력 상한 — concave 도 동일 cap 하류), OQ-13e(부분진척).
+
+## D83 — VGGT multi-view 스파이크: scale PASS / ≤15 cm FALLBACK → rough-tier now + front-end 후속 스파이크 (ADR 0045 blocking gate #2, doc-only, 2026-06-02)
+
+ADR 0045 blocking gate #2(multi-view metric-scale 실현가능성, OQ-53)를 검증하는 feasibility VERDICT
+스파이크를 수행하고 그 결과 + build-direction 결정을 기록한다. **doc-only** — 코드/테스트/version bump 0,
+repo 는 byte-for-byte 무변경. 스파이크는 repo 밖 throwaway 아티팩트로 수행됐다
+(`/home/seung/mmhoa/spike-vggt-multiview/` — `VERDICT.md`, `vggt_spike_verdict.json`).
+
+**스파이크 (수행됨; 사실 기술 — 과거 시제)**: VGGT-1B(`facebook/VGGT-1B`, 비상업 research 체크포인트 —
+feasibility VERDICT 용; 별도의 gated VGGT-1B-Commercial 폼이 존재하나 본 verdict 에 불필요)를 feed-forward
+로 돌려 dense pointmap + camera extrinsics(similarity scale)를 얻고, camera-baseline anchor 로 metric scale 을
+복원한 뒤 floor-band → concave-hull footprint 를 추출해 GT 와 비교했다. 데이터 = ARKitScenes `raw` Validation
+split(Apple ML research 라이선스 — research VERDICT 용도)의 **10 개 별개 물리 방, 48 view** — 실제 handheld
+parallax 가 있는 posed RGB + ARKit metric trajectory + 등록된 3DOD room mesh(=floor GT)를 갖춘 **genuine
+multi-view + metric GT**(semi-synthetic 아님).
+
+**VERDICT = FALLBACK** — 두 하위질문의 결과가 갈린다:
+- **scale 하위질문(gate #2 핵심 risk) = PASS**: multi-view 가 single-pano 의 단일 cam_h 스칼라가 전체 metric
+  scale 을 좌우하던 single-point-of-failure 를 제거(prior 스파이크: ±10 cm cam_h → median corner 18 cm →
+  32–38 cm). parallax 로부터 scale 직접 복원 — **median scale error 1.6%, 10 방 중 6 방 best-fit 대비 ≤5%**,
+  순수 camera-baseline anchor 만으로. OQ-53 scale 하위질문 RESOLVED(YES).
+- **≤15 cm install-grade floor-geometry gate = out-of-the-box FAIL**: median corner error **22.4 cm**(nv48)
+  / 24.7 cm(nv32); **2/10 방만 ≤15 cm**, 8/10 ≤30 cm; median floor-area **43% undershoot**(RoomPlan LiDAR
+  ~8.5 cm 대비 ~2.6×). 2/10 방(long-thin / low-parallax sweep)은 VGGT pose/baseline degeneracy(1 방 96.5 cm outlier).
+
+**Root cause = scale 아니라 periphery under-coverage**: sparse handheld sweep 이 far wall/corner 를
+under-reconstruct 하는 coverage 문제(+ 스파이크의 naive concave-hull front-end 기여) — 둘 다 tractable front-end
+문제이며 **VGGT 의 scale·geometry 능력의 원리적 기각이 아니다**(예: scene 41142278 scale error 0.4% / pose
+RMSE 4 cm 인데 4.9×6.9 m floor 중 3.1×5.8 m 만 cover).
+
+**Decision (build-direction)**:
+1. **rough-tier now** — image/video → geometry 를 **HONEST metric scale + 가시적 per-corner uncertainty 를
+   동반한 rough-estimate tier** 로 둔다. single-pano 보다 엄격히 우월(scale honest, cam_h 추측 불요). ≤15 cm
+   주장은 LiDAR/RoomPlan 에 유보 — ADR 0045 provenance/honesty framing(measured/reconstructed/assumed) + OQ-54 정합.
+2. **VGGT 를 as-is drop-in install-grade 경로로 ship 하지 않는다**, 동시에 "VGGT 불가능" 결론도 내리지 않는다
+   (실패는 coverage/front-end, 모델 능력 아님).
+3. **front-end 후속 스파이크 선행(OQ-59 신규)** — install-grade ≤15 cm 주장 또는 multi-view first-class 승격 전,
+   집중된 floor-extraction front-end 스파이크: raw concave hull 대신 RANSAC wall-plane corner 추출 /
+   coverage-aware capture guidance / multi-view TSDF fusion / VGGT-Omega 체크포인트. 최고가치 다음 실험.
+
+**ADR 0045 header = PROPOSED 유지**: gate #2 의 정확도 절반(≤15 cm)이 미충족이고 blocking gate #1(OQ-52
+in-domain 검증)·#3(OQ-54 provenance 스키마)이 미해소 → Accepted 미전환. ADR 0045 에 §Status-update-2026-06-02
+추가 + §C 스파이크-결과 노트 + OQ-53 부분 RESOLVED / OQ-59 신규(open-questions.md) 기록.
+
+**doc-only 변경 파일**: `docs/adr/0045-image-to-geometry-capture-backend.md`(§Status-update-2026-06-02 +
+§C 노트, header PROPOSED 불변), `.omc/plans/open-questions.md`(OQ-53 부분 RESOLVED, OQ-59 신규),
+본 D83. source/test/version 무변경.
+**Gates(doc-only, 2026-06-02)**: tense-lint EXIT 0; source/test 무변경(`pytest -q` 399p/8s 불변 — 코드 무변경).
+**Cross-refs**: ADR 0045(설계; §Status-update-2026-06-02 / §C / blocking gate #2), D81(image→geometry 사이클
++ ADR 0045 PROPOSED), OQ-53(부분 RESOLVED), OQ-59(신규), OQ-52/OQ-54(미해소 blocking gate); 스파이크 아티팩트
+`/home/seung/mmhoa/spike-vggt-multiview/`(`VERDICT.md`, `vggt_spike_verdict.json`).
