@@ -4,15 +4,19 @@ Accepts ``.obj``, ``.gltf``, ``.glb``, and ``.ply`` mesh files.
 ``.usdz`` raises :exc:`NotImplementedError` (requires the optional ``usd``
 extra; not part of the default-CI smoke surface).
 
-Geometry: convex hull of XY-projected vertices (decisions.md D6 — alpha-shape
-reconstruction deferred to v0.3). Material defaults per :data:`MaterialLabel`.
+Geometry: convex hull of XY-projected vertices by default; an opt-in concave
+reconstruction (``floor_reconstruction="concave"`` or the
+``ROOMESTIM_MESH_FLOOR_RECON`` env override) recovers non-shoebox footprints
+via :func:`roomestim.reconstruct.floor_polygon.floor_polygon_from_mesh`.
+Material defaults per :data:`MaterialLabel`.
 """
 
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import trimesh
@@ -30,12 +34,23 @@ from roomestim.model import (
     Surface,
     canonicalize_ccw,
 )
+from roomestim.reconstruct.floor_polygon import floor_polygon_from_mesh
 from roomestim.reconstruct.listener_area import default_listener_area
 from roomestim.reconstruct.walls import walls_from_floor_polygon
 
 __all__ = ["MeshAdapter"]
 
 _SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply"})
+
+FloorReconstruction = Literal["convex", "concave"]
+
+# Floor-reconstruction mode (env override). ``ROOMESTIM_MESH_FLOOR_RECON``
+# lets CLI/web opt into concave reconstruction without a code change,
+# consistent with the ``ROOMESTIM_MAX_MESH_*`` env style. Precedence: an
+# explicit ``MeshAdapter(floor_reconstruction=...)`` constructor argument wins;
+# when the constructor argument is left at its sentinel default the env var is
+# consulted; absent both, the mode is ``"convex"`` (byte-equal legacy path).
+_FLOOR_RECON_ENV = "ROOMESTIM_MESH_FLOOR_RECON"
 
 # Input resource bounds (ADR 0038). An untrusted mesh reaches
 # ``trimesh.load(force="mesh")`` from both the CLI and the publicly-deployable
@@ -50,7 +65,50 @@ class MeshAdapter:
 
     Supported formats: ``.obj``, ``.gltf``, ``.glb``, ``.ply``.
     Mesh must be metric-scale (metres). ``scale_anchor`` is ignored.
+
+    Parameters
+    ----------
+    floor_reconstruction:
+        ``"convex"`` (default) takes the convex hull of the floor-projected
+        vertices — the legacy, byte-equal path. ``"concave"`` recovers a
+        non-shoebox footprint via :func:`floor_polygon_from_mesh`, falling
+        back to the convex hull (with a :class:`UserWarning`) when the
+        concave reconstruction degenerates. When left at its sentinel
+        default the ``ROOMESTIM_MESH_FLOOR_RECON`` environment variable
+        selects the mode; an explicit argument always wins over the env var.
     """
+
+    def __init__(
+        self,
+        *,
+        floor_reconstruction: FloorReconstruction | None = None,
+    ) -> None:
+        self._floor_reconstruction = self._resolve_floor_reconstruction(
+            floor_reconstruction
+        )
+
+    @staticmethod
+    def _resolve_floor_reconstruction(
+        explicit: FloorReconstruction | None,
+    ) -> FloorReconstruction:
+        """Resolve the floor-reconstruction mode (constructor arg > env > convex)."""
+        if explicit is not None:
+            if explicit not in ("convex", "concave"):
+                raise ValueError(
+                    f"MeshAdapter: floor_reconstruction must be 'convex' or "
+                    f"'concave', got {explicit!r}."
+                )
+            return explicit
+        env_value = os.environ.get(_FLOOR_RECON_ENV)
+        if env_value is None:
+            return "convex"
+        normalized = env_value.strip().lower()
+        if normalized not in ("convex", "concave"):
+            raise ValueError(
+                f"MeshAdapter: {_FLOOR_RECON_ENV}={env_value!r} is invalid; "
+                f"expected 'convex' or 'concave'."
+            )
+        return cast(FloorReconstruction, normalized)
 
     def parse(
         self,
@@ -81,6 +139,26 @@ class MeshAdapter:
                 f"to raise it)."
             )
         return self._room_model_from_mesh(path_obj, octave_band=octave_band)
+
+    @staticmethod
+    def _convex_floor_polygon(vertices: np.ndarray) -> list[Point2]:
+        """Convex hull of the floor-projected vertices (legacy byte-equal path).
+
+        Projects vertices to the (x, z) floor plane and takes their convex
+        hull, dropping the duplicate closing vertex shapely returns on the
+        exterior. v0.1 smoke geometry semantics — no concavity recovery.
+        """
+        xz_points = [(float(v[0]), float(v[2])) for v in vertices]
+        hull = MultiPoint(xz_points).convex_hull
+        if not isinstance(hull, ShapelyPolygon):
+            raise ValueError(
+                "MeshAdapter: convex hull of projected vertices is not a "
+                "polygon; the mesh appears degenerate (collinear or single-point)."
+            )
+        exterior_coords = list(hull.exterior.coords)[:-1]
+        return canonicalize_ccw(
+            [Point2(float(x), float(z)) for x, z in exterior_coords]
+        )
 
     def _room_model_from_mesh(self, path: Path, *, octave_band: bool = False) -> RoomModel:
         loaded = trimesh.load(path, force="mesh")
@@ -128,22 +206,23 @@ class MeshAdapter:
                 f"(y_max={y_max}, y_min={y_min})"
             )
 
-        # Project vertices to the (x, z) floor plane and take their convex
-        # hull. v0.1 smoke geometry only — alpha-shape reconstruction is
-        # deferred (decisions.md D6).
-        xz_points = [(float(v[0]), float(v[2])) for v in vertices]
-        hull = MultiPoint(xz_points).convex_hull
-        if not isinstance(hull, ShapelyPolygon):
-            raise ValueError(
-                "MeshAdapter: convex hull of projected vertices is not a "
-                "polygon; the mesh appears degenerate (collinear or single-point)."
-            )
-
-        # Drop the duplicate closing vertex shapely returns on the exterior.
-        exterior_coords = list(hull.exterior.coords)[:-1]
-        floor_polygon_2d = canonicalize_ccw(
-            [Point2(float(x), float(z)) for x, z in exterior_coords]
-        )
+        # Reconstruct the floor footprint. ``convex`` (default) takes the
+        # convex hull of the floor-projected vertices — the byte-equal legacy
+        # path. ``concave`` recovers re-entrant corners (non-shoebox rooms) and
+        # falls back to convex on degeneracy.
+        if self._floor_reconstruction == "concave":
+            try:
+                floor_polygon_2d = floor_polygon_from_mesh(vertices)
+            except ValueError as exc:
+                warnings.warn(
+                    f"MeshAdapter: concave floor reconstruction failed "
+                    f"({exc}); falling back to convex hull.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                floor_polygon_2d = self._convex_floor_polygon(vertices)
+        else:
+            floor_polygon_2d = self._convex_floor_polygon(vertices)
 
         # Surfaces: floor + ceiling polygons (Point3 lifts at y_min / y_max),
         # walls from convex-hull edges.

@@ -2350,3 +2350,57 @@ ADR 0001 의 image 브랜치 closure 진행.
 (mesh adapter seam), ADR 0044(image-derived geometry 하류 소비자), D26(forbidden-indefinite-deferral);
 리서치 `.omc/research/image-to-geometry-feasibility-2026-06-01.md`. **Gates(doc-only)**: tense-lint
 EXIT 0; source/test 무변경(`git status` = docs/adr/ + docs/architecture.md + .omc/plans/ 만).
+
+## D82 — 비-shoebox floor 재구성: opt-in concave-hull footprint (ADR 0042 PR1, v0.24.0, 2026-06-02)
+
+ADR 0042 가 제안한 비볼록 floor polygon 재구성을 **opt-in** `MeshAdapter` 모드로 구현했다.
+`roomestim/reconstruct/floor_polygon.py` 의 죽은 `floor_polygon_from_mesh` stub(프로덕션 호출처 0)
+을 실구현으로 채우고, `MeshAdapter` default 경로는 이전(v0.23.1) convex-hull 동작과 **byte-equal**
+로 보존했다 — CLI·library·web 어느 경로도 명시적 opt-in 없이는 출력이 바뀌지 않는다.
+
+**알고리즘 선택 — `shapely.concave_hull`(신규 의존 0)**: ADR 0042 §B 는 `scipy.spatial.Delaunay`
++ `shapely.ops.polygonize` 레시피를 스케치했으나, 랜딩 코드는 더 단순한 `shapely.concave_hull`
+경로를 택했다 — 동일한 zero-dep 제약(`shapely>=2.0` 이미 core, `pyproject.toml:15`)이면서 수동
+α/circumradius 휴리스틱 없이 단일 `ratio` knob 만 노출(표면 축소). `(N,3)`→`(x,z)` 투영 →
+`concave_hull(ratio=0.4)` → `.simplify(0.05, preserve_topology=True)` → `canonicalize_ccw`.
+
+**튜닝 상수 근거**:
+- `ratio=0.4` — concave-hull tightness `(0,1]`. `1.0`=convex hull, `→0.0`=outlier 마다 달라붙는
+  톱니 경계. `0.4` 는 L자형 notch 를 복원하면서 dense·약노이즈 LiDAR/photogrammetry grid 에
+  강건한 경험적 중간점.
+- `simplify(0.05)` — 5 cm Douglas-Peucker tolerance 로 dense scan 의 near-collinear 경계 좌표를
+  깨끗한 직선으로 병합(+sub-5 cm jitter 제거)하되, 수십 cm 이상 떨어진 실제 구조 코너는 보존.
+
+**opt-in 와이어링 결정**: `MeshAdapter(*, floor_reconstruction="convex"|"concave")` 생성자 인자 +
+`ROOMESTIM_MESH_FLOOR_RECON` env override(`ROOMESTIM_MAX_MESH_*` env 스타일과 일관). precedence =
+생성자 인자 > env > `"convex"`. `"convex"` 는 기존 인라인 `MultiPoint(...).convex_hull` 을
+`_convex_floor_polygon` 헬퍼로 추출만 한 byte-equal 레거시 코드(회귀테스트로 핀). `"concave"`
+모드의 degeneracy(`ratio` 범위 위반/NaN, <3 distinct pt, MultiPolygon, holes, non-Polygon,
+self-intersecting ring)는 `floor_polygon_from_mesh` 가 `ValueError` 로 올리고, 어댑터가 이를 잡아
+**convex fallback + UserWarning** 으로 강등 — concave 가 convex 가 처리할 수 있던 parse 를 hard-fail
+시키지 않는다.
+
+**정직성 — dense-cloud 가정**: concave-hull 은 투영 cloud 가 dense(점간격 ≲0.25 m; 수천 vertex)
+일 때만 정확하다. **sparse low-poly 메시**(예: 코너당 vertex 1개인 6점 extruded L prism)는 경계
+샘플이 너무 거칠어 notch 를 못 잡고 면적이 **~10–20% 미달**한다(`floor_polygon_from_mesh` docstring
+명시). 이 caveat 이 모드를 default 가 아닌 **opt-in** 으로 둔 이유다. CLI/web user-facing default 불변.
+
+**downstream tolerance**: core 변경이지만 하류는 무수정 — `geom/polygon.py`(shoelace/volume),
+`listener_area.py`(concave-centroid `representative_point` fallback), RoomModel/placement/Sabine 가
+이미 simple non-convex footprint 를 수용(ADR 0042 §Context (4)). non-shoebox RT60 은 종전대로 Eyring
+라우팅(ADR 0040 트랙, 무변경). self-intersecting 만 미지원이며 신규 `is_simple_polygon` 가드가 추출
+경계에서 거부.
+
+**미구현(잔존)**: (i) RANSAC wall-plane fit = **미채택**(ADR 0042 §C — extrusion 벽 재사용); (ii)
+실측-메시 corner-error ≤10 cm **비-tautological 검증**은 SoundCam mesh access 미확보로 OPEN(OQ-13e (i)).
+따라서 dense-cloud ≤10 cm 주장은 실제 스캔에서 아직 실증되지 않았다. ADR 0042 header 는 PROPOSED
+framing 유지(부분 미구현 → Accepted 로 미전환); §Status-update-v0.24.0 로 PR1 랜딩 기록.
+
+**Versions**: `roomestim` 0.23.1 → 0.24.0 (MINOR, additive core feature — `floor_reconstruction`
+모드는 default 불변의 신규 observable behavior → MINOR not PATCH). `roomestim_web` 0.18-web.0 불변
+(core 변경, web source 무변경, D30). `__schema_version__` 0.2-draft 불변(RoomModel 필드 미추가).
+**Gates(2026-06-02)**: default(marker-scoped) 312p/5s(v0.23.1 300/5 → +12 core 회귀), web 86p/4s(불변),
+full `pytest -q` 399p/8s, ruff clean, mypy --strict roomestim 38파일 clean, tense-lint EXIT 0.
+code-review APPROVE-WITH-NITS(반영), independent verifier PASS.
+**Cross-refs**: ADR 0042(설계; §Status-update-v0.24.0), ADR 0027(convex-hull-of-projection 출처),
+ADR 0040(non-shoebox RT60 짝트랙), ADR 0038(mesh 입력 상한 — concave 도 동일 cap 하류), OQ-13e(부분진척).

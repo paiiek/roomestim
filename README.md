@@ -108,10 +108,11 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 ---
 
-## 현재 상태 (2026-06-01)
+## 현재 상태 (2026-06-02)
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.24.0** | 2026-06-02 | (uncommitted) | 비-shoebox floor 재구성 — opt-in concave-hull footprint (MINOR, additive core feature) — 죽은 `floor_polygon_from_mesh` stub 을 `shapely.concave_hull`(신규 의존 0; `ratio=0.4`/`simplify=0.05`)로 구현해 L자형·notch 방의 re-entrant 코너 보존; `MeshAdapter(floor_reconstruction="convex"\|"concave")` 생성자 인자 + `ROOMESTIM_MESH_FLOOR_RECON` env(precedence arg>env>convex). default convex 는 이전 동작과 **byte-equal**(회귀 핀), concave 는 degeneracy 시 convex+UserWarning fallback. **정직성**: concave 는 opt-in 이며 dense-cloud(점간격 ≲0.25 m) 가정 — sparse low-poly 메시는 면적 ~10–20% 미달; CLI/web user-facing default 불변. (D82 / [ADR 0042](docs/adr/0042-live-mesh-corner-extraction.md) §Status-update-v0.24.0; OQ-13e 부분진척, 실측-메시 ≤10 cm 검증은 SoundCam access 대기로 OPEN 유지). |
 | **v0.23.1** | 2026-06-01 | (uncommitted) | 바이노럴 렌더러 HRTF 좌/우 채널 스왑 수정 PATCH (web-tier correctness) — 렌더러가 pipeline 관례 azimuth(RIGHT=+az)를 SOFA 관례(LEFT=+az)로 변환 없이 `nearest_hrir` 에 넘겨 모든 측방 성분이 L↔R 거울반전되던 결함. 단일권위 `roomestim/coords.py:pipeline_to_ambix`(az→−az) 경유로 수정, 두 렌더 경로(`render_binaural_demo` / `synthesize_brir`) 동일 적용; diffuse late tail 무영향 (D80). dataset-grounded ILD 회귀테스트 2종 추가. core 무변경(회귀 0). |
 | **v0.23.0** | 2026-05-31 | (uncommitted) | RIR auralization Phase A (MINOR, additive, web-tier 한정·신규 패키지 0) — image-source 직접 조립 early per-band mono-RIR + filtered-noise late tail + 2-채널 convolvable BRIR (D79 / [ADR 0044](docs/adr/0044-rir-auralization-design.md) §Status-update-v0.23.0; OQ-48 CLOSED; OQ-47/49/51 status-update). `roomestim_web/rir.py` + `roomestim_web/late_reverb.py` + `binaural.synthesize_brir`; RT60 단일 진실원천 `predict_rt60_default_per_band` 6-band 유지; per-band energy-continuity splice. core 무변경(회귀 0). |
 | **v0.22.2** | 2026-05-31 | (uncommitted) | 감사 발견 확정결함 PATCH — ISM 기본 predictor 저흡음 적응적 max_order(Eyring 하한 불변식, D74 / [ADR 0030](docs/adr/0030-predictor-default-switch-status-updates.md) §Status-update-v0.22.2); 비-shoebox binaural DOA 축 스왑 + extrusion 렌더러 경로 활성화(D75); CLI ValidationError/YAMLError 포착(reader 가 ValueError 로 wrap, D76); `run` engine-validation 토글(D77); 자기교차 floor 거부(D78). MINOR-2(OQ-30)는 비수정. |
@@ -348,7 +349,7 @@ Phone scan
   - [ADR 0037](docs/adr/0037-wall-index-reference-frame.md) — `Object.wall_index` walls-only 참조 프레임
   - [ADR 0038](docs/adr/0038-input-resource-bounds.md) — adapter 단계 untrusted-input 리소스 바운드
   - [ADR 0039](docs/adr/0039-adr-status-update-split-mechanism.md) — ADR §Status-update 분리 메커니즘
-- **결정 로그 (D1 ~ D80)** — [`.omc/plans/decisions.md`](.omc/plans/decisions.md). 단일 이슈에 대해
+- **결정 로그 (D1 ~ D82)** — [`.omc/plans/decisions.md`](.omc/plans/decisions.md). 단일 이슈에 대해
   Yes/No로 종결된 의사 결정과 reverse-criterion을 기록합니다. 최근 추가:
   - **D38** — predictor-default cascade policy (ADR 0030)
   - **D62** — test-only deprecated alias 마이그레이션
@@ -358,8 +359,9 @@ Phone scan
   - **D74~D78** — 감사 확정결함 PATCH (ISM 적응적 max_order / binaural DOA 축 / CLI 입력검증 / `run` 토글 / 자기교차 floor, v0.22.2)
   - **D79** — RIR auralization Phase A (rir.py + late_reverb.py + synthesize_brir, v0.23.0)
   - **D80** — 바이노럴 HRTF 좌/우 채널 스왑 수정 (coords.pipeline_to_ambix 단일권위 경유, v0.23.1)
-- **Open Questions (OQ-1 ~ OQ-46)** — [`.omc/plans/open-questions.md`](.omc/plans/open-questions.md).
-  최근: OQ-39 CLOSED (ADR 0030 split), OQ-45 CLOSED, OQ-46 NEW (v0.22.0 재검토 발견).
+  - **D82** — 비-shoebox floor 재구성 — opt-in concave-hull (`shapely.concave_hull`, 신규 의존 0; byte-equal default; ADR 0042 PR1, v0.24.0)
+- **Open Questions (OQ-1 ~ OQ-58)** — [`.omc/plans/open-questions.md`](.omc/plans/open-questions.md).
+  최근: OQ-45 CLOSED, OQ-46 NEW, OQ-52~58 NEW (image→geometry 설계); OQ-13e 부분진척 (concave 추출 landed, 실측-메시 ≤10 cm 검증 OPEN 유지).
 
 ---
 
@@ -370,22 +372,22 @@ canonical 테스트 환경은 miniforge 입니다: `/home/seung/miniforge3/bin/p
 
 | 레인 | 명령 | 비고 |
 |---|---|---|
-| Default | `pytest -m "not lab and not web and not e2e"` | 300 passed / 5 skipped (v0.23.1) — Linux CI에서 항상 실행 |
-| Web | `pytest -m web` | 86 passed / 4 skipped (v0.23.1; +2 dataset-grounded ILD 회귀 D80) — `[web]` extras 필요 |
+| Default | `pytest -m "not lab and not web and not e2e"` | 312 passed / 5 skipped (v0.24.0; +12 concave floor 재구성 회귀 D82) — Linux CI에서 항상 실행 |
+| Web | `pytest -m web` | 86 passed / 4 skipped (v0.24.0; core 변경이라 불변) — `[web]` extras 필요 |
 | Lab | `pytest -m lab` | A10/A11 — `tests/fixtures/lab_real.usdz` + ground-truth 필요 (human-gated) |
 | E2E | `pytest -m e2e` | ACE Challenge / SoundCam 외부 코퍼스 (env-var gated) |
 
 추가 도구:
 
 - `python scripts/lint_tense.py` — present-tense 정직성 leak 감사 ([ADR 0020](docs/adr/0020-ci-lint-tense-policy.md))
-- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.23.1 시점 38개 파일)
+- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.24.0 시점 38개 파일)
 - `ruff check` — clean
 
 ### 전체 게이트 한 번에 (권장 GREEN 확인)
 
 ```bash
 PY=/home/seung/miniforge3/bin/python   # canonical env
-$PY -m pytest -m "not lab and not web and not e2e" -q   # default: 300 passed / 5 skipped
+$PY -m pytest -m "not lab and not web and not e2e" -q   # default: 312 passed / 5 skipped
 $PY -m pytest -m web -q                                  # web:     86 passed / 4 skipped
 ruff check                                               # clean
 $PY scripts/lint_tense.py                                # honesty-leak: clean (exit 0)
@@ -467,13 +469,13 @@ app.py                      # HF Spaces 진입점 (roomestim_web.app:build_demo 
 proto/                      # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked)
 tests/                      # pytest, fixtures, hypothesis property tests
 tests/fixtures/             # lab_room.usdz, ace_*/, soundcam_synthesized/, web/
-tests/web/                  # 웹 데모 테스트 (86 passed / 4 skip @ v0.23.1)
+tests/web/                  # 웹 데모 테스트 (86 passed / 4 skip @ v0.24.0)
 scripts/lint_tense.py       # honesty-leak lint (ADR 0020)
 docs/                       # architecture, room_yaml_spec, ADR 0001-0039, 주간 보고서
 docs/adr/                   # 37개 ADR 파일 (0001~0039 번호대 + 0030 status-update companion)
 docs/perf_verification_*.md # 버전별 perf 스냅샷
 docs/protocol_a10b_*.md     # in-situ 캡처 프로토콜 DOC
-.omc/plans/                 # 설계 계획 + decisions.md (D1-D73) + open-questions.md (OQ-1~OQ-46)
+.omc/plans/                 # 설계 계획 + decisions.md (D1-D82) + open-questions.md (OQ-1~OQ-58)
 RELEASE_NOTES_v*.md         # 버전별 릴리즈 노트
 ```
 

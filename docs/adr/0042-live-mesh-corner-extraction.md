@@ -208,3 +208,52 @@ OQ-13e(ii) 전제의 정정(§Context (4)): geom 레이어 확장은 거의 불�
 - `pyproject.toml:11-18` — scipy/shapely/trimesh 모두 core(신규 의존 불요).
 - ADR 0016/0017/0018 — A10a substitute + tautology framing. ADR 0027 — convex-hull-of-projection 채택. ADR 0038 — 메시 입력 상한. ADR 0040 — non-shoebox RT60.
 - `.omc/plans/open-questions.md` — OQ-13e 본문(3조건). `.omc/plans/decisions.md:79` — D6(=capture-device, polygon 무관). `docs/adr/0027` + `decisions.md:1257,1848` + `mesh.py:7` — convex-hull deferral 실제 출처 + "D6" mislabel 위치.
+
+---
+
+## §Status-update-v0.24.0 (2026-06-02)
+
+**PR1-equivalent landed (opt-in); header stays PROPOSED.** D82 / v0.24.0 implements
+this ADR's §B floor-polygon reconstruction as an opt-in `MeshAdapter` mode. The
+dead `floor_polygon_from_mesh` stub (§Context (1)) is now a real implementation,
+and the inline convex hull in `mesh.py` is relocated into a `_convex_floor_polygon`
+helper. What landed vs. what this ADR proposed:
+
+- **Algorithm — `shapely.concave_hull`, not the §B `scipy.spatial.Delaunay` +
+  `shapely.ops.polygonize` recipe.** Both satisfy the §A "zero new dependency"
+  constraint (`shapely>=2.0` already core). The landed path exposes a single
+  `ratio` knob (`0.4` default) plus a 5 cm `simplify` instead of a manual α /
+  circumradius heuristic — a smaller surface for the same ±10 cm goal (§정밀도 목표).
+  §A's "(a) alpha-shape" recommendation is honored in substance (concave hull
+  preserving re-entrant corners); the specific Delaunay mechanics in §B are
+  superseded by `concave_hull`.
+- **Default byte-equal (§B hard short-circuit contract honored).** The
+  `floor_reconstruction="convex"` mode (the sentinel default) is the relocated
+  legacy convex-hull code, regression-pinned byte-equal to v0.23.1. Opt-in is via
+  the `floor_reconstruction="convex"|"concave"` constructor argument +
+  `ROOMESTIM_MESH_FLOOR_RECON` env (precedence arg > env > convex), not the §B
+  `alpha=None` signature — but the §B regression mechanism (code-path identity,
+  not numeric convergence) is what the convex helper preserves.
+- **Self-intersection guard (§D) landed** via `is_simple_polygon` at the
+  extraction boundary; MultiPolygon → largest component, holes → exterior ring
+  (§B degeneracy guards). Downstream concave support (§Context (4)) is unchanged
+  and needed no `geom/polygon.py` edit.
+- **Walls — extrusion reused; RANSAC NOT adopted** (§C unchanged).
+
+**Honesty — header NOT flipped to Accepted.** Two §I items remain unimplemented,
+so the Status header stays PROPOSED:
+
+- **PR2/PR4 non-tautological validation OPEN.** The synthetic-L-shape mesh
+  generator (§F item 1; the `l_shape_mesh_ply` deliverable the ADR flagged as
+  not-yet-existing) and the SoundCam-gated A10a promotion (§F item 3 / PR4) did
+  NOT land. The dense-cloud ≤ 10 cm corner-error claim is therefore **not yet
+  empirically validated on a real or interior-vertex synthetic mesh**; OQ-13e (i)
+  (SoundCam mesh access) stays unavailable. The landed `floor_polygon.py`
+  documents the dense-cloud assumption (sparse low-poly footprints undershoot
+  area ~10–20 %) honestly in its docstring.
+- **PR3 CLI flag** — only the constructor argument + env override are exposed;
+  no CLI `--floor-reconstruction` flag landed this cycle (web/CLI user-facing
+  default unchanged).
+
+See D82 (`.omc/plans/decisions.md`), `RELEASE_NOTES_v0.24.0.md`, and OQ-13e
+(partial progress — still OPEN).
