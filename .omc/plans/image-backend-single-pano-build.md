@@ -1,5 +1,11 @@
 # Image→Geometry 캡처 백엔드 (단일-파노 rough tier) — BUILD (resume truth source)
 
+## ✅ BUILD COMPLETE (2026-06-04, v0.25.0)
+P0–P5 전부 완료·커밋. 단일-파노 image→geometry 캡처 백엔드(rough-estimate tier, experimental) 출하.
+커밋: P1 `4de2253`(provenance) · P2 `b4a998a`([vision]+vendored HorizonNet) · P3 `40a69c5`(ImageAdapter) ·
+P4 `65f244b`(CLI) · P5 `6c9780f`(v0.25.0 release). 독립 verifier PASS. 다음 자연 후속(전부 defer 상태):
+web 이미지 업로드 / per-corner uncertainty(OQ-57) / per-Surface provenance(OQ-54 잔여) / coverage 레버(OQ-59 b/c/d) / in-domain ckpt(OQ-52).
+
 ## RESUME POINTER
 - **결정 (2026-06-04, 사용자 선택)**: 두 feasibility 사이클(OQ-53 scale, OQ-59 front-end) 종료 후, 실제 진척 + north-star-first로 **in-repo 첫 image→geometry 캡처 백엔드(단일-파노 rough tier)** 빌드. provenance(OQ-54)는 Phase 1(하드 게이트)이지 종착점 아님.
 - **근거 (검증·교차검증 수렴, 2026-06-04)**: ① 프로젝트 전부 GREEN(default 312/5·web 86/4·ruff·mypy·tense EXIT0 @ `3a69a6f`). ② 독립 sweep + adversarial critic 두 레인이 "image→geometry가 유일하게 *열린 경로 + 완성된 downstream*을 가진 north-star 축"으로 수렴(layout 이미 성숙 ADR 0003, material-from-image는 §E 거버넌스 차단). ③ downstream 파이프라인(`run`: ingest→place→export) 이미 완성 → 어댑터가 유일한 missing front-door → 증분 빌드.
