@@ -140,6 +140,11 @@
         ]
       }
     },
+    "provenance": {
+      "type": "string",
+      "enum": ["measured", "reconstructed", "assumed"],
+      "description": "Room-level capture provenance (OQ-54). measured = real depth sensor / scan; reconstructed = inferred from images without depth; assumed = unknown / hand-authored. Optional; defaults to 'assumed' on read."
+    },
     "mount_surfaces": {
       "type": "array",
       "items": {

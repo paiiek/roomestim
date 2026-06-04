@@ -323,4 +323,5 @@ class RoomPlanAdapter:
             listener_area=listener,
             objects=objects,
             schema_version="0.2-draft",
+            provenance="measured",  # OQ-54: RoomPlan LiDAR depth = measured
         )

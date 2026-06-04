@@ -133,6 +133,13 @@ SurfaceKind = Literal["wall", "floor", "ceiling"]
 
 ObjectKind = Literal["column", "door", "window"]
 
+#: Room-level capture provenance (OQ-54 / ADR 0045 §F honesty). One of:
+#:   ``measured``      — real depth sensor / scan (LiDAR, RGB-D, GT survey);
+#:   ``reconstructed`` — inferred from images without depth;
+#:   ``assumed``       — unknown / hand-authored / legacy (honest least-claim).
+#: Default is ``assumed`` so untagged geometry never masquerades as measured.
+Provenance = Literal["measured", "reconstructed", "assumed"]
+
 
 # --------------------------------------------------------------------------- #
 # Surfaces
@@ -282,6 +289,7 @@ class RoomModel:
     listener_area: ListenerArea
     objects: list[Object] = field(default_factory=list)
     schema_version: str = "0.2-draft"
+    provenance: Provenance = "assumed"
 
 
 # --------------------------------------------------------------------------- #

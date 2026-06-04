@@ -270,4 +270,5 @@ class MeshAdapter:
             listener_area=listener,
             objects=[],  # v0.17: no auto-detection (OQ-33); use evolve_room_add_object()
             schema_version="0.2-draft",
+            provenance="measured",  # OQ-54: derived from a real scan mesh
         )

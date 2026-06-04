@@ -2524,3 +2524,31 @@ header PROPOSED 불변), `.omc/plans/open-questions.md`(OQ-59 RESOLVED + top-lev
 OQ-59 신설), OQ-53(scale PASS / ≤15 cm OPEN), OQ-59(RESOLVED — front-end 레버 NO), OQ-52/OQ-54(미해소 blocking gate);
 스파이크 아티팩트 `/home/seung/mmhoa/spike-vggt-multiview/`(`OQ59_VERDICT.md`, `out/oq59_verdict.json`,
 `logs/eval_rerun.log`, `scripts/frontends.py`).
+
+## D85 — Room-level capture provenance 스키마 (`measured | reconstructed | assumed`) 구현 (ADR 0046 NEW; OQ-54 부분해소; image-backend 빌드 P1, 2026-06-04)
+
+image→geometry 백엔드 빌드(플랜 `.omc/plans/image-backend-single-pano-build.md`)의 **Phase 1**. ADR 0045 §F provenance 스키마를
+구현하여 Reverse-criterion #4(provenance 합의 전 image 출력 노출 금지)·blocking gate #3 의 honesty 전제를 닫았다.
+
+**구현 (수행됨; 과거 시제)**: `RoomModel` 에 room-level `provenance: Literal["measured","reconstructed","assumed"] = "assumed"`
+추가(`model.py`). 정직한 least-claim 기본값 `"assumed"` — 태그 안 된 모델은 measured 를 주장하지 않는다. 실측 어댑터
+roomplan(LiDAR)/mesh(스캔)/ace(GT)만 명시적으로 `"measured"` 단언; polycam 은 위임 상속. YAML 은 `0.2-draft` 에서만 방출
+(`objects[]` 선례, legacy 0.1 byte-equal 유지); reader 는 키 부재 시 `"assumed"` 기본화. 스키마는 additive(optional property,
+`required` 미포함, root `additionalProperties:true` 보존; 0.1 스키마 무변경).
+
+**masquerade 경로 = 0** (독립 code-review §B CLOSED): image-derived/untagged 가 measured 로 읽히는 경로 없음 — 3층(dataclass
+default / writer 부재 / reader `.get(...,"assumed")`) 모두 least-claim, measured 는 실측 어댑터 명시 단언 시에만.
+
+**per-Surface 는 deferred**: OQ-54 원문은 Surface 도 지목하나 3개 `additionalProperties:false` sub-object 편집 요구 → 단일-출처
+어댑터에 불필요(YAGNI), room-level 선행·per-Surface follow-up.
+
+**범위 규율**: image adapter / `[vision]` extra / CLI / per-Surface 미포함(후속 phase). 순수 additive.
+**Version bump deferred**: 불활성 필드(소비자 0) → 단독 user-facing 가치 없음, image backend 기능 완성(플랜 P5) 시 일괄 bump.
+**오케스트레이션**: executor 구현 → 독립 code-reviewer APPROVE(§F honesty 리뷰 겸; 0 blocker, masquerade CLOSED) → reviewer
+minor(keyless-0.2 read-back 테스트) 적용. 자기승인 0.
+**변경 파일**: `roomestim/model.py`, `proto/room_schema.v0_2.draft.json`, `roomestim/export/room_yaml.py`,
+`roomestim/io/room_yaml_reader.py`, `roomestim/adapters/{roomplan,mesh,ace_challenge}.py`(measured 단언),
+`tests/test_provenance_roundtrip.py`(신규 9 테스트), `docs/adr/0046-room-provenance-schema.md`(신규), `.omc/plans/open-questions.md`(OQ-54 부분해소), 본 D85.
+**Gates(2026-06-04)**: canonical `/home/seung/miniforge3/bin/python -m pytest` — default 320p/5s, web 86p/4s, ruff/mypy(roomestim)/tense EXIT0.
+**Cross-refs**: ADR 0046(provenance 스키마; 본 D85 가 구현 기록), ADR 0045(§F / Reverse-criterion #4 / blocking gate #3 — 본 변경이 해제),
+OQ-54(room-level RESOLVED / per-Surface OPEN), D83·D84(image→geometry rough-tier 확정 → 본 빌드 동기), 빌드 플랜 P1.

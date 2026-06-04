@@ -719,6 +719,7 @@ def _build_room_model(
         surfaces=surfaces,
         listener_area=listener_area,
         objects=[],  # v0.17: no auto-detection (OQ-33); use evolve_room_add_object()
+        provenance="measured",  # OQ-54: ACE challenge ground-truth survey = measured
     )
 
 

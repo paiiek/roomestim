@@ -25,10 +25,30 @@ from roomestim.model import (
     ObjectKind,
     Point2,
     Point3,
+    Provenance,
     RoomModel,
     Surface,
     wall_surfaces,
 )
+
+
+#: Allowed room-level provenance values (OQ-54). Typed as the literal tuple so
+#: a membership check narrows ``str`` to :data:`~roomestim.model.Provenance` for
+#: mypy strict, with no ``cast`` / ``# type: ignore``.
+_PROVENANCE_VALUES: tuple[Provenance, ...] = ("measured", "reconstructed", "assumed")
+
+
+def _parse_provenance(value: str, *, name: str) -> Provenance:
+    """Validate ``value`` is one of the three allowed provenance strings.
+
+    The schema already enums this on 0.2-draft; the runtime check is defensive
+    (and also covers callers that bypass schema validation). Returns a value
+    typed as :data:`~roomestim.model.Provenance` via a narrowing comparison.
+    """
+    for allowed in _PROVENANCE_VALUES:
+        if value == allowed:
+            return allowed
+    raise ValueError(f"room '{name}': invalid provenance {value!r}")
 
 
 def _proto_dir() -> Path:
@@ -203,6 +223,12 @@ def read_room_yaml(path: Path | str) -> RoomModel:
             f"(supported: '0.1-draft', '0.1', '0.2-draft')"
         )
 
+    # OQ-54: room-level provenance. Emitted only on 0.2-draft; on 0.1 versions
+    # data.get returns the "assumed" default (correct — provenance is unknown for
+    # legacy/untagged geometry). Pre-provenance 0.2-draft files (no key) also
+    # default to "assumed". Validated defensively even though the schema enums it.
+    provenance = _parse_provenance(str(data.get("provenance", "assumed")), name=name)
+
     room = RoomModel(
         name=name,
         floor_polygon=floor_polygon,
@@ -211,6 +237,7 @@ def read_room_yaml(path: Path | str) -> RoomModel:
         listener_area=listener_area,
         objects=objects,
         schema_version=schema_version,
+        provenance=provenance,
     )
 
     # OQ-44(b) / D69: bound each door/window's wall_index against the walls-only

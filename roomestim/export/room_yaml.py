@@ -132,6 +132,10 @@ def room_model_to_dict(room: RoomModel, *, schema_version: str = "0.2-draft") ->
     }
     if schema_version == "0.2-draft":
         out["objects"] = [_object_to_dict(o) for o in room.objects]
+        # OQ-54: room-level provenance. Emitted only on 0.2-draft (like
+        # objects[]) so legacy 0.1 output stays byte-equal. Always emitted on
+        # 0.2-draft for round-trip determinism.
+        out["provenance"] = room.provenance
     return out
 
 
