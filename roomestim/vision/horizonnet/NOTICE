@@ -1,0 +1,26 @@
+HorizonNet — vendored inference code
+====================================
+
+Vendored from https://github.com/sunset1995/HorizonNet @ commit c9a7df9
+(c9a7df90fc8ef4611e415b933dd851ec0ca00efd), trimmed to the inference
+essentials needed by roomestim:
+
+  - model.py
+  - misc/utils.py        (load_trained_model + helpers)
+  - misc/post_proc.py    (layout post-processing)
+  - misc/panostretch.py  (panorama coordinate helpers)
+
+The vendored code is licensed under the MIT License, Copyright (c) 2019
+Cheng Sun. The full license text is in ./LICENSE.
+
+Pretrained WEIGHTS are NOT included in this repository and are NOT covered
+by the MIT code license. They are downloaded on first use (see
+roomestim/vision/checkpoints.py) and carry their own dataset-derived terms:
+
+  - st3d  (resnet50_rnn__st3d): trained on the Structured3D research dataset.
+  - zind  (resnet50_rnn__zind): trained on the Zillow Indoor Dataset (ZInD),
+           whose Terms of Use are ACADEMIC / NON-COMMERCIAL and require
+           explicit acceptance before download/use.
+
+Users are responsible for complying with the license/terms of whichever
+weights they choose to download.

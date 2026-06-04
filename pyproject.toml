@@ -45,6 +45,23 @@ viz = ["matplotlib>=3.7"]
 usd = ["usd-core>=24.0; python_version >= '3.10'"]
 mesh-export = ["usd-core>=24.0; python_version >= '3.10'"]
 colmap = ["pycolmap>=0.6"]
+vision = [
+    # ADR 0045: image->geometry inference (vendored HorizonNet). These deps are
+    # behind an OPT-IN extra and are NEVER imported at `import roomestim` time so
+    # the core/web boundary (gate #4) stays torch-free. The canonical miniforge
+    # env ships a broken torchvision, so the vision PATH is skipped in the gate
+    # and smoke-tested out-of-gate against a working torch+torchvision venv.
+    "torch",
+    "torchvision",
+    "Pillow",
+    "huggingface_hub",
+    "gdown",
+    # vendored HorizonNet inference path deps: post_proc.py uses sklearn PCA;
+    # panostretch.py viz helpers use cv2 (function-level). Declared so a clean
+    # `pip install roomestim[vision]` does not ModuleNotFoundError at run time.
+    "scikit-learn",
+    "opencv-python",
+]
 
 [project.scripts]
 roomestim = "roomestim.cli:main"
@@ -54,7 +71,7 @@ include = ["roomestim*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-roomestim = ["proto/*.json"]
+roomestim = ["proto/*.json", "vision/horizonnet/LICENSE", "vision/horizonnet/NOTICE"]
 
 [tool.pytest.ini_options]
 markers = [
@@ -68,8 +85,18 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Vendored HorizonNet inference code (MIT, (c) 2019 Cheng Sun) is kept verbatim
+# and exempt from roomestim lint rules; our own vision code is NOT excluded.
+extend-exclude = ["roomestim/vision/horizonnet"]
 
 [tool.mypy]
 python_version = "3.10"
 strict = true
 files = ["roomestim"]
+
+# The vendored HorizonNet inference code (MIT, (c) 2019 Cheng Sun) is kept
+# verbatim and is not expected to pass roomestim's strict mypy; our own vision
+# code (checkpoints.py) is NOT excluded and must pass strict.
+[[tool.mypy.overrides]]
+module = "roomestim.vision.horizonnet.*"
+ignore_errors = true
