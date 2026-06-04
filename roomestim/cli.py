@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Literal
 from roomestim import __version__
 
 if TYPE_CHECKING:
-    from roomestim.adapters.base import CaptureAdapter
+    from roomestim.adapters.base import CaptureAdapter, ScaleAnchor
     from roomestim.model import PlacementResult, RoomModel
 
 
@@ -28,13 +28,53 @@ if TYPE_CHECKING:
 # --------------------------------------------------------------------------- #
 
 
+def _add_image_backend_args(p: argparse.ArgumentParser) -> None:
+    """Shared `--backend image` (experimental) arguments.
+
+    These are only meaningful for ``--backend image`` (ADR 0045 §image backend).
+    The hard ``--experimental`` gate is enforced in the command handler, not at
+    argparse level, so no torch import happens on the gated-out path.
+    """
+    p.add_argument(
+        "--cam-height",
+        type=float,
+        default=None,
+        metavar="M",
+        help="Camera/tripod height in metres above the floor — the metric scale "
+        "anchor for --backend image. If omitted, a default is assumed and a "
+        "warning is emitted.",
+    )
+    p.add_argument(
+        "--weights",
+        choices=["st3d", "zind"],
+        default="st3d",
+        help="HorizonNet checkpoint for --backend image. st3d (default, "
+        "Structured3D) ships; zind (Zillow, residential) is opt-in "
+        "non-commercial — requires --accept-zind-tou.",
+    )
+    p.add_argument(
+        "--accept-zind-tou",
+        action="store_true",
+        default=False,
+        help="Accept the ZInD non-commercial Terms of Use to use --weights zind.",
+    )
+    p.add_argument(
+        "--experimental",
+        action="store_true",
+        default=False,
+        help="Required to use --backend image (experimental rough-estimate tier; "
+        "NOT install-grade).",
+    )
+
+
 def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = sub.add_parser("ingest", help="Parse a capture artifact into a RoomModel.")
     p.add_argument(
         "--backend",
-        choices=["roomplan", "polycam"],
+        choices=["roomplan", "polycam", "image"],
         required=True,
-        help="Capture backend.",
+        help="Capture backend. 'image' is an EXPERIMENTAL single-panorama "
+        "rough-estimate tier (requires --experimental; NOT install-grade).",
     )
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
@@ -49,6 +89,7 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         default=False,
         help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
+    _add_image_backend_args(p)
 
 
 def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -160,9 +201,10 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p = sub.add_parser("run", help="Composite: ingest + place + export.")
     p.add_argument(
         "--backend",
-        choices=["roomplan", "polycam"],
+        choices=["roomplan", "polycam", "image"],
         required=True,
-        help="Capture backend.",
+        help="Capture backend. 'image' is an EXPERIMENTAL single-panorama "
+        "rough-estimate tier (requires --experimental; NOT install-grade).",
     )
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
@@ -215,6 +257,7 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=False,
         help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
+    _add_image_backend_args(p)
     # FIX-4 / D77: engine validation toggle (D42 / ADR 0033), at parity with
     # `export`/`edit`. CLI flag > ENV var > default ON.
     engine_grp = p.add_mutually_exclusive_group()
@@ -322,7 +365,16 @@ def _build_parser() -> argparse.ArgumentParser:
 # --------------------------------------------------------------------------- #
 
 
-def _get_adapter(backend: str) -> "CaptureAdapter":
+class _ExperimentalGate(Exception):
+    """Raised when --backend image is used without --experimental.
+
+    Carries exit code 1 + a stderr message; handled before any torch/adapter
+    construction so the gated-out image path stays torch-free.
+    """
+
+
+def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
+    backend: str = args.backend
     if backend == "roomplan":
         from roomestim.adapters.roomplan import RoomPlanAdapter
 
@@ -331,7 +383,54 @@ def _get_adapter(backend: str) -> "CaptureAdapter":
         from roomestim.adapters.polycam import PolycamAdapter
 
         return PolycamAdapter()
+    if backend == "image":
+        # HARD GATE (ADR 0045): experimental rough-estimate tier. Fires BEFORE
+        # constructing the adapter so no torch import happens on this path.
+        if not getattr(args, "experimental", False):
+            raise _ExperimentalGate(
+                "--backend image is experimental (rough-estimate tier, not "
+                "install-grade); pass --experimental to use it."
+            )
+        # Importing the module is torch-free (torch is lazy inside parse()).
+        from roomestim.adapters.image import ImageAdapter
+
+        return ImageAdapter(
+            weights=getattr(args, "weights", "st3d"),
+            accept_noncommercial=getattr(args, "accept_zind_tou", False),
+        )
     raise ValueError(f"unknown backend: {backend!r}")
+
+
+def _scale_anchor_for(args: argparse.Namespace) -> "ScaleAnchor | None":
+    """Build a metric ScaleAnchor from --cam-height for --backend image.
+
+    Returns None when no --cam-height is given (the image adapter then warns +
+    falls back to its default camera height). Measured backends pass None too.
+    """
+    if getattr(args, "backend", None) != "image":
+        return None
+    cam_height = getattr(args, "cam_height", None)
+    if cam_height is None:
+        return None
+    from roomestim.adapters.base import ScaleAnchor
+
+    return ScaleAnchor("known_distance", cam_height)
+
+
+def _maybe_print_estimated_notice(room: RoomModel) -> None:
+    """Print the ESTIMATED provenance disclosure for image-reconstructed rooms.
+
+    Measured backends (roomplan/polycam) emit provenance != "reconstructed", so
+    nothing is printed for them.
+    """
+    if getattr(room, "provenance", None) == "reconstructed":
+        print(
+            "NOTE: geometry is ESTIMATED from a single image "
+            "(provenance=reconstructed) — rough-estimate tier, NOT install-grade. "
+            "Dimensions are approximate; verify before install. <=15 cm accuracy "
+            "is reserved for LiDAR/RoomPlan capture.",
+            file=sys.stderr,
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -369,12 +468,17 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     octave_band: bool = getattr(args, "octave_band", False)
-    adapter = _get_adapter(args.backend)
-    room = adapter.parse(Path(args.input), scale_anchor=None, octave_band=octave_band)
+    adapter = _get_adapter(args)
+    room = adapter.parse(
+        Path(args.input),
+        scale_anchor=_scale_anchor_for(args),
+        octave_band=octave_band,
+    )
 
     out_path = out_dir / "room.yaml"
     write_room_yaml(room, out_path)
     print(f"wrote {out_path}")
+    _maybe_print_estimated_notice(room)
     return 0
 
 
@@ -480,8 +584,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     octave_band: bool = getattr(args, "octave_band", False)
-    adapter = _get_adapter(args.backend)
-    room = adapter.parse(Path(args.input), scale_anchor=None, octave_band=octave_band)
+    adapter = _get_adapter(args)
+    room = adapter.parse(
+        Path(args.input),
+        scale_anchor=_scale_anchor_for(args),
+        octave_band=octave_band,
+    )
 
     result = _run_placement(
         room,
@@ -511,6 +619,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     print(f"wrote {room_out}")
     print(f"wrote {layout_out}")
+    _maybe_print_estimated_notice(room)
     return 0
 
 
@@ -589,6 +698,9 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_run(args)
         if args.command == "edit":
             return _cmd_edit(args)
+    except _ExperimentalGate as gate:
+        print(f"error: {gate}", file=sys.stderr)
+        return 1
     except (ValueError, OSError, RuntimeError, IndexError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
