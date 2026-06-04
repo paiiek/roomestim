@@ -1,11 +1,11 @@
 # ADR 0045 — image/video → room geometry (`[vision]` capture backend) (draft)
 
 - **Date**: 2026-06-01
-- **Status**: Proposed (draft — 미구현; 본 문서는 설계 제안이며 코드/테스트는 아직 존재하지 않는다. backend 시제는 모두 제안/예정이다. 단, §Phase-0 스파이크의 사실은 이미 수행되었으므로 과거 시제로 기술한다 — ADR 0044 의 honesty 규율과 동일.)
+- **Status**: Proposed (draft) — **부분 구현·출하**. rough tier(§B)의 단일-파노 image backend 는 v0.25.0 에서 구현·출하됐다(experimental `--backend image`; §Status-update-2026-06-04b / D86 / ADR 0046 참조). install-grade 1급 경로(§C)·multi-view 는 미구현/FALLBACK 으로 남아 제안/예정 시제다. §Phase-0/multi-view 스파이크의 사실은 수행되었으므로 과거 시제로 기술한다(ADR 0020/0044 honesty 규율). header 가 PROPOSED 인 것은 ADR 전체(특히 install-grade §C)가 미확정이기 때문이다.
 - **Deciders**: architect (설계 제안), critic (리뷰 예정), planner (확정 예정), 사용자 (greenlight 예정)
 - **Refs**: ADR 0001 (capture-backend priority — RoomPlan first-class, COLMAP `[colmap]`+`--experimental`, scale-anchor work = v0.3 scope; **본 ADR 은 ADR 0001 이 보류한 image/COLMAP 브랜치의 연속**), ADR 0002 (room representation — 2.5D polygon + scalar ceiling), ADR 0027/0042 (mesh adapter · hull→polygon · live-mesh corner extraction 선례), ADR 0020 (tense-lint honesty scope), ADR 0044 (RIR auralization — image-derived geometry 의 하류 소비자), D26 (forbidden-indefinite-deferral / YAGNI); 리서치 리포트 `.omc/research/image-to-geometry-feasibility-2026-06-01.md`; Phase-0 스파이크 아티팩트 `/home/seung/mmhoa/spike-image-geometry/` (`final_spike_summary.json`, `metric_s2d3d_results.json`); 결정 D81.
 
-> **핵심요약 (권장안)**: 설치공간 사진/영상에서 `RoomModel` geometry 를 복원하는 `[vision]` capture backend 를 **정직성-우선 tiered** 아키텍처로 제안한다. 신규 `CaptureAdapter`(`adapters/image.py`)가 기존 `parse(path, *, scale_anchor, octave_band) → RoomModel` Protocol 을 roomplan/mesh 와 나란히 구현하고, 무거운 모델 의존은 optional extra(`[vision]` 신규 또는 `[colmap]` 확장) 뒤에 둔다 — core `roomestim/` 의존 0 불변. 출력 geometry 는 `provenance=reconstructed(image)` 로 태그하여 RoomPlan LiDAR 의 `measured` 와 **결코 동일한 install-grade 측정으로 제시하지 않는다**. Phase-0 스파이크는 single-pano(HorizonNet, out-of-domain st3d 체크포인트)가 ≤15 cm 게이트를 **신뢰성 있게 통과하지 못함**(verdict = **FALLBACK, conditional**)을 실증했으므로, single-pano 는 **rough-estimate / assisted-measure / pre-scan tier** 로 한정 제안하고(엔지니어 확인 후 layout/RIR 투입), **multi-view(MASt3R/VGGT)** 를 *better-than-rough* 정확도가 필요할 때의 1급 경로로 둔다. 본 ADR 은 ADR 0001 의 `--experimental` 게이트 선례를 상속한다. 재질은 manual/UNKNOWN 유지(시각→흡음은 install-grade 아님). provenance/confidence 정직성 메커니즘은 소규모 `RoomModel`/`Surface` 스키마 추가가 필요할 수 있으나 **설계 작업으로 플래그만 하고 지금 구현하지 않는다**.
+> **핵심요약 (권장안)**: 설치공간 사진/영상에서 `RoomModel` geometry 를 복원하는 `[vision]` capture backend 를 **정직성-우선 tiered** 아키텍처로 제안한다. 신규 `CaptureAdapter`(`adapters/image.py`)가 기존 `parse(path, *, scale_anchor, octave_band) → RoomModel` Protocol 을 roomplan/mesh 와 나란히 구현하고, 무거운 모델 의존은 optional extra(`[vision]` 신규 또는 `[colmap]` 확장) 뒤에 둔다 — core `roomestim/` 의존 0 불변. 출력 geometry 는 `provenance=reconstructed(image)` 로 태그하여 RoomPlan LiDAR 의 `measured` 와 **결코 동일한 install-grade 측정으로 제시하지 않는다**. Phase-0 스파이크는 single-pano(HorizonNet, out-of-domain st3d 체크포인트)가 ≤15 cm 게이트를 **신뢰성 있게 통과하지 못함**(verdict = **FALLBACK, conditional**)을 실증했으므로, single-pano 는 **rough-estimate / assisted-measure / pre-scan tier** 로 한정 제안하고(엔지니어 확인 후 layout/RIR 투입), **multi-view(MASt3R/VGGT)** 를 *better-than-rough* 정확도가 필요할 때의 1급 경로로 둔다. 본 ADR 은 ADR 0001 의 `--experimental` 게이트 선례를 상속한다. 재질은 manual/UNKNOWN 유지(시각→흡음은 install-grade 아님). provenance/confidence 정직성 메커니즘은 소규모 `RoomModel`/`Surface` 스키마 추가가 필요할 수 있으나 본 제안 시점에는 설계 작업으로 플래그만 했다(room-level provenance 는 이후 v0.25.0 에서 구현·출하됐다 — ADR 0046 / §Status-update-2026-06-04b; per-Surface 는 OPEN).
 
 ---
 
@@ -199,4 +199,20 @@ image backend 가 복원하는 `Surface.material`(`model.py:152`, required field
 
 ---
 
-*본 ADR 은 설계 제안이며 backend 코드/테스트는 존재하지 않는다(Phase-0 스파이크 및 multi-view 스파이크는 throwaway 아티팩트로 수행됨, repo 무변경). 확정·구현은 critic 리뷰 및 planner/사용자 승인, blocking gate 충족 후 별도 진행한다.*
+## §Status-update-2026-06-04b (rough-tier 단일-파노 image backend **구현·출하** v0.25.0; header PROPOSED 유지)
+
+**rough tier(§B)가 in-repo 코드로 구현·출하되었다 — 더 이상 throwaway 스파이크가 아니다.** 단일 equirectangular 파노라마 → RoomModel 캡처 어댑터(`roomestim/adapters/image.py::ImageAdapter`)가 CLI `--backend image`(experimental 하드 게이트) 로 노출되어, v0.25.0 MINOR 로 출하됐다(D86, 빌드 플랜 `.omc/plans/image-backend-single-pano-build.md`). 이는 **rough-estimate tier 한정**이며 install-grade 가 아니다.
+
+**blocking gate 현황 (이 출하 시점):**
+- **gate #3 (provenance honesty 스키마, OQ-54) = MET** — room-level `provenance(measured|reconstructed|assumed)` 구현(ADR 0046 / D85). image 출력은 `reconstructed`, 재질 `UNKNOWN`(§E), masquerade 경로 0. Reverse-criterion #4 충족 → image 출력 노출 차단 해제(이 출하의 선결).
+- **gate #4 (core/web 경계) = MET** — 모델 의존은 `[vision]` opt-in extra 뒤에만, core torch-free 입증(깨진 canonical torchvision 로 검증). vendored HorizonNet(MIT)·weights 미번들(download-on-first-use).
+- **gate #2 (≤15 cm 정확도) = FALLBACK** — multi-view(OQ-53)·front-end(OQ-59) 둘 다 install-grade 미달. 단일-파노 st3d 는 out-of-domain ~43–45% 만 ≤15 cm. → rough tier 로 출하, install-grade 승격 안 함.
+- **gate #1 (OQ-52 in-domain ckpt) = 미해소** — residential ckpt 접근 불가(ZInD 는 비상업 라이선스, opt-in `--weights zind` 로만). 단일-파노 install-grade 승격 보류.
+
+**Header PROPOSED 유지 근거.** rough tier 는 출하됐으나 ADR 의 install-grade(§C 1급 경로) 절반은 FALLBACK 이고 gate #1·#2 가 미충족이므로, ADR 전체를 Accepted 로 전환하지 않는다. 대신 본 ADR 은 "rough tier = 구현·출하(experimental), install-grade = 미달·보류" 상태다.
+
+**Deferred (정직 기록):** web-tier 이미지 업로드, 실제 per-corner uncertainty(OQ-57 미해결 calibration — 가짜 숫자 금지), per-Surface provenance(OQ-54 잔여), coverage 레버(OQ-59 b/c/d).
+
+---
+
+*본 ADR 의 **rough tier(§B)는 v0.25.0 에서 구현·출하됐다**(experimental `--backend image`, D86/ADR 0046). install-grade 1급 경로(§C)와 multi-view 는 여전히 미구현/FALLBACK 이다(throwaway 스파이크로만 검증). install-grade 승급은 blocking gate #1(OQ-52)·#2(≤15 cm) 충족 후 별도 진행한다.*

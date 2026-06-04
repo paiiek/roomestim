@@ -2552,3 +2552,39 @@ minor(keyless-0.2 read-back 테스트) 적용. 자기승인 0.
 **Gates(2026-06-04)**: canonical `/home/seung/miniforge3/bin/python -m pytest` — default 320p/5s, web 86p/4s, ruff/mypy(roomestim)/tense EXIT0.
 **Cross-refs**: ADR 0046(provenance 스키마; 본 D85 가 구현 기록), ADR 0045(§F / Reverse-criterion #4 / blocking gate #3 — 본 변경이 해제),
 OQ-54(room-level RESOLVED / per-Surface OPEN), D83·D84(image→geometry rough-tier 확정 → 본 빌드 동기), 빌드 플랜 P1.
+
+## D86 — 단일-파노 image→geometry 캡처 백엔드(rough tier, experimental) 구현·출하 v0.25.0 (ADR 0045 §Status-update-2026-06-04b; ADR 0046; image-backend 빌드 P0–P5, 2026-06-04)
+
+D83·D84 가 image→geometry 를 rough-estimate tier 로 확정한 뒤, 사용자 결정("실제 진척 + north-star-first")으로
+roomestim 의 **첫 image→geometry 캡처 백엔드**(단일 equirectangular 파노라마 → RoomModel)를 구현·출하했다.
+north-star killer use-case("깨끗한 스캔 없을 때 사진→geometry→레이아웃")의 첫 in-repo 실현. install-grade 아님 — rough tier.
+
+**빌드 (수행됨; 과거 시제) — 5 phase, 각 executor→독립 code-reviewer APPROVE, 자기승인 0:**
+- **P0** ckpt 리서치: HorizonNet 코드 MIT(상업OK). 진짜 residential ckpt(ZInD)는 비상업 라이선스(RED). permissive
+  residential ckpt 부재 → 기본 st3d(Structured3D, HF mirror), zind opt-in(`--accept-zind-tou`). weights 미번들.
+- **P1** provenance 스키마(D85/ADR 0046) — gate #3 해제.
+- **P2** `[vision]` extra + vendored HorizonNet(MIT, py3.12 fix) + torch-free `checkpoints.py`(download-on-first-use).
+  경계 게이트 #4 PASS(core torch-free, 깨진 canonical torchvision 로 입증). `b4a998a`.
+- **P3** `adapters/image.py::ImageAdapter` — torch-free 지오메트리 코어(metric_layout 삼각법, cam-height ScaleAnchor)
+  + torch path(lazy). provenance=reconstructed, 재질 UNKNOWN(§E), mesh seam 재사용. trig 를 spike 오라클과 수치 대조
+  검증(mirror/sign 버그 0). `40a69c5`.
+- **P4** CLI 노출(`--backend image`, `--experimental` 하드 게이트 torch-free, `--cam-height`/`--weights`/`--accept-zind-tou`)
+  + ESTIMATED 라벨(reconstructed-only). `65f244b`.
+- **P5** v0.25.0 MINOR 범프 + RELEASE_NOTES + README + 본 D86 + ADR 0045 §Status-update-2026-06-04b + 독립 verifier.
+
+**정직성(핵심)**: provenance=reconstructed, 재질 UNKNOWN(시각재질 추론 안 함), scale=가정된 cam-height(OQ-58),
+정확도 rough(st3d out-of-domain ~43–45% ≤15cm), CLI ESTIMATED 고지, ≤15cm 주장은 LiDAR/RoomPlan 한정. 두 feasibility
+스파이크(OQ-53/OQ-59)가 확정한 rough tier 를 정확히 그 라벨로 출하.
+
+**end-to-end 검증(out-of-gate, 실제 HorizonNet, spike venv)**: `run --backend image --experimental --cam-height 1.6
+--input roomA.png --algorithm vbap --n-speakers 6` → room.yaml(provenance reconstructed)+layout.yaml+ESTIMATED, exit0.
+ingest→place→export 가 이미지-파생 지오메트리에서 동작.
+
+**Version**: 0.24.0→0.25.0 MINOR(additive image backend + provenance; default 동작 무변경). web 무변경.
+**Deferred(정직)**: web 이미지 업로드, 실제 per-corner uncertainty(OQ-57 미해결), per-Surface provenance(OQ-54 잔여),
+coverage 레버(OQ-59 b/c/d), OQ-52 in-domain ckpt. ADR 0045 header PROPOSED 유지(install-grade FALLBACK·gate #1·#2 미충족).
+**Gates(canonical miniforge, 2026-06-04)**: default 345p/5s, web 86p/4s, ruff/mypy(47)/tense EXIT0. 독립 verifier PASS.
+**변경 파일(P5)**: `pyproject.toml`·`roomestim/__init__.py`(0.25.0), `RELEASE_NOTES_v0.25.0.md`(신규), `README.md`,
+`docs/adr/0045-...md`(§Status-update-2026-06-04b + footer 정정), 본 D86, 빌드 플랜(P0–P5 done).
+**Cross-refs**: ADR 0045(§B rough tier 구현·출하 / §C install-grade FALLBACK / gate #3·#4 MET·#1·#2 미충족),
+ADR 0046·D85(provenance), D83·D84(rough-tier 확정), OQ-54·OQ-57·OQ-58·OQ-52(잔여/deferred), 빌드 플랜 P0–P5.

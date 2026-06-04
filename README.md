@@ -67,8 +67,20 @@ python scripts/lint_tense.py
 서브커맨드: `ingest` (capture → RoomModel) · `place` (배치 → layout.yaml) ·
 `export` (room.yaml + layout.yaml 재방출, `--format {yaml,usdz,gltf,glb}` +
 `--with-acoustics-sidecar` 지원) · `run` (ingest+place+export 합성) ·
-`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam}` 이며,
+`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam,image}` 이며,
 `polycam` 은 `MeshAdapter` alias 로 `.obj`/`.gltf`/`.glb`/`.ply` 를 처리합니다.
+`image` 는 **실험적 rough-estimate tier**(v0.25.0, [ADR 0045](docs/adr/0045-image-to-geometry-capture-backend.md))
+— 단일 equirectangular 파노라마 1장에서 geometry 를 *추정*합니다. **install-grade 아님**
+(≤15 cm 정밀은 LiDAR/RoomPlan 한정). `[vision]` extra(`pip install -e ".[vision]"`)·
+`--experimental` 게이트·`--cam-height`(스케일 앵커) 필요. 출력은 `provenance=reconstructed`,
+재질 `unknown`, 치수는 근사 — CLI 가 `ESTIMATED` 고지를 출력합니다.
+
+```bash
+python -m roomestim run --backend image --experimental \
+    --cam-height 1.6 --input room_pano.jpg \
+    --algorithm vbap --n-speakers 6 --out-dir /tmp/out
+```
+
 `--format usdz` 는 `[usd]` extra (usd-core) 가 필요하며, 없으면 친절한 에러로
 안내합니다. export/edit 의 엔진 검증은 `--validate-engine PATH` /
 `--no-engine-validation` 으로 토글합니다 (ADR 0033).
