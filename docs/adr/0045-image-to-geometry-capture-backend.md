@@ -206,7 +206,7 @@ image backend 가 복원하는 `Surface.material`(`model.py:152`, required field
 **blocking gate 현황 (이 출하 시점):**
 - **gate #3 (provenance honesty 스키마, OQ-54) = MET** — room-level `provenance(measured|reconstructed|assumed)` 구현(ADR 0046 / D85). image 출력은 `reconstructed`, 재질 `UNKNOWN`(§E), masquerade 경로 0. Reverse-criterion #4 충족 → image 출력 노출 차단 해제(이 출하의 선결).
 - **gate #4 (core/web 경계) = MET** — 모델 의존은 `[vision]` opt-in extra 뒤에만, core torch-free 입증(깨진 canonical torchvision 로 검증). vendored HorizonNet(MIT)·weights 미번들(download-on-first-use).
-- **gate #2 (≤15 cm 정확도) = FALLBACK** — multi-view(OQ-53)·front-end(OQ-59) 둘 다 install-grade 미달. 단일-파노 st3d 는 out-of-domain ~43–45% 만 ≤15 cm. → rough tier 로 출하, install-grade 승격 안 함.
+- **gate #2 (≤15 cm 정확도) = FALLBACK** — multi-view(OQ-53)·front-end(OQ-59) 둘 다 install-grade 미달. 단일-파노 st3d 는 out-of-domain — **현실(사용자 cam_h) median 벽 35–57 cm·≤15 cm 11–17%**(43–45% 는 perfect-scale-anchor 오라클 천장, 추론 시점 불가). cam_h ±10 cm → 32 cm. → rough tier 로 출하, install-grade 승격 안 함.
 - **gate #1 (OQ-52 in-domain ckpt) = 미해소** — residential ckpt 접근 불가(ZInD 는 비상업 라이선스, opt-in `--weights zind` 로만). 단일-파노 install-grade 승격 보류.
 
 **Header PROPOSED 유지 근거.** rough tier 는 출하됐으나 ADR 의 install-grade(§C 1급 경로) 절반은 FALLBACK 이고 gate #1·#2 가 미충족이므로, ADR 전체를 Accepted 로 전환하지 않는다. 대신 본 ADR 은 "rough tier = 구현·출하(experimental), install-grade = 미달·보류" 상태다.

@@ -14,10 +14,17 @@ clean-scan-only ingest (RoomPlan / mesh) now has an image front-door.
 > **Honesty up front.** Image-reconstructed geometry is tagged
 > `provenance="reconstructed"`, all surface materials are `UNKNOWN` (no visual
 > material inference), metric scale comes from an **assumed camera height**, and
-> the CLI prints an `ESTIMATED` notice. Accuracy is rough: the underlying
-> single-pano model (HorizonNet, out-of-domain) reaches only ~43–45 % of rooms
-> within ≤15 cm in the prior spike. The ≤15 cm install-grade claim stays reserved
-> for LiDAR/RoomPlan capture. Two feasibility spikes (OQ-53 multi-view scale,
+> the CLI prints an `ESTIMATED` notice. **Accuracy is rough — and the realistic
+> number is worse than the oracle ceiling.** With a user-supplied (imperfect)
+> camera height — the actual deployment case — the prior spike measured a
+> **median wall error of 35–57 cm and only 11–17 % of rooms within ≤15 cm**
+> (PanoContext residential: 35 cm / 17 %; Stanford2D3D office: 57 cm / 11 %). The
+> often-quoted **~43–45 % ≤15 cm is the perfect-scale-anchor *oracle* ceiling**
+> (assumes the exact camera height is known a priori) — not what you get at
+> inference. Camera-height error dominates: ±10 cm of cam-height alone ≈ 32 cm
+> median wall error, and even on clean synthetic input with the exact height a
+> single room can come back ~20 % off on one dimension. The ≤15 cm install-grade
+> claim stays reserved for LiDAR/RoomPlan capture. Two feasibility spikes (OQ-53 multi-view scale,
 > OQ-59 floor front-end) concluded image→geometry is a rough tier, not
 > install-grade — this release ships exactly that, labeled as such.
 

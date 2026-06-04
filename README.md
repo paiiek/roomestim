@@ -75,6 +75,13 @@ python scripts/lint_tense.py
 `--experimental` 게이트·`--cam-height`(스케일 앵커) 필요. 출력은 `provenance=reconstructed`,
 재질 `unknown`, 치수는 근사 — CLI 가 `ESTIMATED` 고지를 출력합니다.
 
+> **정확도(현실 수치)**: 사용자가 준 cam-height(부정확할 수 있음)로는 spike 측정 기준 **median 벽
+> 오차 35–57 cm, ≤15 cm 도달 11–17%**(주거 PanoContext 35 cm/17%, 사무 S2D3D 57 cm/11%). 흔히
+> 인용되는 43–45% ≤15 cm 는 *perfect scale anchor* 오라클 천장이며 추론 시점엔 얻을 수 없습니다.
+> `--cam-height` 가 모든 치수 스케일을 결정 — **±10 cm 오차 ≈ median 32 cm 벽 오차**이므로 가능한 한
+> 실측하세요. 비직사각 방은 조용히 사각화되고, 재질 미상이라 음향(RT60) 추정은 시연 등급입니다.
+> 신뢰 가능한 설치 측정용이 아니라 **rough pre-scan/sanity** 용도입니다.
+
 ```bash
 python -m roomestim run --backend image --experimental \
     --cam-height 1.6 --input room_pano.jpg \
