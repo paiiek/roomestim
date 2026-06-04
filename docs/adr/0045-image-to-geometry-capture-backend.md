@@ -70,7 +70,7 @@ Phase-0 스파이크 verdict(FALLBACK, conditional)에 근거하여, single-pano
 
 *better-than-rough* geometry 가 필요할 때의 1급 정확도 경로로 multi-view(MASt3R metric pointmap / VGGT feed-forward)를 예정한다. 근거: multi-point anchor(ArUco/측정 reference)로 scale 을 해소하므로 single-pano 의 단일 cam_h 스칼라보다 scale 민감도가 낮고(스파이크가 노출한 ~34–40 cm SCALE 성분 / ±10 cm cam_h 민감도를 완화), non-Manhattan/clutter 방을 더 잘 다룬다. 비용: point cloud → RANSAC/Manhattan plane fit + floor-ring 추출이 진짜 BUILD 작업이며(mesh adapter seam 재사용), multi-view metric-scale 실현가능성은 별도 스파이크가 선행한다(OQ-53). **라이선싱 주의**: MASt3R 및 VGGT 공개 가중치는 non-commercial 라이선스를 포함할 수 있으므로, 스파이크(OQ-53) 착수 전 라이선스 조건을 확인해야 한다 — 상업적 배포가 필요한 경우 후보 목록에서 제외하거나 대안을 탐색해야 할 수 있다(OQ-53 의 선행조건으로 포함).
 
-> **스파이크 결과 (2026-06-02, §Status-update-2026-06-02 / D83 참조)**: VGGT-1B multi-view 스파이크가 scale 하위질문을 PASS(median scale error 1.6%, 6/10 ≤5%)로 닫아 §C 의 핵심 risk(scale 민감도)를 해소했다. 단 ≤15 cm floor-geometry 는 out-of-the-box FALLBACK(median 22.4 cm; periphery under-coverage 가 root cause, scale 아님)이므로, multi-view 를 *조건부* 1급 경로로 두되 install-grade ship 전에 집중된 floor-extraction front-end 스파이크(OQ-59)를 선행한다.
+> **스파이크 결과 (2026-06-02, §Status-update-2026-06-02 / D83 참조)**: VGGT-1B multi-view 스파이크가 scale 하위질문을 PASS(median scale error 1.6%, 6/10 ≤5%)로 닫아 §C 의 핵심 risk(scale 민감도)를 해소했다. 단 ≤15 cm floor-geometry 는 out-of-the-box FALLBACK(median 22.4 cm; periphery under-coverage 가 root cause, scale 아님)이므로, multi-view 를 *조건부* 1급 경로로 두되 install-grade ship 전에 집중된 floor-extraction front-end 스파이크(OQ-59)를 선행한다. 그 후속으로 OQ-59 가 front-end 레버 질문을 **NO** 로 닫았다(§Status-update-2026-06-04 / D84): 배포가능 front-end 그 어느 것도 ≤15 cm 를 close 하지 못했고(최고 배포가능 `convex_band` 17.13 cm / 4-of-10 도 FAIL), root cause 가 corner-fitting 아닌 coverage 임이 재확인됐다. 따라서 multi-view 는 first-class ≤15 cm 경로로 **승격되지 않고 rough-tier 에 머문다**; 다음 레버는 front-end 가 아니라 coverage(coverage-aware capture / TSDF / VGGT-Omega — 별도 스파이크)다.
 
 ### §D — 의존성 격리 (core 게이트 불오염)
 
@@ -171,6 +171,31 @@ image backend 가 복원하는 `Surface.material`(`model.py:152`, required field
 4. **실용 product call**: image/video → geometry 를 **HONEST metric scale + 가시적 per-corner uncertainty 를 동반한 rough-estimate tier** 로 둔다(single-pano 보다 엄격히 우월 — scale honest, cam_h 추측 불요). ≤15 cm 주장은 LiDAR/RoomPlan 에 유보한다. 이는 본 ADR 의 provenance/honesty framing(measured vs reconstructed vs assumed) 및 OQ-54 와 정합한다.
 
 **Header PROPOSED 유지 근거.** gate #2 의 정확도 절반(≤15 cm)이 미충족이고 blocking gate #1(OQ-52 in-domain 검증)·#3(OQ-54 provenance 스키마)이 미해소이므로, header 를 Accepted 로 전환하지 않는다.
+
+---
+
+## §Status-update-2026-06-04 (OQ-59 front-end 스파이크 → ≤15 cm deployable FALLBACK; header PROPOSED 유지)
+
+**OQ-53/D83 이 최고가치 다음 레버로 지목한 floor-extraction front-end 를 집중 검증한 결과, 배포가능 front-end 그 어느 것도 ≤15 cm install-grade 게이트를 close 하지 못했다 — D83 의 FALLBACK 이 hardens 되며 multi-view 는 first-class ≤15 cm 경로로 승격되지 않고 rough-tier 에 머문다. PRIMARY 가설(RANSAC wall-plane corner)은 기각되고, 다음 레버는 front-end 가 아니라 coverage 임이 확정된다 — 따라서 header 는 PROPOSED 에 머문다(gate #2 정확도 절반 미충족 + OQ-52/OQ-54 미해소).** 본 스파이크는 결정 D84 로 기록되고, repo 밖 throwaway 아티팩트(`/home/seung/mmhoa/spike-vggt-multiview/` — `OQ59_VERDICT.md`, `out/oq59_verdict.json`, `logs/eval_rerun.log`, `scripts/frontends.py`)로 수행되어 repo 는 byte-for-byte 무변경이다.
+
+**스파이크 (수행됨; 사실 기술 — 과거 시제).** OQ-53 과 동일한 캐시 nv48 VGGT 포인트클라우드(ARKitScenes raw Validation 10 방, 48 view, Umeyama-metric, z-up) 위에서 front-end 만 바꿔 동일 `best_fit_2d` metric 으로 재평가했다. Step-1 reproduction gate(캐시가 OQ-53 nv48 baseline 을 재현하는가)는 **PASS — 10 방 전부 delta 0.00 cm**(캐시 byte-faithful, 스파이크 간 silent drift 없음). OQ-53 에서 10/10 OOM-크래시했던 RANSAC 은 repo 밖 `frontends.py` 에서 수정됐다(inlier SVD refit `full_matrices=False` + line-fit 전 ≤100 k pts seeded uniform subsample) — 10 방 전부 ~1–2 s 에 실제 polygon 을 산출했고, 따라서 아래 RANSAC 수치는 진짜 데이터다.
+
+**VERDICT = FALLBACK (hardened).** front-end 레버 질문은 **NO** 로 답해진다(median corner cm / area err% / ≤15 cm):
+
+- `baseline_concave`(control): 22.41 cm / 43.4% / 2-of-10.
+- **`convex_band`(최고 배포가능, fixed-param): 17.13 cm / 30.0% / 4-of-10** — 현 concave baseline 대비 실질·무비용 개선(−5 cm median, +2 방)이나 여전히 install-grade FAIL.
+- `ransac_walls`(**PRIMARY, fixed-param**): 19.30 cm(no-degen 8 방 18.72) / 26.4% / 2-of-10 — **기각**: trivial convex hull 보다 나쁘고 high-variance(41069048 3.4 cm win / 41159519 105 cm blow-up). per-room bimodal — 단일 고정 파라미터로 두 regime(잘 재구성된 벽 vs partial/parallel 벽)을 straddle 할 수 없어 median 이 parameter-free convex hull 뒤로 처진다.
+- `sweep_best`(**ORACLE, 배포 불가**): 11.60 cm / 35.7% / 7-of-10 — concave-hull family 자체에 ≤15 cm 여지가 있음을 증명하나 inference 시점에 없는 per-room GT-tuned 파라미터를 쓰므로 ship 불가(method 아닌 ceiling). degeneracy 방 = 41159503(scale 63% off, front-end 불가복), 41125756(scale 14% off).
+
+**Root cause = corner-fitting 아니라 periphery under-coverage**(OQ-53 에서 이미 isolated). hull family 는 존재하는 점의 경계만 다시 그릴 뿐 missing periphery 를 만들어내지 못하므로, 아무리 영리한 corner geometry 도 ≤15 cm 에 닿지 못한다. 남은 OQ-53 레버(coverage-aware capture / TSDF fusion / VGGT-Omega denser frames)는 모두 *coverage* 를 공략하며 고정 cloud 위 front-end-only 변경이 아니다 — OQ-59 scope 밖, 각각 별도 capture/compute 스파이크다.
+
+**권장 (§C 갱신, D83 FALLBACK 을 hardens).**
+
+1. **OQ-59 front-end 레버 = resolved NO** → multi-view 를 first-class ≤15 cm 경로로 **승격하지 않는다**. image/video → geometry 를 **HONEST metric scale + 가시적 per-corner uncertainty 를 동반한 rough-estimate tier** 로 고정한다. ≤15 cm 주장은 LiDAR/RoomPlan 에 유보.
+2. **무비용 in-tier upgrade(게이트 승급 아님)**: 이 경로가 ship 된다면 floor footprint 에 concave baseline 대신 `convex_band` 를 선호하되, **median win 이지 per-room dominance 아님**(3/10 방에서 regress, best-baseline 2 방 포함)이므로 rough-estimate 라벨을 유지한다.
+3. **다음 레버 = coverage, corner 아님** → coverage-aware capture / TSDF·VGGT-Omega denser fusion 이 최고가치 잔여 실험이며 각각 별도 스파이크다. install-grade floor 주장이 재우선화되지 않는 한 defer.
+
+**Header PROPOSED 유지 근거.** gate #2 의 정확도 절반(≤15 cm)이 여전히 미충족이고 blocking gate #1(OQ-52 in-domain 검증)·#3(OQ-54 provenance 스키마)이 미해소이므로, header 를 Accepted 로 전환하지 않는다.
 
 ---
 
