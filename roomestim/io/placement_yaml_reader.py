@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from roomestim.io.room_yaml_reader import _parse_provenance
 from roomestim.model import PlacedSpeaker, PlacementResult, Point3
 
 
@@ -99,6 +100,16 @@ def read_placement_yaml(path: Path | str) -> PlacementResult:
                     aim_direction=_aim_from_speaker(sp),
                 )
             )
+
+        # OQ-54 / ADR 0046: geometry capture provenance. Absent key → "assumed"
+        # (least-claim, matches room reader default). Validated via the shared
+        # _parse_provenance (imported at module top — no circular import:
+        # room_yaml_reader does not import placement_yaml_reader) so an
+        # out-of-enum value raises ValueError consistently. The validation call
+        # stays inside this try/except to honor the module's ValueError contract.
+        geometry_provenance = _parse_provenance(
+            str(data.get("x_geometry_provenance", "assumed")), name=str(path)
+        )
     except KeyError as exc:
         raise ValueError(
             f"layout '{path}': missing required key {exc}"
@@ -111,6 +122,7 @@ def read_placement_yaml(path: Path | str) -> PlacementResult:
         layout_name=layout_name,
         layout_version=layout_version,
         wfs_f_alias_hz=wfs_f_alias_hz,
+        geometry_provenance=geometry_provenance,
     )
 
 

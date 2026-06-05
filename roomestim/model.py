@@ -324,6 +324,12 @@ class PlacementResult:
     layout_name: str
     layout_version: str = "1.0"
     wfs_f_alias_hz: float | None = None
+    #: Capture provenance of the room geometry this placement was derived from
+    #: (OQ-54 / ADR 0046). Mirrors :attr:`RoomModel.provenance` so the rough-tier
+    #: honesty marker survives into the layout.yaml boundary. Keyword-defaulted to
+    #: ``"assumed"`` (least-claim) after ``wfs_f_alias_hz`` so existing positional
+    #: constructors are unaffected and existing layouts stay byte-equal.
+    geometry_provenance: Provenance = "assumed"
 
 
 # --------------------------------------------------------------------------- #

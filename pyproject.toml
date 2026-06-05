@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.25.0"
+version = "0.25.1"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -79,6 +79,7 @@ markers = [
     "e2e: end-to-end pipeline against external GT dataset (env-var gated)",
     "network: marker reserved for tests that may fetch over network (currently no test invokes it; gate is local-dir env var)",
     "web: requires the [web] optional extras (Gradio, pyroomacoustics, HRTF data); excluded from default CI",
+    "vision: requires the [vision] extra (torch+torchvision+HorizonNet weights); excluded from default CI",
 ]
 testpaths = ["tests"]
 

@@ -236,6 +236,13 @@ def placement_to_dict(
                 "(see design §6.1, A8 item #4); got wfs_f_alias_hz=None"
             )
         out["x_wfs_f_alias_hz"] = _round9(float(result.wfs_f_alias_hz))  # D56
+    # Top-level extension key — geometry capture provenance (OQ-54 / ADR 0046).
+    # Emitted ONLY when non-default so every existing placement (defaults to
+    # "assumed") stays byte-equal; reconstructed (rough-tier marker) and measured
+    # (positive claim) are carried. Mirrors room.yaml's provenance-at-boundary
+    # honesty. geometry_schema.json root additionalProperties:true → validates.
+    if result.geometry_provenance != "assumed":
+        out["x_geometry_provenance"] = result.geometry_provenance
     return out
 
 

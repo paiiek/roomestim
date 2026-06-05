@@ -73,7 +73,9 @@ python scripts/lint_tense.py
 — 단일 equirectangular 파노라마 1장에서 geometry 를 *추정*합니다. **install-grade 아님**
 (≤15 cm 정밀은 LiDAR/RoomPlan 한정). `[vision]` extra(`pip install -e ".[vision]"`)·
 `--experimental` 게이트·`--cam-height`(스케일 앵커) 필요. 출력은 `provenance=reconstructed`,
-재질 `unknown`, 치수는 근사 — CLI 가 `ESTIMATED` 고지를 출력합니다.
+재질 `unknown`, 치수는 근사 — CLI 가 `ESTIMATED` 고지를 출력합니다. v0.25.1 부터 이
+reconstructed 마커는 (room.yaml / stderr 고지뿐 아니라) 방출된 `layout.yaml` 에도
+`x_geometry_provenance` 로 영속하여, 다운스트림 소비자가 산출물 경계에서 rough-tier 출처를 봅니다.
 
 > **정확도(현실 수치)**: 사용자가 준 cam-height(부정확할 수 있음)로는 spike 측정 기준 **median 벽
 > 오차 35–57 cm, ≤15 cm 도달 11–17%**(주거 PanoContext 35 cm/17%, 사무 S2D3D 57 cm/11%). 흔히

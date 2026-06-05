@@ -450,10 +450,15 @@ def _run_placement(
     """Delegate to roomestim.place.dispatch.run_placement."""
     from roomestim.place.dispatch import run_placement
 
-    return run_placement(
+    result = run_placement(
         room, algorithm, n_speakers, layout_radius, el_deg,
         wfs_f_max_hz=wfs_f_max_hz, wfs_spacing_m=wfs_spacing_m,
     )
+    # OQ-54 / ADR 0046: carry the room's capture provenance onto the placement so
+    # the layout.yaml artifact reflects the geometry it was derived from. Single
+    # point covering both _cmd_run and _cmd_place. PlacementResult is non-frozen.
+    result.geometry_provenance = room.provenance
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -505,6 +510,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
     out_path = out_dir / "layout.yaml"
     write_layout_yaml(result, out_path)
     print(f"wrote {out_path}")
+    _maybe_print_estimated_notice(room)
     return 0
 
 
@@ -529,6 +535,10 @@ def _cmd_export(args: argparse.Namespace) -> int:
         layout_out = out_dir / "layout.yaml"
 
         write_room_yaml(room, room_out)
+
+        # OQ-54 / ADR 0046: the room is authoritative for capture provenance, so
+        # override the placement's marker before writing the layout.yaml artifact.
+        placement.geometry_provenance = room.provenance
 
         # D42 precedence: CLI flag > ENV var > default ON (backward-compat).
         no_validation: bool = getattr(args, "no_engine_validation", False)
