@@ -216,3 +216,18 @@ image backend 가 복원하는 `Surface.material`(`model.py:152`, required field
 ---
 
 *본 ADR 의 **rough tier(§B)는 v0.25.0 에서 구현·출하됐다**(experimental `--backend image`, D86/ADR 0046). install-grade 1급 경로(§C)와 multi-view 는 여전히 미구현/FALLBACK 이다(throwaway 스파이크로만 검증). install-grade 승급은 blocking gate #1(OQ-52)·#2(≤15 cm) 충족 후 별도 진행한다.*
+
+---
+
+## §Status-update-2026-06-05c (v0.25.2) — near-horizon plausibility guard + per-room honesty (D89)
+
+**(a) cold eval 결과 (244 real panos, 출하 어댑터).** 어댑터는 spike 파이프라인과 수치적으로 동일(divergence 없음·faithful)했다. 그러나 정직한 방-단위 그림은 README per-dim 프레이밍보다 훨씬 가혹하다:
+- **per-dimension** median 벽 오차 35–57 cm·≤15 cm 11–17% 는 *차원별* 수치다. **per-room(양변 모두 정확)** median 벽 오차는 ≈ **83–95 cm**, **양변 모두 ≤15 cm 도달은 주거 8% · 사무 3%**뿐 — per-dim 대비 약 2.5배 가혹.
+- **dominant lever = cam_h**(사용자 공급): +10 cm → +25–40 cm dim err(선형). assumed-default 1.6 → 15–30% over-scale.
+- **worst failure = near-horizon radius blowup.** `r = cam_h / tan(-v_floor)` 는 코너가 수평선에 가까울수록 발산한다. 주거 표본의 약 2%가 NO-FLAG 로 비현실적 거대 방(24.9 m, 41 m 등)을 방출했고, 기존 `_MIN_FLOOR_TAN=1e-6` 가드는 너무 느슨(AT-horizon 만 잡고 NEAR-horizon 은 통과)했다. 0/240 crash(잘못된 답에는 취약, 크래시엔 강건).
+
+**(b) the guard (F1).** `roomestim/adapters/image.py::_corners_to_room` 에 per-corner 절대 반경 상한 `_MAX_PLAUSIBLE_RADIUS_M = 20.0` m 추가. **데이터 기반**: legit-room max corner-radius p95 = 14.5 m, p99 = 27.9 m. 반경이 이 상한을 넘는 코너는 **조용히 건너뛰지(skip) 않고** depression-angle 진단을 담은 `ValueError` 로 **요란하게 거부(raise)**한다 — silent skip 은 force-cuboid quad 의 `<3 corners` 경로를 깨뜨리므로 의도적으로 raise. 240 panos 에서 false-reject 0, 실제 reject rate ≈ **2.9%**(비현실적 near-horizon tail + p95–p99 매우 큰 방의 얇은 정상 슬라이스 — 단일-파노 st3d 가 어차피 신뢰 재구성 불가). 기존 `_MIN_FLOOR_TAN` AT-horizon skip 경로는 그대로 보존(새 raise 가 가리지 않음). behavior change → PATCH 0.25.1→0.25.2.
+
+**(c) OQ-60 (NEW, deferred, low priority) — 절대 반경 상한 → 상대 outlier 테스트.** 현재 절대 상한(`_MAX_PLAUSIBLE_RADIUS_M=20.0`)은 "큰 방"과 "코너 오검출"을 혼동한다(legit p95–p99 매우 큰 방도 거부). 진짜 mis-detection 신호는 *한 코너의 반경이 나머지 코너 median 의 k배 이상 ≫* 인 경우다(절대 크기가 아니라 상대 이상치). 절대 상한을 **상대(relative) outlier 테스트로 교체/보강**하고 그 임계값(k)을 tunable 파라미터로 노출하라. 큰 방을 거부하지 않으면서 오검출만 잡을 수 있다. deferred·low priority.
+
+ADR 0046 v0.25.1 note(§Status-update-2026-06-05, layout-boundary provenance) 교차참조: 본 가드는 그 honesty 라인을 잇는 robustness/honesty 강화이며, **정확도 개선이 아니다** — 단일-파노 image→geometry 는 여전히 rough tier·NOT install-grade.

@@ -17,7 +17,12 @@ from pathlib import Path
 import pytest
 
 from roomestim.adapters.base import CaptureAdapter, ScaleAnchor
-from roomestim.adapters.image import ImageAdapter, _corners_to_room
+from roomestim.adapters.image import (
+    _MAX_PLAUSIBLE_RADIUS_M,
+    _MIN_FLOOR_TAN,
+    ImageAdapter,
+    _corners_to_room,
+)
 from roomestim.export import write_room_yaml
 from roomestim.io.room_yaml_reader import read_room_yaml
 from roomestim.model import MaterialLabel
@@ -112,6 +117,135 @@ def test_corners_to_room_geometry() -> None:
     assert n_walls == n_floor_edges
     # floor + ceiling + one wall per edge.
     assert len(room.surfaces) == 2 + n_floor_edges
+
+
+def test_near_horizon_corner_rejected() -> None:
+    """A floor corner beyond the plausibility bound raises (F1 near-horizon guard).
+
+    Replace one corner with a far (r >= 30 m) one so r > 20 m at cam_h=1.6. The
+    far corner's floor-ray tangent is well above ``_MIN_FLOOR_TAN`` (so the NEW
+    plausibility guard fires, not the old at-horizon skip).
+    """
+    far_x, far_z = 30.0, 0.0
+    far_corners = [
+        (far_x, far_z),  # r ~= 30 m -> exceeds the 20 m bound
+        (2.0, -1.5),
+        (-2.0, -1.5),
+        (-2.0, 1.5),
+    ]
+    cor_id = _synthetic_cor_id(far_corners, cam_h=_CAM_H, ceiling_height_m=_CEIL)
+
+    # Sanity: the far corner's depression-angle tangent is far above the old
+    # at-horizon skip threshold, so this is the new guard, not the old skip.
+    r_far = math.hypot(far_x, far_z)
+    tan_floor_far = _CAM_H / r_far
+    assert tan_floor_far > _MIN_FLOOR_TAN
+    assert r_far > _MAX_PLAUSIBLE_RADIUS_M
+
+    with pytest.raises(ValueError, match="(?i)plausibility|implausible|near-horizon"):
+        _corners_to_room(cor_id, _CAM_H, name="far-corner")
+
+
+def test_normal_room_not_falsely_rejected() -> None:
+    """A normal 4x3 room (all corners well within 20 m) must NOT raise."""
+    room = _corners_to_room(_canned_cor_id(), _CAM_H, name="normal")
+    assert room.provenance == "reconstructed"
+    assert len(room.floor_polygon) == 4
+
+
+def test_plausibility_bound_is_a_boundary() -> None:
+    """A corner just under 20 m passes; just over raises (boundary check)."""
+    just_under = [
+        (_MAX_PLAUSIBLE_RADIUS_M - 0.5, 0.0),
+        (2.0, -1.5),
+        (-2.0, -1.5),
+        (-2.0, 1.5),
+    ]
+    cor_under = _synthetic_cor_id(just_under, cam_h=_CAM_H, ceiling_height_m=_CEIL)
+    room = _corners_to_room(cor_under, _CAM_H, name="just-under")
+    assert len(room.floor_polygon) == 4
+
+    just_over = [
+        (_MAX_PLAUSIBLE_RADIUS_M + 0.5, 0.0),
+        (2.0, -1.5),
+        (-2.0, -1.5),
+        (-2.0, 1.5),
+    ]
+    cor_over = _synthetic_cor_id(just_over, cam_h=_CAM_H, ceiling_height_m=_CEIL)
+    with pytest.raises(ValueError, match="(?i)plausibility|implausible|near-horizon"):
+        _corners_to_room(cor_over, _CAM_H, name="just-over")
+
+
+def test_all_corners_far_still_rejected() -> None:
+    """ALL FOUR floor corners far (r ~= 30 m each) → raises on the first far corner.
+
+    Documents that the all-far case raises (not just the mixed one-far case); the
+    guard fires on the first out-of-bound corner it projects.
+    """
+    far = 30.0
+    all_far_corners = [
+        (far, 0.0),
+        (0.0, -far),
+        (-far, 0.0),
+        (0.0, far),
+    ]
+    cor_id = _synthetic_cor_id(all_far_corners, cam_h=_CAM_H, ceiling_height_m=_CEIL)
+
+    # Each corner is well beyond the 20 m bound and above the at-horizon skip.
+    for x, z in all_far_corners:
+        r = math.hypot(x, z)
+        assert r > _MAX_PLAUSIBLE_RADIUS_M
+        assert _CAM_H / r > _MIN_FLOOR_TAN
+
+    with pytest.raises(ValueError, match="(?i)plausibility|implausible|near-horizon"):
+        _corners_to_room(cor_id, _CAM_H, name="all-far")
+
+
+def test_at_horizon_corner_still_skipped() -> None:
+    """One at-horizon corner (v_floor ~= 0) is SILENTLY SKIPPED, not raised.
+
+    Proves the new radius-raise did not shadow the old ``_MIN_FLOOR_TAN`` skip
+    path: with one floor row at the horizon (tan(-v_floor) <= _MIN_FLOOR_TAN) the
+    room still builds from the remaining 3 valid corners with no exception.
+
+    The at-horizon floor row is constructed directly (v_floor ~= 0 -> normalized
+    floor row 0.5), since ``_synthetic_cor_id`` cannot emit an exactly-horizon row.
+    """
+    # Three normal corners (ceiling-then-floor rows) from the helper.
+    normal = _synthetic_cor_id(
+        [(2.0, 1.5), (2.0, -1.5), (-2.0, -1.5)],
+        cam_h=_CAM_H,
+        ceiling_height_m=_CEIL,
+    )
+
+    # A 4th column whose FLOOR row sits at the horizon (v_floor ~= 0 -> tan ~= 0,
+    # i.e. <= _MIN_FLOOR_TAN), so it is skipped. Its ceiling row is left valid;
+    # the floor row's exact column is irrelevant since the column is skipped.
+    u = math.atan2(-2.0, -1.5)
+    col = (u / (2.0 * math.pi) + 0.5) * _PANO_W - 0.5
+    u_norm = col / _PANO_W
+    v_ceil = math.atan2(_CEIL - _CAM_H, math.hypot(-2.0, 1.5))
+    row_ceil = (-v_ceil / math.pi + 0.5) * _PANO_H - 0.5
+    v_ceil_norm = row_ceil / _PANO_H
+    # Floor row at the horizon: invert the code's de-normalization so v_floor==0.
+    # The core computes v_floor = -((row_f + 0.5)/_PANO_H - 0.5)*pi with
+    # row_f = horizon_floor_norm * _PANO_H, so v_floor==0 needs
+    # row_f == _PANO_H/2 - 0.5.
+    horizon_floor_norm = (_PANO_H / 2.0 - 0.5) / _PANO_H
+
+    cor_id = [*normal, (u_norm, v_ceil_norm), (u_norm, horizon_floor_norm)]
+
+    # Confirm the constructed floor row really is at/above the horizon skip
+    # threshold (tan(-v_floor) <= _MIN_FLOOR_TAN), exercising the OLD skip path.
+    row_f = horizon_floor_norm * _PANO_H
+    v_floor = -((row_f + 0.5) / _PANO_H - 0.5) * math.pi
+    assert math.tan(-v_floor) <= _MIN_FLOOR_TAN
+
+    # No raise: the at-horizon corner is silently skipped; the room builds from
+    # the remaining 3 valid corners.
+    room = _corners_to_room(cor_id, _CAM_H, name="at-horizon-skip")
+    assert room.provenance == "reconstructed"
+    assert len(room.floor_polygon) == 3
 
 
 def test_corners_to_room_yaml_round_trip(tmp_path: Path) -> None:

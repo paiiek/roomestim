@@ -2588,3 +2588,60 @@ coverage 레버(OQ-59 b/c/d), OQ-52 in-domain ckpt. ADR 0045 header PROPOSED 유
 `docs/adr/0045-...md`(§Status-update-2026-06-04b + footer 정정), 본 D86, 빌드 플랜(P0–P5 done).
 **Cross-refs**: ADR 0045(§B rough tier 구현·출하 / §C install-grade FALLBACK / gate #3·#4 MET·#1·#2 미충족),
 ADR 0046·D85(provenance), D83·D84(rough-tier 확정), OQ-54·OQ-57·OQ-58·OQ-52(잔여/deferred), 빌드 플랜 P0–P5.
+
+## D87 — provenance 를 layout.yaml 아티팩트 경계로 전파 (image-backend honesty 후속 T1; ADR 0046 §Status-update-2026-06-05; v0.25.1, 2026-06-05)
+
+room.yaml 은 이미 `provenance` 를 영속화(D85)하나 **layout.yaml(placement 아티팩트)에는 rough-tier 마커가 없어** 정직성 고지가
+휘발성 stderr(`_maybe_print_estimated_notice`)뿐이었다. 사용자 권고 #1("provenance 전파") 수용 → 마커를 placement 산출물에 실어
+아티팩트 경계에서 정직성 유지.
+
+**구현**: `PlacementResult.geometry_provenance: Provenance = "assumed"` 필드 추가 → CLI `_run_placement`(=_cmd_run·_cmd_place 공통)
+및 `_cmd_export`(room 권위)에서 `room.provenance` 전파 → `export/layout_yaml.py:placement_to_dict` 가 상위 확장키
+`x_geometry_provenance` 를 **`!= "assumed"` 일 때만** 방출(reconstructed=rough 마커·measured=positive claim; assumed 묵시 →
+**기존 layout 전부 byte-equal**, 모든 기존 PlacementResult 가 assumed 기본값이므로). `io/placement_yaml_reader.py` 가 round-trip +
+누락 시 least-claim "assumed" 기본화, out-of-enum 은 공유 `_parse_provenance` 로 거부. `_cmd_place` 도 ESTIMATED 고지 출력(run/ingest 일관).
+geometry_schema 루트 additionalProperties:true → 검증 통과. write→read→write idempotent.
+
+**검증**: default 351p/6s, web 86p/4s, ruff/mypy/tense EXIT0. 독립 code-review APPROVE + 독립 verifier VERIFIED-GREEN(byte-equality·
+E2E reconstructed 체인 실측). `test_layout_provenance.py`(신규 6 테스트).
+**Cross-refs**: ADR 0046(§Status-update-2026-06-05), D85(room-level provenance 선행), ADR 0045 §F honesty / Reverse-criterion #4, D88(동시 출하 golden), D86(image backend).
+
+## D88 — 실모델 golden 회귀 테스트(`vision` 마커, 실 HorizonNet 경로) (image-backend honesty 후속 T2; v0.25.1, 2026-06-05)
+
+in-gate 이미지 테스트는 전부 torch-free(합성 cor_id)였고 **실 torch 경로(`_infer_corners`→vendored HorizonNet)는 무방비**였다.
+사용자 권고 #2 수용 → 실모델 1-파노 회귀 락.
+
+**구현**: `tests/test_image_backend_golden.py`(`@pytest.mark.vision`) — vendored 합성 파노(`tests/fixtures/image/roomA_synth_pano.png`,
+MIT-clean 우리 렌더)에서 실 HorizonNet 추론 후 출력 고정(width 4.7327·depth 3.9647·ceiling 3.1528, abs=0.2 cross-machine bound) +
+정직성 불변식(provenance reconstructed·materials UNKNOWN·objects=[]·6 surfaces) exact assert. **서브프로세스 가용성 probe** 로
+torch 의 `sys.modules` 오염 차단(경계 게이트 #4 보존; 깨진 torchvision RuntimeError 도 비-제로 exit→skip). 오프라인/무-ckpt →
+OSError/ConnectionError/ImportError → pytest.skip. pyproject `vision` 마커 신규.
+
+**검증**: canonical default 게이트에서 깨끗이 SKIP(broken torchvision), `[vision]` venv(torchvision 0.20.1 + 로컬 st3d ckpt)에서 **1 passed**
+(골든 정확 일치). 독립 verifier 가 venv 에서 직접 1-passed 재현.
+**Cross-refs**: D87(동시 출하 T1), ADR 0045(§image backend / gate #4 torch 경계), D86(image backend), 빌드 플랜 P3(실경로).
+
+## D89 — near-horizon 타당성 가드 + per-room 정직성 보정 (cold eval 후속 F1·F2; ADR 0045 §Status-update-2026-06-05c; OQ-60 NEW; v0.25.2, 2026-06-05)
+
+출하 후 **콜드 다중-시나리오 평가**(244 실파노 + 합성 sweep): 어댑터는 스파이크 파이프라인과 수치적으로 동일(divergence 0).
+per-DIM median 39cm(주거)/50cm(사무)는 README 와 일치하나 **per-ROOM(양변) median 83–95cm·양변 ≤15cm 주거 8%/사무 3%** →
+README per-dim 프레이밍이 ~2.5× 낙관적. 지배 오차원 = 사용자 cam_h(+10cm→+25–40cm, 선형). **최악 실패: near-horizon radius
+blowup** — `r=cam_h/tan(-v_floor)` 발산으로 주거 ~2% 가 비현실적 >15m 방(24.9m·41m)을 **플래그 없이** 방출; 기존 `_MIN_FLOOR_TAN=1e-6`
+가드는 AT-horizon 만 차단, NEAR-horizon 누락.
+
+**F1(코드)**: `adapters/image.py:_corners_to_room` 에 `_MAX_PLAUSIBLE_RADIUS_M = 20.0` — 데이터 기반(legit 코너반경 p95=14.5m·p99=27.9m;
+@20m reject 2.9%). 코너 반경 초과 시 **조용한 거대-방 방출 대신 명확한 ValueError(하강각 진단 + remediation)로 거부**(force-cuboid 4-코너
+불변식상 skip 불가 → raise). AT-horizon `_MIN_FLOOR_TAN` skip 경로 보존. 240 실파노 end-to-end: 7 거부(반경 21–42m, 41m·24.9m 환각 포함)/
+233 정상/0 false-reject. CLI ValueError→exit1 전파.
+
+**F2(문서)**: README 정확도 블록에 per-DIM vs per-ROOM 구분 + per-room 83–95cm·양변≤15cm 8%/3% 명시, near-horizon 자동거부(>~40m 방
+rough tier 미지원) 고지; "rough pre-scan, 설치측정 아님" 판정 유지(데이터는 더 가혹).
+
+**미해결(NEW) OQ-60**: 절대 반경 bound 는 "큰 방"과 "오검출"을 혼동 → 상대 outlier 검정(코너반경 ≫ k×median(나머지))으로 대체/보강 +
+threshold 파라미터화. deferred, low-pri.
+
+**검증**: default 356p/6s, web 86p/4s, ruff/mypy/tense EXIT0. 독립 code-review APPROVE-WITH-FIXES(LOW 3건 반영: 코멘트 수치 2.9%,
+all-far 거부 테스트, at-horizon skip 보존 테스트). `test_adapter_image.py` +5 테스트. **Version** 0.25.1→0.25.2 PATCH(behavior change:
+비현실 재구성 거부 + 정직성 문서 보정; 정확도 개선 아님).
+**Cross-refs**: ADR 0045(§Status-update-2026-06-05c / §C install-grade FALLBACK), D86·D87·D88(image backend·honesty), OQ-57(per-corner
+uncertainty)·OQ-58(scale source)·OQ-60(relative bound), cold eval(scientist, 244 panos).

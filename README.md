@@ -77,12 +77,18 @@ python scripts/lint_tense.py
 reconstructed 마커는 (room.yaml / stderr 고지뿐 아니라) 방출된 `layout.yaml` 에도
 `x_geometry_provenance` 로 영속하여, 다운스트림 소비자가 산출물 경계에서 rough-tier 출처를 봅니다.
 
-> **정확도(현실 수치)**: 사용자가 준 cam-height(부정확할 수 있음)로는 spike 측정 기준 **median 벽
-> 오차 35–57 cm, ≤15 cm 도달 11–17%**(주거 PanoContext 35 cm/17%, 사무 S2D3D 57 cm/11%). 흔히
-> 인용되는 43–45% ≤15 cm 는 *perfect scale anchor* 오라클 천장이며 추론 시점엔 얻을 수 없습니다.
+> **정확도(현실 수치)**: 사용자가 준 cam-height(부정확할 수 있음)로는 spike 측정 기준 **per-dimension
+> median 벽 오차 35–57 cm, ≤15 cm 도달 11–17%**(주거 PanoContext 35 cm/17%, 사무 S2D3D 57 cm/11%).
+> 단, 이 35–57 cm/11–17% 는 **차원별(per-dimension)** 수치입니다 — cold eval(244 real panos, 출하 어댑터)
+> 기준 **방 단위(per-room, 양변 모두 정확)** 현실은 약 2.5배 가혹합니다: **per-room median 벽 오차 ≈ 83–95 cm,
+> 양변 모두 ≤15 cm 도달은 주거 8% · 사무 3%**뿐입니다. 흔히 인용되는 43–45% ≤15 cm 는 *perfect scale
+> anchor* 오라클 천장이며 추론 시점엔 얻을 수 없습니다.
 > `--cam-height` 가 모든 치수 스케일을 결정 — **±10 cm 오차 ≈ median 32 cm 벽 오차**이므로 가능한 한
-> 실측하세요. 비직사각 방은 조용히 사각화되고, 재질 미상이라 음향(RT60) 추정은 시연 등급입니다.
-> 신뢰 가능한 설치 측정용이 아니라 **rough pre-scan/sanity** 용도입니다.
+> 실측하세요. v0.25.2 부터 비현실적 재구성(코너 >20 m, 방 ≈40 m 이상 또는 수평선-근처 코너 오검출)은
+> 이제 조용히 거대한 방을 내보내지 않고 **명확한 에러로 거부**됩니다(주거 표본 약 2.9%). 매우 큰 방(>~40 m)은
+> rough tier 에서 미지원입니다. 비직사각 방은 조용히 사각화되고, 재질 미상이라 음향(RT60) 추정은 시연 등급입니다.
+> 신뢰 가능한 설치 측정용이 아니라 **rough pre-scan/sanity** 용도이며 — cold eval 데이터는 (무거운
+> catastrophic tail 때문에) 오히려 더 가혹합니다.
 
 ```bash
 python -m roomestim run --backend image --experimental \

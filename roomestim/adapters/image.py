@@ -15,6 +15,9 @@ Honesty (ADR 0045 §F):
   * No visual material inference (§E): floor/ceiling/walls are
     :data:`MaterialLabel.UNKNOWN`. ``provenance="reconstructed"`` (image, no
     depth). ``objects=[]`` (no furniture detection).
+  * A near-horizon floor corner blows up ``r = cam_h / tan(-v_floor)``; a corner
+    recovered beyond :data:`_MAX_PLAUSIBLE_RADIUS_M` is rejected loudly with a
+    ``ValueError`` rather than silently emitting a physically-absurd giant room.
 
 torch boundary (ADR 0045 gate #4): ``import roomestim.adapters.image`` MUST stay
 torch-free. ``torch`` and the vendored torch-backed model are imported lazily
@@ -50,6 +53,16 @@ _PANO_H = 512
 # Below this floor-ray tangent a corner column is effectively at/above the
 # horizon and yields a degenerate (infinite) radius; such columns are skipped.
 _MIN_FLOOR_TAN = 1e-6
+
+# A recovered floor corner farther than this from the camera implies a room
+# dimension approaching ~40 m, which single-pano HorizonNet-st3d cannot
+# reconstruct reliably (near-horizon corner mis-detection blows up
+# r = cam_h / tan(-v_floor)). Measured on 240 real panos: legit-room max
+# corner-radius p95 = 14.5 m, p99 = 27.9 m. This 20 m bound rejects ~2.9% of
+# panos — the absurd near-horizon tail plus a thin slice of genuine p95–p99
+# very-large rooms that single-pano st3d cannot reconstruct reliably anyway.
+# ADR 0045 honesty: reject loudly, never emit a giant room.
+_MAX_PLAUSIBLE_RADIUS_M = 20.0
 
 
 def _corners_to_room(
@@ -107,6 +120,15 @@ def _corners_to_room(
             # Degenerate column (corner at/above horizon); skip it.
             continue
         r = cam_h / tan_floor
+        if r > _MAX_PLAUSIBLE_RADIUS_M:
+            raise ValueError(
+                f"ImageAdapter: recovered a floor corner {r:.1f} m from the camera "
+                f"(depression angle {math.degrees(-v_floor):.2f}°), exceeding the "
+                f"{_MAX_PLAUSIBLE_RADIUS_M:.0f} m single-pano plausibility bound. The "
+                f"panorama layout could not be reliably reconstructed (near-horizon "
+                f"corner mis-detection); rejected rather than emitting an implausible "
+                f"dimension. Use a more accurate --cam-height or a depth-capture backend."
+            )
         x = r * math.sin(u)
         z = -r * math.cos(u)
         floor_polygon_2d.append(Point2(x, z))

@@ -69,12 +69,53 @@ web `-m web`, ruff, mypy(roomestim only), tense EXIT0. (baseline numbers filled 
 - [x] P2 T2 implement + run golden in vision venv (executor) → code-review → full gate  — commit-pending
 - [x] P3 version+docs wrap → independent verifier → commit  — wrap done (v0.25.1); commit-pending
 
+## ROUND 2 (2026-06-05 PM) — cold eval → 2 follow-ups (user: "둘다진행")
+Cold multi-scenario eval (scientist, 244 real panos + synthetic sweeps) findings:
+- adapter == spike pipeline numerically (no divergence; faithful). per-DIM median 39cm(res)/50cm(office)
+  matches README; but per-ROOM(both dims) median 83-95cm, both-≤15cm only 3-8% → README per-dim framing optimistic.
+- dominant lever = cam_h (user-supplied): +10cm → +25-40cm dim err (linear). assumed-default 1.6 → 15-30% over-scale.
+- **WORST FAILURE (new): near-horizon radius blowup** `r=cam_h/tan(-v_floor)` diverges; 2% of res emit absurd
+  >15m rooms (24.9m, 41m) with NO flag. `_MIN_FLOOR_TAN=1e-6` guard too loose (catches AT-horizon, not NEAR).
+- force-cuboid silent-degrade path UNVALIDATABLE here (this PanoContext mirror is 100% cuboid GT).
+- 0/240 crash failures (robust to crash, not to wrong answer).
+
+### F1 (CODE) near-horizon plausibility guard — adapters/image.py `_corners_to_room` — DONE
+- root cause: per-corner r blowup. Honest fix = REJECT physically-implausible reconstruction loudly (raise
+  ValueError w/ depression-angle diagnostic) instead of silently emitting a giant room. NOT a skip (would break
+  the force-cuboid quad → existing "<3 corners" raise).
+- bound: per-corner `_MAX_PLAUSIBLE_RADIUS_M = 20.0` m — set FROM DATA: legit-room max corner-radius
+  p95 = 14.5 m, p99 = 27.9 m on 240 panos. Measured post-guard reject rate ≈ **2.9%** (absurd near-horizon tail
+  + thin slice of genuine p95–p99 very-large rooms single-pano st3d cannot reconstruct reliably anyway);
+  **0 false-reject on 240 panos**. Raises (not skips); the old `_MIN_FLOOR_TAN` AT-horizon skip path is preserved.
+- tests (test_adapter_image.py, all green): `test_near_horizon_corner_rejected`, `test_normal_room_not_falsely_rejected`,
+  `test_plausibility_bound_is_a_boundary`, + review-fix adds `test_all_corners_far_still_rejected`
+  (all-far → raises on first far corner) and `test_at_horizon_corner_still_skipped` (at-horizon corner silently
+  skipped, room builds from remaining 3 → proves new raise did not shadow the old skip).
+- behavior change → PATCH 0.25.1→0.25.2 + ADR 0045 §Status-update-2026-06-05c (D89) + RELEASE_NOTES_v0.25.2.md. DONE.
+
+### F2 (DOCS) README per-room honesty correction — DONE
+- distinguished per-DIM vs per-ROOM in the accuracy blockquote: per-room median 벽 오차 ≈ **83–95 cm**,
+  both-≤15cm 주거 **8%** · 사무 **3%** (per-dim 35–57cm/11–17% is ~2.5× optimistic vs per-room). Noted near-horizon
+  auto-reject (≈2.9% of residential samples; >~40 m rooms unsupported in rough tier). Kept "rough pre-scan, not
+  install" verdict, noting data is if anything harsher (heavy catastrophic tail). doc-only (+ RELEASE_NOTES line). DONE.
+- ORCH: executor(F1 code+tests+measure)→code-review→executor(F2+wrap)→independent verifier→commit.
+
 ## RESUME POINTER (2026-06-05)
-T1 (provenance→layout.yaml) + T2 (real-model golden test) IMPLEMENTED and independent
-code-review = APPROVE. Review-driven polish applied (placement reader import promoted to
-module top, `place` subcommand now emits ESTIMATED notice, golden tolerance comment clarified
-as cross-machine jitter bound). Wrapped at **v0.25.1** (PATCH): `__init__.py` + `pyproject.toml`
-= 0.25.1, `__schema_version__` unchanged. Docs: ADR 0046 §Status-update-2026-06-05 (D87 layout-
-boundary propagation, D88 real-model golden), new `RELEASE_NOTES_v0.25.1.md`, README image-backend
-paragraph note. Gates GREEN (default 351p/6s, web 86p/4s, ruff/mypy/tense EXIT0).
+ROUND 2 (F1 guard + F2 honesty) implemented, reviewed APPROVE-WITH-FIXES, wrapped v0.25.2,
+gates GREEN, pending verifier+commit; OQ-60 relative-bound follow-up logged.
+
+Detail: F1 near-horizon plausibility guard (`_MAX_PLAUSIBLE_RADIUS_M=20.0`, data-grounded
+p95=14.5/p99=27.9, ≈2.9% reject, 0 false-reject on 240 panos, raises not skips) + F2 README
+per-room honesty (per-room median 83–95cm, both-≤15cm 주거 8%/사무 3%) DONE. 3 review LOW fixes
+applied: image.py constant comment reworded to honest 2.9% reject framing; +2 tests
+(`test_all_corners_far_still_rejected`, `test_at_horizon_corner_still_skipped`). Wrapped at
+**v0.25.2** (PATCH, behavior change): `__init__.py` + `pyproject.toml` = 0.25.2,
+`__schema_version__` unchanged. Docs: ADR 0045 §Status-update-2026-06-05c (D89 near-horizon guard
++ per-room honesty; NEW OQ-60 relative-outlier-bound follow-up, deferred low-pri), new
+`RELEASE_NOTES_v0.25.2.md`, README accuracy blockquote per-dim→per-room correction.
+Gates GREEN (default 356p/6s, web 86p/4s, ruff/mypy/tense EXIT0).
 PENDING: independent verifier pass + git commit (NOT yet committed).
+
+### prior (v0.25.1, T1/T2) — for history
+T1 (provenance→layout.yaml) + T2 (real-model golden test) IMPLEMENTED, code-review APPROVE,
+wrapped v0.25.1 (ADR 0046 §Status-update-2026-06-05, D87/D88, RELEASE_NOTES_v0.25.1.md).
