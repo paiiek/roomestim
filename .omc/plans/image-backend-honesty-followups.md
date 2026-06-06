@@ -100,6 +100,16 @@ Cold multi-scenario eval (scientist, 244 real panos + synthetic sweeps) findings
   install" verdict, noting data is if anything harsher (heavy catastrophic tail). doc-only (+ RELEASE_NOTES line). DONE.
 - ORCH: executor(F1 code+tests+measure)→code-review→executor(F2+wrap)→independent verifier→commit.
 
+## ROUND 3 (2026-06-06) — OQ-60 empirical resolution (doc-only)
+"계속 진행해" → 유일한 logged 후속 OQ-60(near-horizon 가드: 절대 상한 vs 상대 outlier 테스트) 실증 해소.
+scientist 240 실파노(seed=7) 실측 → **상대 테스트 기각, 절대 20 m 유지, 코드 변경 0**:
+- 예측 코너반경 ratio 최대 1.84(GT 1.59) → 후보 k∈{4..15} 전부 0/240 거부(force_cuboid 가 ratio 신호 제거).
+- 경쟁 가설(off-center→고 ratio) 미발현(직사각형 대각 코너 동반 스케일, GT ratio≤2.2).
+- 절대 상한도 완벽 분리 불가(artifact pred 28.1·GT 3.6 vs legit pred 27.9·GT 47.4 = 0.2 m 겹침)이나 20 m 거부
+  4건 전부 정당(2 환각 + 2 초대형 out-of-scope). scientist "40 m 상향" 권고는 내부모순(28.1 artifact 통과)이라 기각.
+- 산출: ADR 0045 §Status-update-2026-06-06 + decisions D90 + open-questions OQ-60 RESOLVED. **OQ-60 CLOSED.**
+- doc-only(version bump 없음). gate 무영향 확인 후 commit-pending.
+
 ## RESUME POINTER (2026-06-05)
 ROUND 2 (F1 guard + F2 honesty) implemented, reviewed APPROVE-WITH-FIXES, wrapped v0.25.2,
 gates GREEN, pending verifier+commit; OQ-60 relative-bound follow-up logged.

@@ -231,3 +231,14 @@ image backend 가 복원하는 `Surface.material`(`model.py:152`, required field
 **(c) OQ-60 (NEW, deferred, low priority) — 절대 반경 상한 → 상대 outlier 테스트.** 현재 절대 상한(`_MAX_PLAUSIBLE_RADIUS_M=20.0`)은 "큰 방"과 "코너 오검출"을 혼동한다(legit p95–p99 매우 큰 방도 거부). 진짜 mis-detection 신호는 *한 코너의 반경이 나머지 코너 median 의 k배 이상 ≫* 인 경우다(절대 크기가 아니라 상대 이상치). 절대 상한을 **상대(relative) outlier 테스트로 교체/보강**하고 그 임계값(k)을 tunable 파라미터로 노출하라. 큰 방을 거부하지 않으면서 오검출만 잡을 수 있다. deferred·low priority.
 
 ADR 0046 v0.25.1 note(§Status-update-2026-06-05, layout-boundary provenance) 교차참조: 본 가드는 그 honesty 라인을 잇는 robustness/honesty 강화이며, **정확도 개선이 아니다** — 단일-파노 image→geometry 는 여전히 rough tier·NOT install-grade.
+
+## §Status-update-2026-06-06 (OQ-60 RESOLVED, D90) — 상대 outlier 테스트 기각, 절대 상한 20 m 유지 (코드 변경 0)
+
+OQ-60(§Status-update-2026-06-05c (c))을 240 실파노(seed=7; 주거 120 cam_h=1.4 + 사무 120 cam_h=1.6; HorizonNet st3d, 0 추론오류)로 실측 검증했다. **결론: 상대 테스트 기각, 절대 상한(`_MAX_PLAUSIBLE_RADIUS_M=20.0`) 그대로 유지 — 어떤 코드/임계값 변경도 정당화되지 않는다.**
+
+- **상대 테스트는 구조적으로 무력.** 예측 코너반경 ratio(`max/median`) 최대 = **1.84**(GT ratio 최대 1.59); 전 분포가 [1.01, 1.84]에 갇혀 long tail 이 없다. 후보 k∈{4,6,8,10,15} 전부 **0/240 거부**. 원인: HorizonNet `force_cuboid` 후처리가 네 코너를 비례 이동시켜 near-horizon 왜곡을 대칭 분산 → "한 코너만 ratio≫" 신호 자체가 발생하지 않는다. (review 가설의 "ratio≈12"는 free-form polygon parser 나 <4 코너 출력에서나 나오는 것으로, cuboid 경로엔 없음.)
+- **경쟁 가설(off-center 카메라→고 ratio)도 미발현.** GT ratio 최대 1.59 — 직사각형 방에서는 대각 코너가 함께 스케일되어 ratio 상한이 ~2.2 로 묶인다. 즉 상대 테스트가 잡을 신호도, false-reject 할 위험도 둘 다 데이터에 없다.
+- **절대 상한도 완벽 분리는 못 한다(그러나 현 선택이 최선).** 거부 4건 중 #1(pred 28.1 m, **GT 3.6 m** = 명백 환각)과 #2(pred 27.9 m, **GT 47.4 m** = legit 초대형 오피스)가 **0.2 m 차로 겹친다** → 절대 임계로 둘을 robust 분리 불가. 그럼에도 20 m 거부 4건은 전부 정당: 2건은 진짜 환각(GT 3.6/7.4 m), 2건(#2·#4, GT 47.4/16.8 m)은 >~40 m 초대형 방으로 **rough tier 범위 밖**(단일 파노 재구성 불가 — 에러 메시지가 depth 백엔드로 안내). 이 "false-reject"들은 도구가 어차피 신뢰 처리 못 하는 방이다.
+- **"40 m 로 상향" 권고는 기각.** 그 임계는 #1(28.1 m, GT 3.6 m) 환각을 통과시켜 3.6 m 방을 ~28 m 로 방출 → 가드 핵심 목적을 무력화한다(scientist 권고 내부모순).
+
+검증은 read-only 실측(코드/게이트 무변경). 본 update 는 doc-only — version bump 없음. scientist 분석(240 panos, ratio 분포 + 2×2 분리표 + per-k false-reject) 이 근거. **OQ-60 CLOSED.**

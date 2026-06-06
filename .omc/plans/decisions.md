@@ -2645,3 +2645,19 @@ all-far 거부 테스트, at-horizon skip 보존 테스트). `test_adapter_image
 비현실 재구성 거부 + 정직성 문서 보정; 정확도 개선 아님).
 **Cross-refs**: ADR 0045(§Status-update-2026-06-05c / §C install-grade FALLBACK), D86·D87·D88(image backend·honesty), OQ-57(per-corner
 uncertainty)·OQ-58(scale source)·OQ-60(relative bound), cold eval(scientist, 244 panos).
+
+## D90 — OQ-60 RESOLVED: near-horizon 가드 상대 outlier 테스트 기각, 절대 상한 20 m 유지 (코드 변경 0; ADR 0045 §Status-update-2026-06-06, 2026-06-06)
+
+D89/OQ-60(절대 반경 상한을 상대 outlier 테스트로 교체?)을 240 실파노(seed=7; 주거 120 cam_h=1.4 + 사무 120 cam_h=1.6;
+HorizonNet st3d, 0 추론오류)로 실측. **결론: 상대 기각, 절대 20 m 유지 — 코드/임계값 무변경이 정답.**
+
+- **상대 테스트 구조적 무력**: 예측 코너반경 ratio(max/median) 최대 **1.84**(GT 최대 1.59), 전 분포 [1.01,1.84]. 후보
+  k∈{4,6,8,10,15} 전부 0/240 거부. HorizonNet `force_cuboid` 가 네 코너를 비례 이동 → "한 코너만 ≫" 신호 미발생.
+- **경쟁 가설(off-center→고 ratio)도 미발현**: 직사각형 방 대각 코너 동반 스케일로 GT ratio 상한 ~2.2.
+- **절대 상한도 완벽 분리 불가하나 현 선택이 최선**: artifact #1(pred 28.1·GT 3.6 m)과 legit #2(pred 27.9·GT 47.4 m)가
+  0.2 m 차로 겹침. 20 m 거부 4건 전부 정당(2=진짜 환각 GT 3.6/7.4 m, 2=>~40 m 초대형으로 rough tier 범위 밖, 재구성 불가).
+- **scientist 의 "40 m 상향" 권고 기각**(내부모순: 40 m 는 28.1 m artifact #1 통과 → 3.6 m 방을 28 m 로 방출, 가드 무력화).
+
+**검증**: read-only 실측(코드·게이트 무변경). doc-only(version bump 없음). decisions/open-questions/ADR 0045 동기화.
+**변경 파일**: `docs/adr/0045-...md`(§Status-update-2026-06-06), `.omc/plans/open-questions.md`(OQ-60 RESOLVED), 본 D90.
+**Cross-refs**: D89/OQ-60(본 D90 가 해소), ADR 0045(§Status-update-2026-06-05c·06-06), scientist 분석(240 panos·ratio 분포·2×2 분리표·per-k false-reject), [[project_image_backend_cold_eval]].
