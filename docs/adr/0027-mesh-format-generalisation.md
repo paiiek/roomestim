@@ -151,3 +151,22 @@ validation error path for a previously-undefined input).
   tests.
 - `RELEASE_NOTES_v0.12-web.1.md` — v0.12-web.1 release notes (§ "Known gaps").
 - `.omc/plans/v0.12-web.1-design.md` §6 — ADR sketch source.
+
+## §Status-update-2026-06-07 (v0.25.3) — up-axis(gravity) 자동 정규화 (measured 경로 P0 정확성 수정; D91)
+
+상용화(B2B AV-인스톨러) 분석 중 measured 경로가 **실 캡처로 미검증**(픽스처 전부 합성 Y-up shoebox)임을 확인,
+실 ARKitScenes(iPad LiDAR=RoomPlan 센서 정합) 10 scene 으로 MeshAdapter 를 처음 실행 → **천장 6.5–9.6 m**(실제 ~2.5 m).
+근본원인: 어댑터가 **Y-up 하드코딩**(`ceiling = y_max - y_min`)·gravity/up-축 정규화 전무. ARKit/RoomPlan·다수 `.ply`/
+`.obj` export 는 **Z-up(gravity-aligned)** → 가로 치수를 천장으로 오인, floor polygon 도 틀린 평면 추출.
+
+**수정**: `MeshAdapter` 가 ingest 시 up-축을 **planar-density 판별자**(축별 1-D 히스토그램의 floor/ceiling 평면 집중도;
+종횡비 무관)로 검출 후 모델 Y-up 프레임으로 정규화 → 기존 추출 로직 불변. density 동률 시 floor-area tiebreaker
+(clear-floor 1.50× 마진). density·area 둘 다 모호(완전 cube / sparse+narrow)면 조용히 추측 않고 `ValueError`(진단+
+`up_axis=` 권고)로 **fail-loud**. `up_axis` override 추가(기본 auto). 합성 Y-up 입력은 정규화 identity → **byte-equal**.
+
+**검증**: 실 ARKit 10 scene up-축 전부 Z·천장 2.49–3.69 m(다중층 1개 5.76 m 별도)·`@pytest.mark.lab` 회귀로 고정.
+default 368p/6s, ruff/mypy(strict)/tense EXIT0. 독립 code-review 2R(HIGH narrow-room→해소, MEDIUM sparse-narrow→fail-loud)
++ 독립 verifier VERIFIED-GREEN. **한계**: gravity-aligned-to-principal-axis 가정(기울어진 mesh 는 `up_axis=` 필요);
+센서 vs 실측 ±10 cm 절대정확도는 독립 GT 필요(Phase 0b 후속, 미입증).
+**Cross-refs**: D91, `.omc/plans/commercialization-analysis.md`(B2B 프레이밍·Phase 0), ADR 0001(RoomPlan/mesh measured 경로),
+ADR 0042(live-mesh corner extraction, 관련 PROPOSED).

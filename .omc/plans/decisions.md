@@ -2661,3 +2661,31 @@ HorizonNet st3d, 0 추론오류)로 실측. **결론: 상대 기각, 절대 20 m
 **검증**: read-only 실측(코드·게이트 무변경). doc-only(version bump 없음). decisions/open-questions/ADR 0045 동기화.
 **변경 파일**: `docs/adr/0045-...md`(§Status-update-2026-06-06), `.omc/plans/open-questions.md`(OQ-60 RESOLVED), 본 D90.
 **Cross-refs**: D89/OQ-60(본 D90 가 해소), ADR 0045(§Status-update-2026-06-05c·06-06), scientist 분석(240 panos·ratio 분포·2×2 분리표·per-k false-reject), [[project_image_backend_cold_eval]].
+
+## D91 — MeshAdapter up-axis(gravity) 자동 정규화: measured 경로 P0 정확성 수정 (v0.25.3; ADR 0027 §Status-update-2026-06-07; commercialization Phase 0a, 2026-06-07)
+
+상용화 분석(사용자 결정: B2B AV-인스톨러 프레이밍 + 공개 데이터셋 검증; `.omc/plans/commercialization-analysis.md`)이
+measured 경로의 **실-캡처 미검증**(픽스처 전부 합성 Y-up; real-scan 게이트 영구 SKIP)을 지목. 로컬 실 **ARKitScenes**
+10 scene(iPad LiDAR=RoomPlan 센서 정합)으로 MeshAdapter 첫 실행 → **천장 6.5–9.6 m**(실제 ~2.5 m) = P0 버그.
+
+**근본원인**: `roomestim/adapters/mesh.py` 가 **Y-up 하드코딩**(`ceiling_height_m = y_max - y_min`)·gravity/up-축 정규화
+전무. ARKit/RoomPlan·다수 mesh export 는 **Z-up(gravity-aligned)**. 합성 Y-up shoebox 픽스처만 있어 여태 안 보임.
+
+**수정(F1/Phase 0a)**: ingest 시 up-축을 **planar-density 판별자**(축별 1-D 히스토그램 floor/ceiling 집중도, bin 0.04 m,
+edge 0.15 m; 종횡비 무관)로 검출 후 모델 Y-up 으로 정규화 → 기존 floor/wall/ceiling 추출 불변. density 동률→floor-area
+tiebreaker(clear-floor 1.50× 마진, narrow room 서 area 신뢰불가하므로 마진 미달 시 거부). density·area 둘 다 모호(완전
+cube / sparse+narrow)면 `ValueError`(density·slab_area 진단 + `up_axis=` 권고)로 **fail-loud**(조용한 오답 금지 —
+near-horizon 가드 D89 와 동일 철학). `up_axis` override(기본 auto). 합성 Y-up identity 정규화 → **byte-equal**.
+
+**검증**: 실 ARKit 10 scene up-축 Z·천장 2.49–3.69 m(다중층 41159529=5.76 m 별도 bound)·`@pytest.mark.lab` 회귀 고정.
+default 368p/6s, web 86p/4s 무영향, ruff/mypy(strict)/tense EXIT0. **독립 code-review 2라운드**(R1 HIGH=narrow-room silent
+misdetect→density 판별자로 해소; R2 MEDIUM=sparse-narrow degenerate→area tiebreaker fail-loud(1.10→1.50)로 해소; docstring
+정직성·det=−1 안전 주석) + **독립 verifier VERIFIED-GREEN**(실 ARKit 천장·3 fail-loud 경로·backward-compat 실측).
+**Version** 0.25.2→0.25.3 PATCH(정확성 수정, 정확도 개선 아님). RELEASE_NOTES_v0.25.3.
+
+**한계(정직)**: gravity-aligned-to-principal-axis 가정(기울어진 mesh→`up_axis=`); **센서 vs 실측 ±10 cm 절대정확도는
+독립 GT(Faro/ScanNet++) 필요 — Phase 0b 후속, 미입증.** 스파이크 `eval_scene.py` GT 는 roomestim 로직 파생이라 재사용 금지.
+**변경 파일**: `roomestim/adapters/mesh.py`, `tests/test_adapter_mesh.py`, `roomestim/__init__.py`·`pyproject.toml`(0.25.3),
+`RELEASE_NOTES_v0.25.3.md`, `docs/adr/0027-...md`(§Status-update-2026-06-07), `.omc/plans/commercialization-analysis.md`, 본 D91.
+**Cross-refs**: ADR 0027(mesh 어댑터)·ADR 0001(measured 경로)·ADR 0042(live-mesh, PROPOSED), D89(fail-loud 철학 선례),
+commercialization Phase 0(0a 완료·0b=독립 GT·0c=acoustics 정직성 대기).
