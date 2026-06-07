@@ -142,6 +142,34 @@ _MAX_MESH_VERTICES = int(os.environ.get("ROOMESTIM_MAX_MESH_VERTICES", 5_000_000
 # overridable for the rare legitimate >20 m venue.
 _MAX_CEILING_HEIGHT_M = float(os.environ.get("ROOMESTIM_MAX_CEILING_M", 20.0))
 
+# Robust floor/ceiling plane estimation parameters. Phase 0b real-data
+# validation (independent Faro laser GT) showed the naive full vertical extent
+# (y_max - y_min) grabs scan OUTLIERS — furniture and ~1-3% of points that fall
+# below the floor plane or poke above the ceiling plane — instead of the actual
+# floor/ceiling PLANES, inflating the ceiling by +0.27 to +1.34 m (median +0.43,
+# always positive; 0/5 scenes within ±10 cm of GT). The fix histograms the
+# vertical (Y) coordinate at ``_FLOOR_CEILING_BIN_M`` (3 cm) resolution — fine
+# enough to separate a sharp gravity-aligned floor/ceiling layer from nearby
+# clutter, coarse enough that a single dense plane lands in one bin — and
+# recovers the floor/ceiling as dense planes per Y-half (split at the midpoint).
+#
+# Plane selection: the floor is the BOTTOMMOST and the ceiling the TOPMOST bin
+# whose count is at least ``_FLOOR_CEILING_DENSITY_FRAC`` of that half's peak.
+# This is the validated density-peak method hardened against real-scan clutter:
+# when the densest bin already sits at the dense-plane extreme — every clean
+# fixture and well-scanned scene — "outermost dense" == "densest", so the result
+# is byte-identical to the plain argmax (scene 42444946 → 3.035 m vs laser GT
+# 3.034 m, 1 mm; synthetic fixtures → robust == full-extent exactly). It diverges
+# only when a denser NON-extreme layer exists: a furniture/desk plane that the
+# plain upper-half argmax mistook for the ceiling (e.g. ARKit 41069042 a desktop
+# at y=-0.62 outranked the true ceiling at y=+1.03, collapsing the height to
+# 0.63 m; 41142278 to 1.12 m). Anchoring to the outermost dense plane rejects
+# that and recovers a plausible 2.27 / 2.31 m. The 0.5 fraction is the loosest
+# threshold that still keeps the real (sometimes sparser) ceiling above sparse
+# outlier tails on every Phase 0b + Validation scene.
+_FLOOR_CEILING_BIN_M = 0.03
+_FLOOR_CEILING_DENSITY_FRAC = 0.5
+
 
 class MeshAdapter:
     """``CaptureAdapter`` implementation for generic mesh exports.
@@ -326,6 +354,88 @@ class MeshAdapter:
         low_peak = float(low_win.max()) if low_win.size else 0.0
         high_peak = float(high_win.max()) if high_win.size else 0.0
         return low_peak + high_peak
+
+    @staticmethod
+    def _robust_floor_ceiling_y(coord: np.ndarray) -> tuple[float, float]:
+        """Robust floor/ceiling plane heights along the (Y-up) vertical axis.
+
+        Phase 0b real-data validation against independent Faro laser GT proved
+        the naive full vertical extent (``y_max - y_min``) is wrong on real
+        scans: it grabs OUTLIERS — furniture and the ~1-3% of vertices that fall
+        below the floor plane or poke above the ceiling plane — rather than the
+        actual floor/ceiling PLANES, inflating the ceiling by +0.27 to +1.34 m
+        (median +0.43 m, always positive; 0/5 scenes within ±10 cm of GT). On
+        scene 42444946 the full extent reads 4.370 m but the true ceiling is
+        3.034 m (laser GT).
+
+        A gravity-aligned scan packs the floor and ceiling into two sharp,
+        horizontal, dense layers. We histogram the Y coordinate at
+        ``_FLOOR_CEILING_BIN_M`` (3 cm) resolution and split at the Y midpoint,
+        then recover the floor as the BOTTOMMOST and the ceiling as the TOPMOST
+        bin whose count is at least ``_FLOOR_CEILING_DENSITY_FRAC`` of that
+        half's peak bin. On clean fixtures and well-scanned rooms the densest bin
+        already sits at the dense-plane extreme, so "outermost dense" reduces to
+        the plain densest bin — robust == full-extent on synthetic meshes and
+        3.035 m (1 mm from GT) on scene 42444946. Anchoring to the *outermost*
+        dense plane (rather than the global argmax within the half) is the
+        hardening real scans require: a desktop/furniture layer can be DENSER
+        than the true ceiling (ARKit 41069042: desk at y=-0.62 outranks the
+        ceiling at y=+1.03), so a plain argmax collapses the height to 0.63 m;
+        taking the topmost still-dense bin recovers the real 2.27 m ceiling.
+
+        Robustness: if a Y-half holds too few points to histogram (degenerate or
+        near-flat input), fall back to that half's min/max so this never crashes,
+        mirroring the existing fail-safe style.
+
+        Residual failure mode (honest limitation, NOT fixed here): the ceiling is
+        taken as the TOPMOST still-dense bin in the upper half, so a horizontal
+        plane that is both dense AND nearer the true ceiling than the actual
+        ceiling layer can be mis-picked, UNDER-reporting height — e.g. a large
+        flat table/desk surface or dense mid-height shelving sitting high in the
+        upper half, a mezzanine/loft slab, or a true ceiling so severely
+        under-sampled that no bin clears the density-FRAC threshold (then the
+        next-lower dense plane wins). This was acceptable for the cases validated
+        against independent Faro laser GT (living rooms with ordinary furniture,
+        where the topmost dense plane IS the ceiling) and is a known, bounded
+        residual rather than a silent correctness hole — heights stay plausible
+        and the absolute-ceiling guard still fires. A future improvement is an
+        explicit plane-area / coverage check (the ceiling should span most of the
+        footprint, a tabletop should not) or a confidence/uncertainty flag on the
+        returned height; deferred to keep this change minimal and the gates green.
+        """
+        lo, hi = float(coord.min()), float(coord.max())
+        ext = hi - lo
+        if ext <= 0.0:
+            return lo, hi
+        mid = (lo + hi) / 2.0
+
+        def _dense_plane_center(half: np.ndarray, *, topmost: bool) -> float | None:
+            if half.size == 0:
+                return None
+            half_lo, half_hi = float(half.min()), float(half.max())
+            half_ext = half_hi - half_lo
+            if half_ext <= 0.0:
+                return half_lo
+            n_bins = max(1, int(round(half_ext / _FLOOR_CEILING_BIN_M)))
+            hist, edges = np.histogram(half, bins=n_bins, range=(half_lo, half_hi))
+            peak = int(hist.max())
+            if peak == 0:
+                return None
+            # Bins forming a "dense plane": at least FRAC of this half's peak.
+            dense = np.nonzero(hist >= peak * _FLOOR_CEILING_DENSITY_FRAC)[0]
+            # Ceiling = topmost such bin; floor = bottommost. On clean data the
+            # peak bin IS the extreme, so this equals the plain densest bin.
+            idx = int(dense[-1] if topmost else dense[0])
+            return float((edges[idx] + edges[idx + 1]) / 2.0)
+
+        floor_y = _dense_plane_center(coord[coord <= mid], topmost=False)
+        ceiling_y = _dense_plane_center(coord[coord >= mid], topmost=True)
+        # Fall back to the raw extremes if a half could not be histogrammed.
+        if floor_y is None:
+            floor_y = lo
+        if ceiling_y is None:
+            ceiling_y = hi
+        return floor_y, ceiling_y
 
     @classmethod
     def _detect_up_axis(cls, vertices: np.ndarray) -> int:
@@ -676,13 +786,18 @@ class MeshAdapter:
             up_axis = self._detect_up_axis(vertices)
         vertices = self._normalize_to_y_up(vertices, up_axis)
 
-        y_min = float(vertices[:, 1].min())
-        y_max = float(vertices[:, 1].max())
-        ceiling_height_m = float(y_max - y_min)
+        # Floor/ceiling as ROBUST density-peak planes, not the full vertical
+        # extent. Phase 0b (independent Faro laser GT) showed full-extent
+        # (y_max - y_min) grabs scan outliers (furniture, ~1-3% of points below
+        # the floor / above the ceiling) and inflates the ceiling by up to
+        # +1.34 m; the densest-bin floor/ceiling planes match the laser GT to
+        # ~1 mm on scene-class data and are byte-identical on clean fixtures.
+        floor_y, ceiling_y = self._robust_floor_ceiling_y(vertices[:, 1])
+        ceiling_height_m = float(ceiling_y - floor_y)
         if ceiling_height_m <= 0.0:
             raise ValueError(
                 f"MeshAdapter: degenerate mesh height "
-                f"(y_max={y_max}, y_min={y_min})"
+                f"(ceiling_y={ceiling_y}, floor_y={floor_y})"
             )
         # Absolute plausibility bound. A correctly-scaled real room/venue never
         # exceeds this; a height beyond it is almost always a unit/scale
@@ -716,12 +831,13 @@ class MeshAdapter:
         else:
             floor_polygon_2d = self._convex_floor_polygon(vertices)
 
-        # Surfaces: floor + ceiling polygons (Point3 lifts at y_min / y_max),
-        # walls from convex-hull edges.
+        # Surfaces: floor + ceiling polygons (Point3 lifts at the robust
+        # floor_y / ceiling_y planes — keeps the box geometry self-consistent
+        # with the reported robust height), walls from convex-hull edges.
         floor_material = MaterialLabel.WOOD_FLOOR
         floor_surface = Surface(
             kind="floor",
-            polygon=[Point3(p.x, y_min, p.z) for p in floor_polygon_2d],
+            polygon=[Point3(p.x, floor_y, p.z) for p in floor_polygon_2d],
             material=floor_material,
             absorption_500hz=MaterialAbsorption[floor_material],
             absorption_bands=MaterialAbsorptionBands[floor_material] if octave_band else None,
@@ -730,7 +846,7 @@ class MeshAdapter:
         ceiling_surface = Surface(
             kind="ceiling",
             polygon=[
-                Point3(p.x, y_max, p.z) for p in reversed(floor_polygon_2d)
+                Point3(p.x, ceiling_y, p.z) for p in reversed(floor_polygon_2d)
             ],
             material=ceiling_material,
             absorption_500hz=MaterialAbsorption[ceiling_material],

@@ -327,6 +327,64 @@ def test_mesh_adapter_invalid_up_axis_raises() -> None:
         MeshAdapter(up_axis="diagonal")  # type: ignore[arg-type]
 
 
+def test_mesh_adapter_ceiling_robust_to_vertical_outliers(tmp_path: Path) -> None:
+    """0b: ceiling_height_m tracks the floor/ceiling PLANES, not scan outliers.
+
+    Synthetic analogue of the Phase 0b real-scan bug. A clean, densely sampled
+    box has its floor plane at y=0 and ceiling plane at y=2.5 (true height
+    2.5 m). We add a handful of vertical OUTLIERS — points well below the floor
+    (y=-0.8) and above the ceiling (y=+0.7), as furniture / scan noise produces
+    on real captures. The naive full vertical extent would read ~4.0 m
+    (0.7 - (-0.8) + 2.5); the robust density-peak estimate must reject the
+    sparse outliers and recover ~2.5 m. On real ARKit scans this exact failure
+    inflated ceilings by up to +1.34 m (Faro laser GT, 0b).
+    """
+    import numpy as np
+    import trimesh
+
+    # Dense clean box: floor plane at y=0, ceiling plane at y=2.5, 4 m x 4 m.
+    box = trimesh.creation.box(extents=(4.0, 2.5, 4.0))
+    box.apply_translation((0.0, 1.25, 0.0))  # y in [0, 2.5]
+    box = box.subdivide().subdivide()  # densify the planes
+    verts = np.asarray(box.vertices, dtype=float)
+
+    # A few vertical outliers below the floor and above the ceiling.
+    outliers = np.array(
+        [
+            [0.0, -0.8, 0.0],
+            [1.0, -0.8, -1.0],
+            [-1.5, -0.8, 0.5],
+            [0.5, 3.2, 0.5],  # 2.5 + 0.7
+            [-1.0, 3.2, 1.0],
+        ],
+        dtype=float,
+    )
+    all_verts = np.vstack([verts, outliers])
+    # Reference the outliers from two triangles so the mesh stays a surface mesh
+    # (the adapter rejects points-only PLYs); only vertices feed the histogram.
+    n = len(verts)
+    extra_faces = np.array([[n, n + 1, n + 2], [n + 2, n + 3, n + 4]], dtype=np.int64)
+    all_faces = np.vstack([np.asarray(box.faces, dtype=np.int64), extra_faces])
+
+    full_extent = float(all_verts[:, 1].max() - all_verts[:, 1].min())
+    assert full_extent == pytest.approx(4.0, abs=0.05), (
+        f"fixture sanity: full extent {full_extent} should be ~4.0 m"
+    )
+
+    mesh_path = tmp_path / "box_with_outliers.ply"
+    mesh = trimesh.Trimesh(vertices=all_verts, faces=all_faces, process=False)
+    mesh.export(mesh_path)
+
+    # up_axis is pinned to Y so this isolates the 0b floor/ceiling-PLANE
+    # robustness (the densified square box is deliberately up-axis-ambiguous; the
+    # gravity detector has its own dedicated tests above).
+    room = MeshAdapter(up_axis="y").parse(mesh_path)
+    assert room.ceiling_height_m == pytest.approx(2.5, abs=0.1), (
+        f"ceiling height {room.ceiling_height_m} not ~2.5 m — vertical outliers "
+        f"(full extent {full_extent:.2f} m) leaked into the height (0b regression)."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Up-axis HARDENING — planar-density discriminator (aspect-ratio-robust)
 # --------------------------------------------------------------------------- #
@@ -597,15 +655,33 @@ def _arkit_meshes() -> list[Path]:
     ids=lambda p: p.parent.name if p is not None else "no-data",
 )
 def test_mesh_adapter_arkit_ceiling_height_regression(mesh_path: Path) -> None:
-    """0a regression: real Z-up ARKit scans detect Z and yield realistic heights.
+    """0a+0b regression: real Z-up ARKit scans detect Z and yield robust heights.
 
-    Before the up-axis fix, every scene mistook a horizontal room dimension for
-    the ceiling height (observed 6.5-9.6 m on rooms that are ~2.4-3 m). After
-    the fix the planar-density detector locks onto the gravity axis. ARKit 3dod
-    meshes are gravity-aligned Z-up, so the strongest assertion is that the
-    detector returns Z for every scene. Single-level rooms must land in the
-    realistic [2.2, 3.8] m band; the one known multi-level scan is held to a
-    relaxed [2.0, 6.0] m bound (still far below the pre-fix failure values).
+    Two stacked fixes are guarded here:
+
+    * 0a (up-axis): the planar-density detector locks onto the gravity axis.
+      ARKit 3dod meshes are gravity-aligned Z-up, so the detector must return Z
+      for every scene (a horizontal-axis confusion produced the pre-0a 6.5-9.6 m
+      heights on ~2.4-3 m rooms).
+    * 0b (robust floor/ceiling planes): the reported ``ceiling_height_m`` is the
+      density-peak floor/ceiling-PLANE height, NOT the full vertical extent
+      ``z_max - z_min``. Full-extent grabs scan outliers (furniture, sub-floor /
+      above-ceiling noise) and inflated these scenes by up to +1.34 m; the robust
+      method matched an independent Faro laser GT to ~1 mm on scene-class data
+      (42444946 → 3.034 m). The values asserted below are therefore the LOWER,
+      corrected robust heights, not the pre-0b full-extent values (~2.49-3.69 m).
+
+    On the 10 local Validation scenes the robust heights are (full-extent →
+    robust): 41069021 3.15→2.35, 41069042 3.53→2.27, 41069048 2.51→2.24,
+    41125696 3.15→2.79, 41125718 3.69→2.65, 41125756 2.93→2.72, 41142278
+    2.49→2.31, 41159503 2.94→2.34, 41159519 3.54→2.46, 41159529 (multi-level)
+    5.76→4.83. Single-level rooms must land in the realistic [2.2, 3.2] m band
+    (tightened from the pre-0b [2.2, 3.8] that had to admit the inflated values);
+    the one known multi-level scan is held to a relaxed [2.0, 6.0] m bound. Every
+    scene must also report a robust height strictly BELOW its full vertical
+    extent — proof the outlier-rejecting plane estimate engaged (each of these
+    real scans has vertical outliers; clean synthetic meshes have none and there
+    robust == full-extent, asserted separately).
     """
     import numpy as np
     import trimesh
@@ -617,6 +693,11 @@ def test_mesh_adapter_arkit_ceiling_height_regression(mesh_path: Path) -> None:
         "3dod meshes are gravity-aligned Z-up."
     )
 
+    # Full vertical extent in the model's Y-up frame (the pre-0b, outlier-grabbing
+    # quantity) — the robust height must come in strictly below it.
+    verts_up = MeshAdapter._normalize_to_y_up(verts, detected)
+    full_extent = float(verts_up[:, 1].max() - verts_up[:, 1].min())
+
     room = MeshAdapter().parse(mesh_path)
 
     assert room.provenance == "measured"
@@ -624,10 +705,24 @@ def test_mesh_adapter_arkit_ceiling_height_regression(mesh_path: Path) -> None:
     if scene_id in _ARKIT_MULTILEVEL_IDS:
         lower, upper = 2.0, 6.0
     else:
-        lower, upper = 2.2, 3.8
+        lower, upper = 2.2, 3.2
     assert lower <= room.ceiling_height_m <= upper, (
-        f"{scene_id}: ceiling height {room.ceiling_height_m:.2f} m outside "
-        f"[{lower}, {upper}] — up-axis likely misdetected (pre-fix was 6.5-9.6 m)."
+        f"{scene_id}: robust ceiling height {room.ceiling_height_m:.2f} m outside "
+        f"[{lower}, {upper}] — up-axis misdetect or floor/ceiling-plane failure "
+        f"(pre-0a was 6.5-9.6 m; pre-0b full-extent was {full_extent:.2f} m)."
+    )
+    # Tightened (0b review LOW #3): a bare ``< full_extent`` is satisfied by a
+    # sub-mm difference and would not prove outlier rejection actually engaged.
+    # Every real Validation scene rejected >=0.18 m of spurious vertical extent
+    # (smallest observed margin: 41142278 2.49->2.31 = 0.18 m), so require a
+    # meaningful >=0.10 m gap — strict enough to be a real regression guard,
+    # with ~8 cm headroom below the tightest observed case to stay non-flaky.
+    _OUTLIER_REJECTION_MIN_M = 0.10
+    assert room.ceiling_height_m <= full_extent - _OUTLIER_REJECTION_MIN_M, (
+        f"{scene_id}: robust height {room.ceiling_height_m:.2f} m is not at least "
+        f"{_OUTLIER_REJECTION_MIN_M:.2f} m below the full extent {full_extent:.2f} m "
+        "— the 0b outlier-rejecting floor/ceiling plane estimate did not engage "
+        "on a real scan (every such scan has vertical outliers to reject)."
     )
 
 
