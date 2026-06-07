@@ -101,11 +101,102 @@ roomestim **MeshAdapter 를 10개 실 ARKit mesh 에 실행**(canonical env, tri
   ceiling 오차 측정 → "±10cm" 입증/반증. 0a 후행.
 - **0c (정직성) acoustics 포지셔닝** — RT60 "guidance/상대" 라벨 명시(저비용).
 
-## RESUME POINTER (2026-06-07)
-프레이밍=B2B installer 확정. **Phase 0a DONE & 커밋예정(v0.25.3, D91)**: MeshAdapter up-axis(gravity) 자동 정규화
-(planar-density 판별자 + fail-loud 모호성 가드 + `up_axis` override) — 실 ARKit 10 scene 천장 6.5–9.6 m→2.49–3.69 m 수정.
-독립 code-review 2R(HIGH narrow-room→해소, MEDIUM sparse-narrow→fail-loud) + verifier VERIFIED-GREEN. default 368p/6s.
-**다음 = Phase 0b(독립 GT 로 ±10 cm 절대정확도 입증/반증)**: ARKitScenes Faro highres 또는 ScanNet++(sub-mm, non-commercial)
-다운로드 → 독립 GT 로 floor/wall/ceiling 오차 측정. (주의: 스파이크 `eval_scene.py` GT 는 roomestim 로직 파생이라 재사용 금지.)
-그 다음 Phase 0c(acoustics "guidance" 정직 라벨), Phase 1(실 `.usdz` ingest + 스키마 절대경로 디커플 + PyPI), Phase 2(재질 추론
-·가구 와이어링·불확실성 OQ-57).
+## RESUME POINTER (2026-06-07, autopilot — Phase 0c + Phase 1 DONE & COMMITTED)
+프레이밍=B2B installer 확정.
+- **Phase 0a DONE & 커밋됨(v0.25.3, `5064a8b`, D91)**: MeshAdapter up-axis 자동 정규화.
+- **Phase 0c + Phase 1 DONE & 커밋됨(v0.26.0, `16759a3`, D92·D93; ADR 0027 §Status-update-2026-06-07)**:
+  - **0c (acoustics 정직성)**: `_disclosure.py` 단일 진실원천 `RT60_DISCLOSURE`/`RT60_MODEL_NAME` + `RT60Prediction.disclosure`
+    + export usd/gltf 사이드카 `disclaimer`/`acoustics_model`/`materials_status` additive 필드 + README "정직 고지(모델 추정,
+    측정 아님/guidance)" 블록 + `test_rt60_disclosure.py`. RT60 수치 byte-불변(라벨만).
+  - **Phase 1 (.usdz mesh ingest)**: `mesh.py` `_room_model_from_usdz`/`_vertices_from_usdz` + 공유 `_extract_room_model`
+    리팩터(0a 정규화 재사용); `[usd]`/`[mesh-export]` extra(usd-core); `scripts/gen_usdz_fixtures.py` + `shoebox_{yup,zup}.usdz`;
+    `test_adapter_polycam.py` .usdz 가 NotImplementedError→MeshAdapter 정상 파싱.
+  - **리뷰 2R 반영(이번 세션, 검증완료)**: round-2 **[HIGH] metersPerUnit→m 스케일**(cm-unit USDZ 0.01 의 100× silent
+    과대치수 차단) + upAxis 교차검증 + instance-proxy 순회; round-3 **[HIGH] default-prim 스코프 순회**(concrete `def`-prototype
+    이중계수→8.96 m 팬텀 천장 차단; 독립 재현·수정 입증) + 천장 절대상한 `ROOMESTIM_MAX_CEILING_M`(기본 20 m) fail-loud.
+  - 게이트 GREEN: default 387p/3s, web 86p/3s, ruff/mypy(strict) EXIT0. 독립 code-review(REQUEST-CHANGES→해소) + verifier.
+
+**다음 = Phase 0b (독립 GT 로 ±10 cm 절대정확도 입증/반증)** — 여전히 미입증(상용화 최우선 게이트).
+**★ 0b BLOCKED — 로컬에 독립 GT 없음 (2026-06-07 read-only 정찰로 확정)**:
+- 로컬 10 Validation scene 전부 `metadata.csv` `has_laser_scanner_point_clouds=False` → Faro 레이저 GT 미보유.
+  보유 자산 = ARKit *recon* mesh(=우리가 ingest 하는 입력, GT 아님) + RGB + trajectory + intrinsics 뿐.
+- 스파이크 `eval_scene.py:122-129` 의 "GT" 는 `floor_ring.py`(roomestim `floor_polygon_from_mesh` 로직 **복사**)로 **같은
+  mesh** 에서 추출 → tautological(self-validation), 재사용 금지 확정.
+- 독립 GT 경로 3택(전부 외부 작업 필요): (A) ARKitScenes **laser-scan highres(Faro)** subset 다운로드(현 10 scene 과
+  다른 scene ID, 진짜 ±10cm GT) — 다운로드+eval 셋업 필요; (B) ARKitScenes **3DOD annotation JSON**(`*_3dod_annotation.json`)
+  다운로드 — 소용량이나 주로 가구 박스, room walls/ceiling 인코딩 여부 불확실(부분 GT 가능성); (C) **다른 벤치마크**(독립 GT
+  보유)로 피벗. → **사용자 결정 대기**(다운로드 권한·용량·우선순위 vs Phase 2 선행).
+그 다음(또는 0b 피벗 시) Phase 2(재질 추론·가구 와이어링·불확실성 OQ-57) — 외부데이터 없이 즉시 코딩 가능하나
+플랜상 0b 가 "정확도 주장의 게이트"라 우선순위 충돌.
+
+### Phase 0b 착수 (2026-06-07, 사용자 결정 = (A) Faro laser GT 다운로드)
+- **데이터 발견 정정**: metadata.csv(5072행 전수)에서 `visit_id` 기준 **threedod ∩ laser = 1001 visit**, laser+3dod 행 3044개,
+  Validation laser+3dod 365행 존재 → 로컬 10 scene 만 laser=False 였을 뿐, **둘 다 가진 scene 다수 존재**. (직전 awk 의 CR
+  line-ending 버그로 0 으로 오판했던 것 교정.)
+- **다운로드 경로 확보**: `apple/ARKitScenes` repo clone(`/tmp/ARKitScenes`), `download_data.py raw --split Validation
+  --video_id <id> --raw_dataset_assets mesh annotation --download_laser_scanner_point_cloud`. base=docs-assets.developer.apple.com
+  /ml-research/datasets/arkitscenes/v1. 후보(distinct-visit Validation): 42444946/421337, 42444966/421383, 42445021/421380,
+  42445028/421378, 42445429/421372, 42445966/422022. 다운로드 위치=`.../data/arkit/phase0b/`.
+- **독립성 보증(핵심)**: GT=**Faro 레이저 스캔**, 추정=roomestim MeshAdapter(**ARKit RGB-D recon mesh**) — **서로 다른 센서**
+  (직전 스파이크의 same-mesh tautology 와 근본적으로 다름). GT 추출기는 roomestim 로직 미사용 독립 스크립트(수직 히스토그램
+  peak=floor/ceiling, oriented-bbox=footprint). 비교지표: ceiling height(scalar, frame-free), floor OBB extent(회전불변),
+  area. end-to-end(ARKit→roomestim vs laser-GT) 오차 = 실사용자 체감 오차 → ±10cm 게이트에 적합.
+- **진행상태**: 1-scene(42444946) 다운로드 백그라운드 실행 중 → 파이프라인 검증 후 3+ scene 확장 예정.
+
+### ★★ Phase 0b 결과 (2026-06-07) — ±10cm 주장 **반증(DISPROVEN)** + 2번째 measured 경로 P0 발견
+**핵심 발견(독립 laser GT 앵커)**: scene 42444946 에서 roomestim 천장=4.370 m, **robust floor/ceiling 평면 peak-to-peak
+=3.035 m**, **독립 Faro laser GT=3.034 m**(robust 와 1 mm 일치) → roomestim 이 **+1.335 m(44%) 과대**. laser 와
+robust-mesh 가 1mm 일치 = 방은 실제 ~3.03 m, ARKit mesh 도 정확, **버그는 roomestim 추출**.
+**5-scene 체계성 확인(robust 는 laser 앵커된 proxy GT)**:
+| scene | roomestim천장 | robust/GT | 오차 |
+|---|---|---|---|
+| 42444946 | 4.370 | 3.035 | +1.335 |
+| 42444966 | 3.039 | 2.309 | +0.729 |
+| 42445021 | 2.760 | 2.331 | +0.429 |
+| 42445028 | 2.614 | 2.340 | +0.274 |
+| 42445429 | 2.610 | 2.276 | +0.334 |
+→ **0/5 가 ±10cm 이내**. 평균 +0.62 m, median +0.43 m, max +1.34 m, **항상 양수(inflation)**.
+**근본원인**: `mesh.py` `_extract_room_model` 의 `ceiling_height_m = y_max - y_min`(전체 수직 extent)가 floor/ceiling
+**평면**이 아니라 scan outlier(가구·바닥아래·천장위 점, 관측 ~1-3%)를 천장으로 집계. **합성 shoebox 픽스처엔 outlier 0 이라
+full-extent==robust → 여태 안 보임**(0a up-axis 와 동일 패턴: 실데이터 첫 노출). floor footprint(convex hull)도 outlier
+inflation 가능성(2차 — 진짜 GT 엔 registration 필요, 후속).
+**도구**(durable): `.../data/arkit/phase0b/gt_extract.py`(독립 GT 추출기, roomestim 미임포트), `mesh/<vid>/*.ply`(5 scene),
+`laser_scanner_point_clouds/421337/*.ply`(Faro GT, 3 sub-scan).
+**P0 fix DONE & 커밋됨 (v0.26.1 `29b9edf`, D94; ADR 0027 §Status-update-2026-06-07)**:
+- full-extent→robust floor/ceiling **density-plane** 추출(`_robust_floor_ceiling_y`); floor/ceiling Surface lift 도 robust
+  평면 사용(self-consistent). 합성 픽스처 byte-equal(outlier 0 → robust==full-extent). 잔여리스크(중간평면/under-sampled
+  ceiling mis-pick) 정직 주석.
+- **검증(독립 Faro laser GT)**: scene 42444946 fixed=3.02 m vs GT 3.03 m(~1 cm); 5-scene 천장 2.27–3.02 m(종전 2.61–4.37
+  full-extent). 0a lab 회귀 bound 갱신(종전 full-extent 값은 inflated 였음) + 신규 synthetic outlier 회귀.
+- 게이트 GREEN: default 388p/3s, lab 11p/3s, web 86p/3s, ruff/mypy EXIT0. code-review APPROVE-WITH-FIXES(MEDIUM/LOW 반영).
+- **정직 하향(README)**: "정밀도 목표" 표에 독립 GT 검증 현황 — **천장 높이만 ±10 cm 실증, 벽/footprint 미검증**(registration
+  후속), 종전 lab A11 GT 가 tautological 이었음 명시.
+- **durable 도구**: `.../arkit/phase0b/gt_extract.py`(독립 GT 추출기), `mesh/<vid>/*.ply`(5 scene), `laser_scanner_point_clouds/
+  421337/*.ply`(Faro GT). `/tmp/ARKitScenes`(다운로드 tooling, 휘발). 다운로드법=download_data.py raw --download_laser_scanner_point_cloud.
+
+### ★ Phase 0b 후속 #1 결과 (2026-06-07) — footprint/wall 독립검증 = **NEGATIVE (ill-posed, 미검증 유지)**
+**시도**: 단일 방 ARKit recon mesh(scene 42444946)의 footprint 를 독립 Faro 레이저 GT 와 비교하려 함. **핵심 발견**:
+- **frame-free 단축경로 불가**: 천장 높이는 scalar(회전·평행이동 불변)라 frame-free 비교됐지만, footprint 는 그렇지 않음.
+  레이저 GT 는 단일 방이 아니라 **건물 한 층 전체**(≈72×102 m, ~7000 m², 벽 ~856 m, 수직 ~24.6 m multi-floor)이고 ARKit mesh 는 그 안의 한 방
+  (≈5.86×10.49 m, 둘레 ~31 m = venue 벽의 ~3.6%). 두 클라우드 좌표계 완전 비정합(ARKit 원점 근처, 레이저 Z≈455).
+- **ARKitScenes 변환 없음**(확인): `_pose.txt` 는 레이저↔레이저 정합만(`raw/README.md`·`DATA.md:94`). ARKit↔레이저 변환 미제공
+  → 방을 venue 좌표계로 **registration** 해야 footprint 비교 가능.
+- **3가지 정합 방법 모두 신뢰 임계 미달**(robust negative, 단일 버그 아님): open3d **FPFH+RANSAC** 전역정합 ×2
+  (floor 검출 버그 수정 후에도 ICP fitness 0.18~0.22), 중력제약 **2D yaw-sweep FFT** 정합(피크 margin ≈1.00× = 완전 모호).
+  대형 multi-room 공간에 비슷한 직사각형 방 다수 → 초기추정 없는 단일-방→venue 배치는 ill-posed. 천장이 검증된 건
+  height 가 floor↔ceiling **수평위치-불변 scalar** 라 floor+ceiling 평면 담은 임의 국소 sub-scan 으로 복원되기 때문
+  (3.03 m GT = 전체 multi-floor venue[수직 ~24.6 m, full-venue robust peak-to-peak ≈6.1 m] 가 아니라 방과 같은 층 국소
+  영역 값); footprint 는 수평 localization 필수 → 차이.
+- **결정(정직)**: 잘못된 정합으로 *허위* ±cm 수치를 만들지 않음. footprint/walls = **미검증 유지**. README 정밀도-목표 §
+  업데이트(시도·이유·종결경로 명시). 추가 구조적 한계 명시: roomestim footprint = **convex hull** → 비-convex 방 과대추정.
+- **종결 경로**: (a) 방 단위 크롭 레이저/알려진 대응 seed, (b) 작은 단독공간 레이저 scene, (c) 근사위치 seed→ICP(seed 독립
+  정당화 필수, 아니면 cherry-pick). 추가 레이저 scene 다운로드(후보 visit 6개)로 multi-scene 화도 가능하나 동일 ill-posed.
+- **durable 도구**(spike 디렉터리, roomestim repo 밖): `…/arkit/phase0b/footprint_validate.py`(Tier1 frame-free, OBB),
+  `footprint_register.py`(open3d FPFH+RANSAC+ICP, 신뢰게이트), `footprint_register2d.py`(중력제약 2D FFT). 격리 venv
+  `/tmp/o3d-venv`(open3d 0.19, 휘발). roomestim 코어 코드 **무변경**(README+plan doc-only).
+
+**다음 후보**: (1) ~~footprint/wall 독립검증~~ → 위 NEGATIVE(데이터 한계). 재개하려면 종결경로 (a)/(c) 필요.
+(2) **Phase 2**(재질 추론·가구 와이어링·불확실성 OQ-57) — 외부데이터 없이 즉시 코딩 가능, 현 최우선 후보.
+(3) ceiling robust extraction 의 중간평면 mis-pick 에 confidence flag(잔여 residual 명시적 신뢰표시).
+캐노니컬 게이트 = `/home/seung/miniforge3/bin/python -m pytest -m "not web and not vision and not lab and not e2e"`
+(PATH pytest 아님; 388p/3s 가 default 베이스라인, web 86p/3s).
