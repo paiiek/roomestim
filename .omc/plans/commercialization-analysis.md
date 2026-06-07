@@ -273,6 +273,26 @@ CapturedRoom USD 픽스처 부재로 검증난이도↑). (5) OQ-55 visual mater
 - **(B 후속) 독립 code-review = DONE**(`ed9fae2` v0.30.2): 보류됐던 B 리뷰 실행 APPROVE, 2 LOW 반영(stacklevel=3 귀속·parse()-path warns 테스트).
 - **새 default 베이스라인 = 433p/3s @v0.31.0**(414→+19: A+2, B+2, B후속+1, C+14). web 86p/3s 불변. **origin/main 푸시 완료.**
 
+### ★ 외부 데이터 수집·검증 (2026-06-08 autopilot) — commercial-OK 데이터로 2건 실측 검증
+사용자 지시="외부 데이터 최대한 긁어모아서 해봐". document-specialist 데이터 인벤토리(commercial-OK 우선) →
+실행 2건(둘 다 가짜숫자 금지·실측·정직 caveat). 데이터셋 인벤토리 핵심: 음향 GT 는 **dEchorate·BUT ReverbDB·
+MeshRIR(전부 CC-BY)**·ACE(CC-BY-ND, 이미 배선)·Motus(가구 RT60) 가 commercial-OK; geometry 독립 laser 는
+ARKitScenes 가 사실상 유일 commercial-OK(Matterport/ScanNet/ScanNet++/InLUT3D=non-commercial); 비-cuboid
+image GT(Structured3D/ZInD)=대개 research-only.
+- **(검증 1) C polygon image-source ↔ dEchorate 실측 echo (commit `8b0b074`, doc; ADR 0040 §실측검증)**: v0.31.0 C
+  enumerator 의 1차 image-source **geometry** 를 실 측정 cuboid 방의 annotated echo TOA 로 검증 → median per-wall
+  **5.60 cm**(south 1면 제외 3.88 cm), 데이터셋 noise floor(direct 2.8 cm) 수준. 벽/floor/ceiling mirror path-length
+  실측 일치. 비볼록 visibility·RT60 미검증(geometry-only). 근거 `.omc/research/dechorate-polygon-ism-validation.md`.
+- **(검증 2) measured(mesh) 천장높이 ↔ ARKit 5-scene 독립 Faro laser GT**: phase0b 5 scene 의 laser GT 를 4 proxy→
+  **5 true-laser** 로 업그레이드(다운로드 ~56GB). 결과(정직): **2/5 = GT-ambiguous**(Faro 가 multi-floor 건물 전체라
+  naive robust peak 가 6.1/6.7 m 건물밴드 반환 → 헤드라인서 제외, 날조 안 함); **clean 3 scene: median |err| 3.6 cm,
+  2/3 ≤±10 cm**, 가장 깨끗한 2개 1.0/3.6 cm(phase0b ~1cm 와 일치). v0.28.0 `ceiling_confidence` 는 5/5 high — 오작동
+  아님(roomestim 자체 추정 3.02/2.41 m 가 plausible single-room, 불일치는 laser-GT multi-floor 추출 artifact).
+  **결론: clean GT 에선 천장 ~1–4 cm 로 견고하나, N-scene laser 확장은 footprint 와 동일한 multi-floor localization
+  한계로 막힘**(room-local laser crop 필요). 근거 `.omc/research/arkit-5scene-ceiling-laser-validation.md`.
+- **다음 데이터 레버(미착수)**: BUT ReverbDB(CC-BY 8.7GB, 9방 측정 RIR+박스치수→RT60 predictor 정직 오차한계),
+  Motus(가구 config RT60→v0.27.0 흡음 검증), MeshRIR. 전부 commercial-OK. RT60 정확도 주장은 이 데이터로만 가능.
+
 **★ 4-candidate 사이클 종료 — A/B/C/D 모두 정직하게 해소(2 ship-feature + 1 ship-geometry + 1 doc-defer + B후속).**
 **다음 후보(전부 외부데이터 또는 대형 refactor 의존)**: PyPI publish(ADR 0007 reverse-criteria 미발동), 진짜 multi-room RoomCollection(ADR 0047
 phased+픽스처), polygon-ISM RT60 cascade(non-shoebox 측정 GT 필요·ADR 0040 §G/OQ#2), cam_h known-size prior(non-cuboid GT+detector·ADR 0045 §D).
