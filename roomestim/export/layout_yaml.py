@@ -55,43 +55,49 @@ from roomestim.model import (
 # --------------------------------------------------------------------------- #
 
 
-_DEFAULT_ENGINE_SCHEMA_PATH: Path = Path(
-    "/home/seung/mmhoa/spatial_engine/proto/geometry_schema.json"
-)
+def _engine_schema_path() -> Path | None:
+    """Resolve geometry_schema.json from the ``SPATIAL_ENGINE_REPO_DIR`` env var.
 
-
-def _engine_schema_path() -> Path:
-    """Resolve geometry_schema.json. ``SPATIAL_ENGINE_REPO_DIR`` env var wins.
-
-    Precedence (ADR 0033 §B): ``SPATIAL_ENGINE_REPO_DIR`` env →
-    :data:`_DEFAULT_ENGINE_SCHEMA_PATH` documented default. The env candidate is
-    used only when its file exists; otherwise the documented default is returned
-    (existence of the default is asserted at the open site via
-    :func:`_assert_schema_file_exists`).
+    Precedence (ADR 0033 §B): ``SPATIAL_ENGINE_REPO_DIR`` env → (no default).
+    There is intentionally NO machine-specific default path: the engine geometry
+    schema lives in the external spatial_engine repository and is *read at write
+    time, never vendored* (module docstring contract). When the env var is unset
+    or empty this returns ``None`` — signalling "no usable schema location" — and
+    the caller fails loud via :func:`_assert_schema_file_exists`. Engine
+    validation is opt-in: ``--no-engine-validation`` skips it cleanly (ADR 0033
+    §C), and ``--validate-engine`` overrides this env path via
+    :func:`_resolve_schema_file` (the documented ``CLI > ENV > explicit-only``
+    chain). The candidate is returned without an existence check so a misconfigured
+    location is named in the :func:`_assert_schema_file_exists` error message.
     """
     repo_dir = os.environ.get("SPATIAL_ENGINE_REPO_DIR")
     if repo_dir:
-        candidate = Path(repo_dir) / "proto" / "geometry_schema.json"
-        if candidate.is_file():
-            return candidate
-    return _DEFAULT_ENGINE_SCHEMA_PATH
+        return Path(repo_dir) / "proto" / "geometry_schema.json"
+    return None
 
 
-def _assert_schema_file_exists(path: Path) -> Path:
-    """Raise a descriptive :exc:`FileNotFoundError` when ``path`` is missing.
+def _assert_schema_file_exists(path: Path | None) -> Path:
+    """Raise a descriptive :exc:`FileNotFoundError` when no schema resolves.
 
     Single source for the missing-engine-schema error (v0.20.0 / OQ-42). All
     three open sites (:func:`_load_engine_schema`, :func:`write_layout_yaml`,
     :func:`validate_placement`) route their resolved path through here, so the
     bare deep ``FileNotFoundError`` from ``path.open()`` is replaced by one
-    actionable message naming all three escape hatches. The documented
-    ``CLI > ENV > default`` chain (ADR 0033 §B) is retained — this only improves
-    the error when the *finally resolved* path is genuinely absent.
+    actionable message naming all three escape hatches. ``path`` is ``None`` when
+    neither ``SPATIAL_ENGINE_REPO_DIR`` nor ``--validate-engine`` is set (no
+    machine-specific default exists by design); a non-``None`` ``path`` that is
+    not a file means the configured location is wrong. The documented
+    ``CLI > ENV > explicit-only`` chain (ADR 0033 §B) is retained.
     """
-    if not path.is_file():
+    if path is None or not path.is_file():
+        where = (
+            path
+            if path is not None
+            else "(neither SPATIAL_ENGINE_REPO_DIR nor --validate-engine set)"
+        )
         raise FileNotFoundError(
             f"{kErrEngineSchemaNotFound}: engine geometry schema not found at "
-            f"{path}. Set SPATIAL_ENGINE_REPO_DIR=<spatial_engine repo dir>, "
+            f"{where}. Set SPATIAL_ENGINE_REPO_DIR=<spatial_engine repo dir>, "
             f"pass --validate-engine <dir>, or use --no-engine-validation to "
             f"skip (ADR 0033)."
         )
@@ -308,8 +314,9 @@ def write_layout_yaml(
         v0.15.2 backward-compatible behaviour.
     schema_path_override:
         Explicit path to the engine repo directory. When provided it overrides
-        the ``SPATIAL_ENGINE_REPO_DIR`` env var and the hardcoded default path.
-        Ignored when ``validate=False``.
+        the ``SPATIAL_ENGINE_REPO_DIR`` env var (CLI > ENV; there is no
+        machine-specific default — see :func:`_engine_schema_path`). Ignored when
+        ``validate=False``.
     """
     # Step 1 — R10 pre-flight.
     min_n = _min_speaker_count(result.regularity_hint)

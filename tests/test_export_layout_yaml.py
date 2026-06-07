@@ -26,21 +26,21 @@ from roomestim.export import write_layout_yaml
 from roomestim.model import PlacedSpeaker, PlacementResult, Point3
 
 
-_DEFAULT_ENGINE_SCHEMA_PATH = Path(
-    "/home/seung/mmhoa/spatial_engine/proto/geometry_schema.json"
-)
-
-
 def _engine_schema() -> dict[str, Any]:
+    """Load the engine geometry schema via ``SPATIAL_ENGINE_REPO_DIR``.
+
+    conftest.py auto-discovers the sibling spatial_engine repo and exports the
+    env var; there is intentionally no machine-specific default (Candidate A /
+    ADR 0007 §Status-update). Skips cleanly when the engine repo is absent.
+    """
     repo_dir = os.environ.get("SPATIAL_ENGINE_REPO_DIR")
-    if repo_dir:
-        candidate = Path(repo_dir) / "proto" / "geometry_schema.json"
-        if candidate.is_file():
-            with candidate.open("r", encoding="utf-8") as fh:
-                data: dict[str, Any] = json.load(fh)
-            return data
-    with _DEFAULT_ENGINE_SCHEMA_PATH.open("r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    if not repo_dir:
+        pytest.skip("SPATIAL_ENGINE_REPO_DIR unset (sibling spatial_engine repo absent)")
+    candidate = Path(repo_dir) / "proto" / "geometry_schema.json"
+    if not candidate.is_file():
+        pytest.skip(f"engine geometry schema not found at {candidate}")
+    with candidate.open("r", encoding="utf-8") as fh:
+        data: dict[str, Any] = json.load(fh)
     return data
 
 
@@ -281,17 +281,16 @@ def test_rejects_too_few_speakers(tmp_path: Path) -> None:
 def test_engine_schema_missing_raises_descriptive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When neither ENV var nor the documented default resolves, the writer
+    """No env + no ``--validate-engine`` + validation requested → fail loud.
 
-    raises one descriptive ``FileNotFoundError`` naming all three escape hatches
+    Candidate A removed the machine-specific hardcoded default, so with
+    ``SPATIAL_ENGINE_REPO_DIR`` cleared and no ``schema_path_override`` there is
+    NO usable schema location. The writer raises one descriptive
+    ``FileNotFoundError`` naming all three escape hatches
     (``SPATIAL_ENGINE_REPO_DIR``, ``--validate-engine``, ``--no-engine-validation``)
-    rather than a bare deep ``FileNotFoundError`` from ``open()`` (OQ-42).
+    rather than silently reading any one machine's path (OQ-42 / ADR 0007).
     """
-    import roomestim.export.layout_yaml as ly
-
     monkeypatch.delenv("SPATIAL_ENGINE_REPO_DIR", raising=False)
-    missing = tmp_path / "no_such_engine" / "proto" / "geometry_schema.json"
-    monkeypatch.setattr(ly, "_DEFAULT_ENGINE_SCHEMA_PATH", missing)
 
     result = _vbap_circular_result()
     out = tmp_path / "layout.yaml"
@@ -304,3 +303,39 @@ def test_engine_schema_missing_raises_descriptive(
     assert "--validate-engine" in msg
     assert "--no-engine-validation" in msg
     assert not out.exists()
+
+
+def test_no_env_skips_cleanly_with_no_engine_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--no-engine-validation`` (validate=False) writes even with no env.
+
+    Engine validation is opt-in (ADR 0033 §C): with the schema location
+    unresolvable, callers can still emit a layout.yaml by skipping validation.
+    """
+    monkeypatch.delenv("SPATIAL_ENGINE_REPO_DIR", raising=False)
+    result = _vbap_circular_result()
+    out = tmp_path / "layout.yaml"
+    write_layout_yaml(result, out, validate=False)
+    assert out.exists()
+    assert "WARNING" in out.read_text(encoding="utf-8")
+
+
+def test_env_and_cli_override_produce_byte_equal_output(tmp_path: Path) -> None:
+    """ENV-resolved and ``schema_path_override`` (CLI) paths are byte-equal.
+
+    Both resolve to the same engine schema, so the validated layout.yaml bytes
+    are identical — proving the CLI > ENV precedence does not change output and
+    that the decouple preserves today's emission exactly.
+    """
+    repo_dir = os.environ.get("SPATIAL_ENGINE_REPO_DIR")
+    if not repo_dir or not (Path(repo_dir) / "proto" / "geometry_schema.json").is_file():
+        pytest.skip("SPATIAL_ENGINE_REPO_DIR unset (sibling spatial_engine repo absent)")
+
+    result = _vbap_circular_result()
+    via_env = tmp_path / "via_env.yaml"
+    write_layout_yaml(result, via_env)  # ENV-resolved
+    via_cli = tmp_path / "via_cli.yaml"
+    write_layout_yaml(result, via_cli, schema_path_override=repo_dir)  # CLI override
+
+    assert via_env.read_bytes() == via_cli.read_bytes()

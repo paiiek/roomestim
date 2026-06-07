@@ -121,13 +121,10 @@ def test_on_nudge_engine_validation_failure_does_not_leak_schema_path(
     """
     import logging
 
-    import roomestim.export.layout_yaml as ly
-
-    leak_path = Path("/home/seung/secret-dev-path/geometry_schema.json")
-    # Force both resolution legs (ENV candidate + documented default) to miss so
-    # _resolve_schema_file raises the descriptive FileNotFoundError naming the path.
+    # Point the ENV candidate at a missing dir so _resolve_schema_file raises the
+    # descriptive FileNotFoundError naming the resolved schema path (the engine
+    # path is no longer hardcoded; ENV is the only resolution leg — Candidate A).
     monkeypatch.setenv("SPATIAL_ENGINE_REPO_DIR", "/tmp/roomestim_nonexistent_engine_dir")
-    monkeypatch.setattr(ly, "_DEFAULT_ENGINE_SCHEMA_PATH", leak_path)
 
     # Sanity: the RAW collector still contains the path (CLI behavior intact).
     from roomestim.export import validate_placement

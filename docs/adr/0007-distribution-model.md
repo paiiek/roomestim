@@ -62,3 +62,47 @@ Mirrors v0.1.1 closeout Critic M1 honesty principle: "do not promote audit/defer
 - Cross-repo PR for room_schema.json: `.omc/autopilot/cross-repo-pr-room-schema.md`. Engine-team review of the schema is INDEPENDENT of this distribution decision.
 - Re-evaluate at v0.3 ship or after first cross-repo PR exchange, whichever comes first.
 - D11 entry in decisions.md records this deferral.
+
+## Status-update — packaging is now PyPI-*ready* (NOT published) — Candidate A / D98 (2026-06-08)
+
+The standalone-vs-submodule-vs-PyPI **decision is unchanged**: still DEFERRED to option (a)
+standalone. None of the reverse criteria above has fired (no engine-team vendoring request, no
+external `pip install roomestim` request, CI cost unchanged). This update records only that the
+*packaging* is now machine-independent and install-verified — it does **NOT** record a publish.
+
+**What changed (machine-independence fix).** `roomestim/export/layout_yaml.py` previously hardcoded
+a machine-specific default engine-schema path (`/home/.../spatial_engine/proto/geometry_schema.json`),
+which made "engine validation with no env and no CLI flag" silently succeed only on the original dev
+machine and fail/mislead everywhere else. That literal is **removed**. `_engine_schema_path()` now
+resolves the engine geometry schema from `SPATIAL_ENGINE_REPO_DIR` only (the engine schema is read at
+write time, **never vendored** — see `layout_yaml.py` module docstring), and with no env + no
+`--validate-engine` it returns `None` so the existing descriptive `FileNotFoundError` fires (naming
+`SPATIAL_ENGINE_REPO_DIR`, `--validate-engine`, `--no-engine-validation`). Engine validation is opt-in
+(ADR 0033 §C: `--no-engine-validation` skips cleanly), and the `CLI > ENV` precedence is preserved.
+Output is byte-equal to before when env/CLI points at a real schema (verified in-gate). This is a
+cross-machine **bug fix**, not a behavior regression.
+
+**Packaging-readiness PROOF (isolated venv, captured 2026-06-08).** `python -m build --wheel` →
+`pip install dist/roomestim-0.29.0-py3-none-any.whl` into a fresh venv → from a neutral cwd:
+`roomestim --help` prints usage; `import roomestim` succeeds, is **torch-free**
+(`'torch' not in sys.modules`), and resolves to the installed `site-packages/roomestim`, reporting
+`__version__ == 0.29.0`. The `[vision]` torch deps stay behind their opt-in extra (core import is
+torch-free). This is what "PyPI-ready" means here: **builds + installs cleanly + console-script runs +
+machine-independent** — NOT a registry upload.
+
+**Honest limitation (known follow-up, NOT claimed fixed).** The room.yaml validation schemas live at
+the **repo-root** `proto/*.json` and are resolved at runtime via `_proto_dir()` =
+`Path(__file__).parents[2] / "proto"` (room_yaml.py / room_yaml_reader.py). In an installed wheel this
+resolves to a nonexistent `site-packages/proto`, and the wheel currently ships **zero** `proto/*.json`
+(the `[tool.setuptools.package-data] roomestim = ["proto/*.json", ...]` glob targets a nonexistent
+in-package `roomestim/proto/`). Therefore an installed copy can build + run `--help` + emit a
+layout.yaml with `--no-engine-validation`, but **cannot yet self-validate/emit room.yaml** unless run
+from a repo checkout. The honest fix is a small bundling refactor (relocate `proto/` into
+`roomestim/proto/` and point `_proto_dir()` at the in-package location so the existing package-data
+glob ships them), which touches runtime + golden round-trip surface and is therefore **out of
+Candidate A's scope** (this cycle's bound was the engine-path decouple + a pyproject-only packaging
+fix). Recorded here so "PyPI-ready" is not overclaimed: the wheel builds/installs/runs, but full
+room.yaml self-validation in an installed copy is a tracked follow-up.
+
+**Reverse criteria for an actual PyPI publish remain UNCHANGED** (see above). Stay packaging-ready; do
+not upload.

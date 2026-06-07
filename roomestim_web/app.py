@@ -231,7 +231,7 @@ def _on_submit(
             pass
         td.cleanup()
         # ADR 0038 / OQ-45: do NOT echo str(exc) to the web user — WFS/validation
-        # messages can embed the dev schema path (_DEFAULT_ENGINE_SCHEMA_PATH).
+        # messages can embed the resolved engine schema path (SPATIAL_ENGINE_REPO_DIR).
         # Full detail is logged above; the user gets a generic message.
         error_report: Any = {
             "error": "처리 중 오류가 발생했습니다. 서버 로그를 확인하세요.",

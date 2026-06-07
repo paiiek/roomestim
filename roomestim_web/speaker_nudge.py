@@ -91,8 +91,8 @@ def _on_nudge_speaker(
 
     errs = validate_placement(new_layout)
     if errs:
-        # ADR 0038 / OQ-45: validate_placement error strings can embed the dev
-        # engine schema path (_DEFAULT_ENGINE_SCHEMA_PATH / FileNotFoundError);
+        # ADR 0038 / OQ-45: validate_placement error strings can embed the
+        # resolved engine schema path (SPATIAL_ENGINE_REPO_DIR / FileNotFoundError);
         # log the full list server-side and return a GENERIC user-facing
         # message — never echo the raw `errs` to the web user. validate_placement
         # itself is left intact (CLI use wants the detailed path).
