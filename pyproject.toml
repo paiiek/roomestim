@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.25.3"
+version = "0.26.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -101,3 +101,10 @@ files = ["roomestim"]
 [[tool.mypy.overrides]]
 module = "roomestim.vision.horizonnet.*"
 ignore_errors = true
+
+# Pixar USD (``pxr``) ships no type stubs / py.typed marker. It is an optional
+# extra ([usd]) lazily imported behind a friendly ImportError, so silence the
+# missing-stub noise whether or not usd-core is installed in the type-check env.
+[[tool.mypy.overrides]]
+module = "pxr.*"
+ignore_missing_imports = true

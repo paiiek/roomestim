@@ -1,8 +1,11 @@
 """MeshAdapter — generic mesh-file input for room estimation.
 
-Accepts ``.obj``, ``.gltf``, ``.glb``, and ``.ply`` mesh files.
-``.usdz`` raises :exc:`NotImplementedError` (requires the optional ``usd``
-extra; not part of the default-CI smoke surface).
+Accepts ``.obj``, ``.gltf``, ``.glb``, ``.ply`` and ``.usdz`` mesh files.
+``.usdz`` requires the optional ``usd`` extra (``pip install
+'roomestim[usd]'``): all :class:`UsdGeom.Mesh` prims are read, baked to
+world space, and fed into the SAME up-axis-normalized floor/ceiling/wall
+extraction the other formats use (geometry meshes — Polycam/ARKit/generic;
+RoomPlan's parametric CapturedRoom schema is a richer follow-up).
 
 Geometry: convex hull of XY-projected vertices by default; an opt-in concave
 reconstruction (``floor_reconstruction="concave"`` or the
@@ -40,7 +43,7 @@ from roomestim.reconstruct.walls import walls_from_floor_polygon
 
 __all__ = ["MeshAdapter"]
 
-_SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply"})
+_SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply", ".usdz"})
 
 FloorReconstruction = Literal["convex", "concave"]
 
@@ -52,6 +55,11 @@ FloorReconstruction = Literal["convex", "concave"]
 UpAxis = Literal["auto", "x", "y", "z"]
 
 _AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
+
+# USD stage upAxis token → the ``UpAxis`` hint the adapter understands. USD only
+# defines Y-up and Z-up stages (X-up is not a USD convention), so a declared
+# stage upAxis lets the USDZ path skip gravity auto-detect entirely.
+_USD_UPAXIS_TO_HINT: dict[str, UpAxis] = {"Y": "y", "Z": "z"}
 
 # Gravity-axis detection slab thickness (metres). The lowest/highest ~12 cm of
 # vertices along a candidate up-axis. A real floor/ceiling is a wide, thin,
@@ -123,6 +131,16 @@ _FLOOR_RECON_ENV = "ROOMESTIM_MESH_FLOOR_RECON"
 # limits are env-overridable so legitimate large-scan operators can raise them.
 _MAX_MESH_FILE_BYTES = int(os.environ.get("ROOMESTIM_MAX_MESH_BYTES", 200 * 1024 * 1024))  # ~200 MB
 _MAX_MESH_VERTICES = int(os.environ.get("ROOMESTIM_MAX_MESH_VERTICES", 5_000_000))  # ~5M
+
+# Absolute ceiling-height plausibility bound (metres). A metersPerUnit lie or a
+# mixed-unit mesh can survive the per-prim scaling and still stamp an absurd
+# height as ``provenance="measured"`` — the silent-wrong-scale failure class this
+# path exists to reject. 20 m clears every real room/venue in scope (synthetic
+# fixtures ≤3 m, real ARKit scans 2.49–3.69 m) while catching the 250 m (raw cm)
+# / 8.96 m (prototype double-count) class. Fail-loud is consistent with the 0a
+# up-axis ambiguity guard and the image-backend near-horizon 20 m bound; env-
+# overridable for the rare legitimate >20 m venue.
+_MAX_CEILING_HEIGHT_M = float(os.environ.get("ROOMESTIM_MAX_CEILING_M", 20.0))
 
 
 class MeshAdapter:
@@ -203,17 +221,13 @@ class MeshAdapter:
         del scale_anchor  # mesh adapters assume metric-native input
         path_obj = Path(path)
         suffix = path_obj.suffix.lower()
-        if suffix == ".usdz":
-            raise NotImplementedError(
-                "MeshAdapter: USDZ requires [usd] extra; use .obj/.gltf/.glb/.ply"
-            )
         if suffix not in _SUPPORTED_SUFFIXES:
             raise ValueError(
                 f"MeshAdapter: unsupported extension {suffix!r}; "
                 f"expected one of {sorted(_SUPPORTED_SUFFIXES)}."
             )
-        # ADR 0038: bound file size BEFORE trimesh reads the bytes. Guards both
-        # the CLI and the web upload path against a DoS-sized mesh.
+        # ADR 0038: bound file size BEFORE any reader touches the bytes. Guards
+        # both the CLI and the web upload path against a DoS-sized mesh.
         file_bytes = path_obj.stat().st_size
         if file_bytes > _MAX_MESH_FILE_BYTES:
             raise ValueError(
@@ -221,6 +235,8 @@ class MeshAdapter:
                 f"{_MAX_MESH_FILE_BYTES}-byte cap (set ROOMESTIM_MAX_MESH_BYTES "
                 f"to raise it)."
             )
+        if suffix == ".usdz":
+            return self._room_model_from_usdz(path_obj, octave_band=octave_band)
         return self._room_model_from_mesh(path_obj, octave_band=octave_band)
 
     @staticmethod
@@ -416,16 +432,6 @@ class MeshAdapter:
                 f"{vertices.shape}"
             )
 
-        # ADR 0038: bound vertex count (ordering: shape → vertex-count → faces).
-        # A file under the byte cap can still expand to a pathological vertex
-        # count after parsing; cap it before the O(N) hull projection below.
-        if vertices.shape[0] > _MAX_MESH_VERTICES:
-            raise ValueError(
-                f"MeshAdapter: mesh has {vertices.shape[0]} vertices, exceeding "
-                f"the {_MAX_MESH_VERTICES}-vertex cap (set "
-                f"ROOMESTIM_MAX_MESH_VERTICES to raise it)."
-            )
-
         # OQ-21: a points-only PLY (vertices but no triangular faces) loads as a
         # Trimesh with len(faces)==0; the (N, 3) vertex check above does NOT
         # catch it. Reject early — a surface mesh is required (downstream
@@ -437,17 +443,237 @@ class MeshAdapter:
                 "mesh with triangular faces is required."
             )
 
+        # ``cast`` keeps mypy strict happy where trimesh attribute access
+        # returns ``Any`` — we only use ``vertices`` numerically above.
+        _ = cast(Any, loaded)
+
+        return self._extract_room_model(
+            vertices, name=path.stem, octave_band=octave_band
+        )
+
+    @staticmethod
+    def _import_pxr() -> Any:
+        """Import ``pxr`` lazily with a helpful ImportError when missing.
+
+        Mirrors :func:`roomestim.export.usd._import_pxr` so the adapter module
+        stays import-light (and torch-free): ``pxr`` is only required when a
+        ``.usdz`` is actually parsed, not at module import.
+        """
+        try:
+            # Import the submodules explicitly: ``import pxr`` alone does not
+            # populate ``pxr.Usd`` / ``pxr.UsdGeom`` (they are separate C-ext
+            # modules). Returning the package after importing them mirrors how
+            # downstream code reads ``pxr.Usd`` etc.
+            import pxr
+            from pxr import Usd, UsdGeom  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "USDZ input requires the [usd] extra; install with "
+                "`pip install 'roomestim[usd]'` or "
+                "`pip install 'roomestim[mesh-export]'`."
+            ) from exc
+        return pxr
+
+    def _room_model_from_usdz(
+        self, path: Path, *, octave_band: bool = False
+    ) -> RoomModel:
+        """Load a ``.usdz`` geometry scan into a ``RoomModel``.
+
+        Reads every :class:`UsdGeom.Mesh` prim, bakes it to world space via the
+        prim's local-to-world transform, combines all prims into one world-space
+        vertex set, and feeds that into the SAME up-axis-normalized extraction
+        the other formats use. When the stage declares an ``upAxis`` it is passed
+        as a hint (more robust than gravity auto-detect); otherwise auto-detect
+        runs. Scope: geometry meshes (Polycam/ARKit/generic). RoomPlan's
+        parametric CapturedRoom schema is a follow-up.
+        """
+        vertices, up_axis_hint = self._vertices_from_usdz(path)
+        if vertices.shape[0] == 0:
+            raise ValueError(
+                f"MeshAdapter: USDZ {path!r} contains no UsdGeom.Mesh geometry. "
+                "Parametric RoomPlan USD (CapturedRoom analytic walls) is not "
+                "yet supported; export a textured/plain mesh USDZ instead."
+            )
+        return self._extract_room_model(
+            vertices,
+            name=path.stem,
+            octave_band=octave_band,
+            up_axis_hint=up_axis_hint,
+        )
+
+    def _vertices_from_usdz(self, path: Path) -> tuple[np.ndarray, UpAxis | None]:
+        """Return ``(world_space_vertices, up_axis_hint)`` from a ``.usdz``.
+
+        Opens the USD stage, traverses all :class:`UsdGeom.Mesh` prims (including
+        those reached through instance proxies), applies each prim's
+        local-to-world transform (so a multi-prim scene combines into one
+        consistent world-space cloud), scales every vertex by the stage's
+        ``metersPerUnit`` so the output is always in METRES, and stacks the
+        points into a single ``(N, 3)`` array. ``up_axis_hint`` is the stage's
+        declared ``upAxis`` (``"y"`` / ``"z"``) when present, else ``None`` (let
+        auto-detect run). Faces are not returned: downstream extraction keys on
+        vertices only.
+        """
+        pxr = self._import_pxr()
+        Usd = pxr.Usd
+        UsdGeom = pxr.UsdGeom
+
+        stage = Usd.Stage.Open(str(path))
+        if stage is None:
+            raise ValueError(
+                f"MeshAdapter: could not open USD stage from {path!r} "
+                "(not a valid USD/USDZ package?)."
+            )
+
+        # metersPerUnit is the stage's authored linear scale. Apple RoomPlan /
+        # Reality Composer USDZ exports are authored in CENTIMETRES
+        # (metersPerUnit == 0.01), so a 2.5 m room arrives as raw points of 250 —
+        # ingesting that unscaled stamps a 250 m ceiling as ``provenance="measured"``,
+        # the exact silent-wrong-scale class this path must reject. USD's API
+        # returns the stage's effective value (default 0.01 when unauthored), so
+        # we trust it and scale world vertices by it; we only reject a degenerate
+        # non-positive / non-finite value rather than divide-by-zero or pass garbage.
+        mpu = float(UsdGeom.GetStageMetersPerUnit(stage))
+        if not np.isfinite(mpu) or mpu <= 0.0:
+            raise ValueError(
+                f"MeshAdapter: USDZ {path!r} declares a non-positive / non-finite "
+                f"metersPerUnit ({mpu!r}); cannot scale geometry to metres."
+            )
+
+        # Stage upAxis is authoritative when declared (skip gravity detection).
+        up_token = str(UsdGeom.GetStageUpAxis(stage))
+        up_axis_hint = _USD_UPAXIS_TO_HINT.get(up_token)
+
+        xform_cache = UsdGeom.XformCache(Usd.TimeCode.Default())
+        chunks: list[np.ndarray] = []
+        # ``TraverseInstanceProxies`` descends INTO instance prototypes: the
+        # default predicate stops at instance boundaries, so meshes authored once
+        # in a prototype and referenced as ``Usd.Instanceable`` instances (common
+        # in furnished RoomPlan/Reality Composer scenes) would be silently
+        # dropped. ``XformCache.GetLocalToWorldTransform`` resolves correctly on
+        # the instance-proxy prims, so each instance lands at its world placement.
+        #
+        # Scope the traversal to the stage's DEFAULT PRIM subtree, which
+        # idiomatically IS the asset. A CONCRETE (``def``, not ``class``)
+        # prototype source authored as a sibling of the default prim and
+        # referenced by ``instanceable=True`` prims would otherwise be DOUBLE-
+        # COUNTED: the raw prototype mesh is visited once at its own authored
+        # location AND once per instance proxy, inflating the bounding box /
+        # ceiling height (a 2.5 m room read as 8.96 m, still stamped "measured").
+        # Restricting to the default prim excludes library/prototype scopes
+        # authored outside it while still descending into legitimate instances
+        # placed under it. Keep the whole-stage fallback for stages that author
+        # no default prim.
+        default_prim = stage.GetDefaultPrim()
+        if default_prim and default_prim.IsValid():
+            prim_iter: Any = iter(
+                Usd.PrimRange(
+                    default_prim, Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate)
+                )
+            )
+        else:
+            prim_iter = stage.Traverse(
+                Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate)
+            )
+        for prim in prim_iter:
+            if not prim.IsA(UsdGeom.Mesh):
+                continue
+            mesh = UsdGeom.Mesh(prim)
+            points_attr = mesh.GetPointsAttr()
+            points = points_attr.Get() if points_attr.IsValid() else None
+            if points is None or len(points) == 0:
+                continue
+            local_pts = np.asarray(points, dtype=float)
+            # Bake the prim's local-to-world transform so multi-prim scenes share
+            # one world frame. USD matrices are row-vector convention
+            # (v' = v · M), so right-multiply the (N, 3) homogeneous points.
+            xf = xform_cache.GetLocalToWorldTransform(prim)
+            mat = np.asarray(
+                [[xf[r][c] for c in range(4)] for r in range(4)], dtype=float
+            )
+            homo = np.column_stack([local_pts, np.ones(local_pts.shape[0])])
+            world = homo @ mat
+            chunks.append(world[:, :3])
+
+        if not chunks:
+            return np.empty((0, 3), dtype=float), up_axis_hint
+        # Scale to metres ONCE, consistently across all prim chunks, before any
+        # downstream extraction (the gravity detector's bins are absolute metres,
+        # so the scale must be applied before it runs in the cross-check below).
+        vertices = np.vstack(chunks) * mpu
+
+        # Cross-check the declared upAxis against the geometry. A mis-authored
+        # stage (declares Y-up but the mesh is Z-up) would otherwise silently
+        # yield a wrong ceiling height. We only cross-check when the hint would
+        # actually be used (constructor up_axis left at "auto"). The
+        # planar-density detector is the arbiter: agreement → trust the hint
+        # (fast path, unchanged); a CLEAR disagreement → fail loud naming both;
+        # detector-ambiguous (it RAISES on e.g. a sparse 8-corner box, where it
+        # cannot tell) → trust the declared hint, which is still better than a
+        # blind guess. This keeps the correctly-authored committed fixtures
+        # passing while catching a genuinely mis-declared stage.
+        if self._up_axis == "auto" and up_axis_hint is not None:
+            try:
+                detected = self._detect_up_axis(vertices)
+            except ValueError:
+                detected = None  # detector ambiguous → defer to the declared hint
+            if detected is not None and detected != _AXIS_INDEX[up_axis_hint]:
+                detected_label = {0: "x", 1: "y", 2: "z"}.get(detected, str(detected))
+                raise ValueError(
+                    f"MeshAdapter: USDZ {path!r} declares upAxis={up_token!r} "
+                    f"(→ '{up_axis_hint}') but its geometry is unambiguously "
+                    f"'{detected_label}'-up (gravity detector). The stage appears "
+                    "mis-authored; pass an explicit up_axis='x'|'y'|'z' override "
+                    "to resolve the conflict."
+                )
+        return vertices, up_axis_hint
+
+    def _extract_room_model(
+        self,
+        vertices: np.ndarray,
+        *,
+        name: str,
+        octave_band: bool = False,
+        up_axis_hint: UpAxis | None = None,
+    ) -> RoomModel:
+        """Build a ``RoomModel`` from a world-space ``(N, 3)`` vertex array.
+
+        Shared by every format (trimesh-loaded ``.obj``/``.ply``/… and the
+        ``.usdz`` USD path). All up-axis normalization and floor/ceiling/wall
+        extraction lives here so the geometry logic is single-sourced.
+
+        ``up_axis_hint`` lets a caller that already knows the gravity axis (e.g.
+        a USD stage that declares its ``upAxis``) skip auto-detect; ``None``
+        falls back to the adapter's own ``up_axis`` setting (``"auto"`` → the
+        gravity-axis detector).
+        """
+        # ADR 0038: bound vertex count (after shape validation, before the O(N)
+        # hull projection below). A file under the byte cap can still expand to a
+        # pathological vertex count after parsing.
+        if vertices.shape[0] > _MAX_MESH_VERTICES:
+            raise ValueError(
+                f"MeshAdapter: mesh has {vertices.shape[0]} vertices, exceeding "
+                f"the {_MAX_MESH_VERTICES}-vertex cap (set "
+                f"ROOMESTIM_MAX_MESH_VERTICES to raise it)."
+            )
+
         # P0 (commercialization plan 0a): real gravity-aligned scans
         # (ARKitScenes, RoomPlan, many .ply/.obj exports) are commonly Z-up, not
-        # the Y-up convention of the synthetic fixtures and glTF. Detect the up
+        # the Y-up convention of the synthetic fixtures and glTF. Resolve the up
         # (gravity) axis, then normalize the mesh into the model's Y-up frame so
         # all downstream extraction keys on the correct vertical axis. Without
         # this, a horizontal room dimension is mistaken for ceiling height
         # (observed 6.5–9.6 m on real ARKit rooms that are ≈2.4–3 m).
-        if self._up_axis == "auto":
-            up_axis = self._detect_up_axis(vertices)
-        else:
+        #
+        # Precedence: an explicit constructor ``up_axis`` always wins; otherwise
+        # a declared stage hint (USD ``upAxis``) is trusted (more robust than
+        # detection); absent both, the gravity-axis detector runs.
+        if self._up_axis != "auto":
             up_axis = _AXIS_INDEX[self._up_axis]
+        elif up_axis_hint is not None and up_axis_hint != "auto":
+            up_axis = _AXIS_INDEX[up_axis_hint]
+        else:
+            up_axis = self._detect_up_axis(vertices)
         vertices = self._normalize_to_y_up(vertices, up_axis)
 
         y_min = float(vertices[:, 1].min())
@@ -457,6 +683,19 @@ class MeshAdapter:
             raise ValueError(
                 f"MeshAdapter: degenerate mesh height "
                 f"(y_max={y_max}, y_min={y_min})"
+            )
+        # Absolute plausibility bound. A correctly-scaled real room/venue never
+        # exceeds this; a height beyond it is almost always a unit/scale
+        # (metersPerUnit) mismatch or a corrupt bounding box (e.g. a phantom
+        # prototype copy), which we refuse to silently stamp as "measured".
+        if ceiling_height_m > _MAX_CEILING_HEIGHT_M:
+            raise ValueError(
+                f"MeshAdapter: implausible ceiling height {ceiling_height_m:.2f} m "
+                f"exceeds the {_MAX_CEILING_HEIGHT_M:.1f} m bound. This almost "
+                "always indicates a unit/scale (metersPerUnit) mismatch or a "
+                "corrupt mesh; refusing to stamp it as measured. Set "
+                "ROOMESTIM_MAX_CEILING_M to raise the bound for a genuinely "
+                "larger venue."
             )
 
         # Reconstruct the floor footprint. ``convex`` (default) takes the
@@ -508,12 +747,6 @@ class MeshAdapter:
         surfaces: list[Surface] = [floor_surface, ceiling_surface, *walls]
 
         listener = default_listener_area(floor_polygon_2d)
-
-        name = path.stem
-
-        # ``cast`` keeps mypy strict happy where trimesh attribute access
-        # returns ``Any`` — we only use ``vertices`` numerically above.
-        _ = cast(Any, loaded)
 
         return RoomModel(
             name=name,

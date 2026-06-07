@@ -33,10 +33,12 @@ from typing import TYPE_CHECKING, Any
 from roomestim.model import (
     MaterialAbsorption,
     MaterialAbsorptionBands,
+    MaterialLabel,
     PlacementResult,
     Point3,
     RoomModel,
 )
+from roomestim.reconstruct._disclosure import RT60_DISCLOSURE, RT60_MODEL_NAME
 
 if TYPE_CHECKING:
     pass  # pxr is intentionally not imported at module load.
@@ -77,7 +79,19 @@ def _hex_to_rgb(material: str) -> tuple[float, float, float]:
 def _import_pxr() -> Any:
     """Import ``pxr`` lazily with a helpful ImportError when missing."""
     try:
-        import pxr  # type: ignore[import-not-found]
+        # Import the submodules explicitly: ``import pxr`` alone does not
+        # populate ``pxr.Usd`` / ``pxr.UsdGeom`` / ``pxr.UsdUtils`` etc. — each
+        # is a separate C-extension module. Without this the attribute reads
+        # below (``pxr.UsdUtils``) raise AttributeError once pxr is installed.
+        import pxr
+        from pxr import (  # noqa: F401
+            Gf,
+            Sdf,
+            Usd,
+            UsdGeom,
+            UsdUtils,
+            Vt,
+        )
     except ImportError as exc:
         raise ImportError(
             "USDZ export requires the [usd] extra; install with "
@@ -285,10 +299,18 @@ def _build_acoustics_sidecar(room: RoomModel) -> dict[str, Any]:
                 "wall_index": obj.wall_index,
             }
         )
+    materials_unknown = any(
+        s.material == MaterialLabel.UNKNOWN for s in room.surfaces
+    ) or any(o.material == MaterialLabel.UNKNOWN for o in room.objects)
     return {
         "version": "0.17",
         "room_name": room.name,
         "schema_version": room.schema_version,
+        # Honest acoustics labeling (additive; numbers above unchanged). Any RT60
+        # derived from these absorption values is a MODEL estimate, not measured.
+        "acoustics_model": RT60_MODEL_NAME,
+        "disclaimer": RT60_DISCLOSURE,
+        "materials_status": "UNKNOWN/assumed" if materials_unknown else "assigned",
         "surfaces": surfaces_out,
         "objects": objects_out,
     }

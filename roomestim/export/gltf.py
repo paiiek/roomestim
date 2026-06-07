@@ -27,10 +27,12 @@ import trimesh
 from roomestim.model import (
     MaterialAbsorption,
     MaterialAbsorptionBands,
+    MaterialLabel,
     PlacementResult,
     Point3,
     RoomModel,
 )
+from roomestim.reconstruct._disclosure import RT60_DISCLOSURE, RT60_MODEL_NAME
 
 __all__ = ["write_gltf"]
 
@@ -222,10 +224,18 @@ def _build_acoustics_sidecar(room: RoomModel) -> dict[str, Any]:
                 "wall_index": obj.wall_index,
             }
         )
+    materials_unknown = any(
+        s.material == MaterialLabel.UNKNOWN for s in room.surfaces
+    ) or any(o.material == MaterialLabel.UNKNOWN for o in room.objects)
     return {
         "version": "0.17",
         "room_name": room.name,
         "schema_version": room.schema_version,
+        # Honest acoustics labeling (additive; numbers above unchanged). Any RT60
+        # derived from these absorption values is a MODEL estimate, not measured.
+        "acoustics_model": RT60_MODEL_NAME,
+        "disclaimer": RT60_DISCLOSURE,
+        "materials_status": "UNKNOWN/assumed" if materials_unknown else "assigned",
         "surfaces": surfaces_out,
         "objects": objects_out,
     }

@@ -30,6 +30,11 @@ v0.15.1부터 fallback 발동 시 surface 이름이 ``RT60Prediction.rationale``
 누적된다 (``predict_rt60_default_per_band`` only; single-band
 ``predict_rt60_default`` uses 500 Hz scalars throughout and cannot trigger
 per-band fallback).
+
+Honesty note: every RT60 value returned here is a geometric-acoustics MODEL
+estimate, not a validated measurement. See
+:data:`roomestim.reconstruct._disclosure.RT60_DISCLOSURE` (the single source of
+truth) and :attr:`RT60Prediction.disclosure`.
 """
 from __future__ import annotations
 
@@ -47,6 +52,7 @@ from roomestim.model import (
     Surface,
     wall_surfaces,
 )
+from roomestim.reconstruct._disclosure import RT60_DISCLOSURE
 from roomestim.reconstruct.image_source import image_source_rt60
 from roomestim.reconstruct.materials import (
     eyring_rt60,
@@ -91,12 +97,26 @@ class RT60Prediction:
         ``"eyring"`` otherwise.
     rationale:
         Short human-readable reason ("shoebox: ISM" / "non-shoebox: Eyring fallback").
+
+    Honesty note
+    ------------
+    ``rt60_s`` / ``rt60_per_band_s`` are geometric-acoustics MODEL estimates,
+    not validated measurements; see :attr:`disclosure`. The numeric outputs are
+    unchanged by this disclosure (labeling only).
     """
 
     rt60_s: float
     rt60_per_band_s: dict[int, float]
     predictor_name: PredictorName
     rationale: str
+
+    @property
+    def disclosure(self) -> str:
+        """Honest model-vs-measurement disclosure (single source of truth).
+
+        Returns :data:`roomestim.reconstruct._disclosure.RT60_DISCLOSURE`.
+        """
+        return RT60_DISCLOSURE
 
 
 # --------------------------------------------------------------------------- #

@@ -13,7 +13,6 @@ from roomestim.model import RoomModel
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 OBJ_PATH = FIXTURE_DIR / "lab_room.obj"
 JSON_PATH = FIXTURE_DIR / "lab_room.json"
-USDZ_PATH = FIXTURE_DIR / "lab_room.usdz"
 
 
 def _floor_polygon_area(room: RoomModel) -> float:
@@ -40,19 +39,21 @@ def test_a_polycam_obj_parses_to_roommodel() -> None:
     assert _is_ccw(room), "floor polygon must be CCW"
 
 
-def test_a_polycam_usdz_skip_or_raise() -> None:
-    """USDZ path raises NotImplementedError (no usd extra in default CI)."""
-    if USDZ_PATH.exists():
-        # If a real fixture is present at some point, we still expect raise
-        # in the default CI build (no `[usd]` extra installed).
-        with pytest.raises(NotImplementedError):
-            PolycamAdapter().parse(USDZ_PATH)
-        return
-    # No fixture: explicitly stub a name and confirm we still raise on the
-    # extension. Use a non-existent path; the adapter dispatches on suffix
-    # before any IO.
-    with pytest.raises(NotImplementedError):
-        PolycamAdapter().parse(FIXTURE_DIR / "missing_fixture.usdz")
+def test_a_polycam_usdz_parses_via_mesh_adapter() -> None:
+    """Phase 1: ``.usdz`` is now a real loader (PolycamAdapter inherits MeshAdapter).
+
+    Polycam exports `.usdz` as the primary B2B device output, so the deprecated
+    alias must consume it just like MeshAdapter does — no NotImplementedError.
+    Requires the [usd] extra; skip cleanly when pxr is absent.
+    """
+    pytest.importorskip("pxr")
+    fixture = FIXTURE_DIR / "shoebox_yup.usdz"
+    if not fixture.exists():
+        pytest.skip("shoebox_yup.usdz fixture not found")
+    room = PolycamAdapter().parse(fixture)
+    assert isinstance(room, RoomModel)
+    assert room.ceiling_height_m == pytest.approx(2.5, abs=0.10)
+    assert room.provenance == "measured"
 
 
 def test_a_polycam_json_delegates_to_roomplan() -> None:

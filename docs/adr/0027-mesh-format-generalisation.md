@@ -170,3 +170,20 @@ default 368p/6s, ruff/mypy(strict)/tense EXIT0. 독립 code-review 2R(HIGH narro
 센서 vs 실측 ±10 cm 절대정확도는 독립 GT 필요(Phase 0b 후속, 미입증).
 **Cross-refs**: D91, `.omc/plans/commercialization-analysis.md`(B2B 프레이밍·Phase 0), ADR 0001(RoomPlan/mesh measured 경로),
 ADR 0042(live-mesh corner extraction, 관련 PROPOSED).
+
+## §Status-update-2026-06-07 (v0.26.0) — .usdz mesh ingest (Phase 1; D93)
+
+ARKit RoomPlan 의 1차 export 포맷인 **`.usdz`(USDZ)** 지오메트리 ingest 를 `MeshAdapter` 에 추가 — measured 경로의
+"RoomPlan .usdz ingest 불가" 블로커(상용화 Phase 1) 해소. `[usd]`/`[mesh-export]` extra(usd-core) 로 게이트, `pxr` 경유.
+공유 `_extract_room_model` 헬퍼로 리팩터해 v0.25.3 up-축(gravity) 정규화를 USDZ 경로에서도 재사용.
+
+**구현 핵심**: (1) `UsdGeom.Mesh` 지오메트리를 **default prim 스코프** instance-proxy 순회로 수집 — concrete `def`-prototype
+가 instance-proxy 양쪽으로 이중계수되던 결함(독립 review round-3 HIGH) 차단; (2) `metersPerUnit` 을 읽어 m 로 스케일 —
+cm-unit USDZ(metersPerUnit=0.01) 가 100× 과대 치수로 ingest 되던 결함(round-2 HIGH) 정합; (3) stage `upAxis` 메타데이터를
+density 기반 검출과 **교차검증**(힌트만, 권위는 geometry); (4) 천장 타당성 **절대상한** `ROOMESTIM_MAX_CEILING_M`(기본 20 m)
+초과 시 fail-loud — near-horizon 가드(D89)·v0.25.3 fail-loud 철학과 일관. usd.py 의 `pxr` 명시 서브모듈 import 버그도 동반 수정.
+
+**검증**: 합성 Y-up/Z-up USDZ 픽스처(`scripts/gen_usdz_fixtures.py` 생성) + round-2/3 회귀 테스트, `PolycamAdapter`
+`.usdz` 경로가 `NotImplementedError`→정상 파싱. default 387p/3s, web 86p/3s, ruff/mypy(strict) EXIT0. 독립 code-review
+round-3 + verifier VERIFIED-GREEN. **한계**: 절대 ±10 cm 검증은 독립 GT 대기(Phase 0b, 미입증) — v0.25.3 한계 승계.
+**Cross-refs**: D92(Phase 0c acoustics honesty), D93(Phase 1 USDZ ingest), `.omc/plans/commercialization-analysis.md`(B2B Phase 0c/1).
