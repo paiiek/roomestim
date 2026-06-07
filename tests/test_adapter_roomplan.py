@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import math
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -182,3 +184,57 @@ def test_a9a_surfaces_well_formed() -> None:
         for p in s.polygon:
             assert isinstance(p, Point3)
         assert 0.0 <= s.absorption_500hz <= 1.0
+
+
+# --------------------------------------------------------------------------- #
+# Multi-floor-entry silent-loss guard (B bounded slice, D99 / ADR 0047)
+# --------------------------------------------------------------------------- #
+
+
+def _sidecar_dict() -> dict[str, Any]:
+    with SIDECAR_PATH.open("r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    assert isinstance(data, dict)
+    return data
+
+
+def test_single_floor_emits_no_multi_floor_warning() -> None:
+    """len(floors)==1 stays warning-free (additive guard, behaviour unchanged)."""
+    adapter = RoomPlanAdapter()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        room = adapter.parse(SIDECAR_PATH)
+    assert len(room.floor_polygon) == 4
+
+
+def test_multi_floor_entries_warn_and_use_primary() -> None:
+    """len(floors)>1 emits ROOMPLAN_MULTI_FLOOR_NOTE and keeps the primary floor.
+
+    The primary (first) floor is the 5x4 rectangle from the lab fixture. A
+    second, disjoint floor patch is appended; the resulting RoomModel must still
+    represent ONLY the primary footprint (area == 20 m^2, deterministic — no
+    accuracy claim), and the disclosure warning must fire.
+    """
+    data = _sidecar_dict()
+    primary_floor = data["floors"][0]
+    secondary_floor = {
+        "label": "floor_1",
+        "category": "floor",
+        "polygon": [
+            [10.0, 0.0, 10.0],
+            [12.0, 0.0, 10.0],
+            [12.0, 0.0, 13.0],
+            [10.0, 0.0, 13.0],
+        ],
+        "material_hint": "wood",
+    }
+    data["floors"] = [primary_floor, secondary_floor]
+
+    adapter = RoomPlanAdapter()
+    with pytest.warns(UserWarning, match="single-room"):
+        room = adapter._room_model_from_sidecar(data)
+
+    # Primary 5x4 footprint preserved; secondary patch NOT merged in.
+    assert _floor_polygon_area(room) == pytest.approx(20.0, abs=1e-9)
+    floors = [s for s in room.surfaces if s.kind == "floor"]
+    assert len(floors) == 1

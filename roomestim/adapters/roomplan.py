@@ -33,6 +33,7 @@ X axis (wall width direction) expressed in listener-frame world coordinates.
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ from roomestim.model import (
     Surface,
     canonicalize_ccw,
 )
+from roomestim.reconstruct._disclosure import ROOMPLAN_MULTI_FLOOR_NOTE
 from roomestim.reconstruct.listener_area import default_listener_area
 
 __all__ = ["RoomPlanAdapter"]
@@ -291,6 +293,17 @@ class RoomPlanAdapter:
         # ------------------------------------------------------------------ #
         # Floors
         # ------------------------------------------------------------------ #
+        # Single-room contract: RoomModel carries one floor_polygon. Additional
+        # floor entries were previously dropped SILENTLY; disclose the loss
+        # instead (single-source string, never inline-retyped). Behaviour for
+        # len == 1 is unchanged. See docs/adr/0047-multi-room-deferred.md.
+        if len(floor_entries) > 1:
+            warnings.warn(
+                f"RoomPlanAdapter: {len(floor_entries)} floor entries found. "
+                f"{ROOMPLAN_MULTI_FLOOR_NOTE}",
+                UserWarning,
+                stacklevel=2,
+            )
         floor_entry = floor_entries[0]
         floor_polygon_xyz = list(floor_entry["polygon"])
         floor_material = _material_for_hint(floor_entry.get("material_hint"))

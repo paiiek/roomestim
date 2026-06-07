@@ -42,6 +42,22 @@ IMAGE_CAM_H_SCALE_NOTE: str = (
     "Supply a measured camera height (ScaleAnchor 'known_distance') for metric scale."
 )
 
+# RoomPlan multi-floor-entry disclosure. The accepted RoomPlan sidecar schema is
+# single-room by construction (one ``dimensions``, flat ``walls[]/floors[]/
+# ceilings[]``), and ``RoomModel`` is single-room by design (one
+# ``floor_polygon``). When a sidecar carries more than one floor entry (e.g. a
+# split-level or disjoint floor patch within one room), only the primary entry
+# is represented; the rest were previously dropped SILENTLY. This note makes that
+# loss explicit. Single source of truth — reference, do not retype.
+ROOMPLAN_MULTI_FLOOR_NOTE: str = (
+    "RoomPlan sidecar has more than one floor entry, but RoomModel is single-room "
+    "by design (one floor_polygon). Only the primary (first) floor entry is "
+    "represented; the additional floor entries are NOT merged or exported and the "
+    "capture is treated as single-room. roomestim does NOT support multi-room / "
+    "multi-floor captures (no RoomCollection); if the extra floor entries are part "
+    "of a distinct room or level, that geometry is not modelled."
+)
+
 # Ceiling-confidence under-report guard. ``ceiling_coverage`` is a genuine
 # geometric measurement; ``ceiling_confidence`` is a HEURISTIC label, NOT a
 # calibrated probability. Single source of truth — reference, do not retype.
@@ -62,4 +78,5 @@ __all__ = [
     "RT60_MODEL_NAME",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",
     "IMAGE_CAM_H_SCALE_NOTE",
+    "ROOMPLAN_MULTI_FLOOR_NOTE",
 ]
