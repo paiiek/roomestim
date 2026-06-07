@@ -73,10 +73,28 @@ CEILING_CONFIDENCE_HEURISTIC_NOTE: str = (
     "coverage was not measured (e.g. image-reconstructed or hand-authored geometry)."
 )
 
+# Polygon image-source GEOMETRY-only disclosure. The polygon image-source
+# enumerator returns mirror-image POSITIONS + a per-image visibility flag for an
+# extruded simple polygon; it emits NO RT60 and is NOT wired into the predictor.
+# Polygon-ISM RT60 is DEFERRED (no non-shoebox measured GT; pyroomacoustics
+# RT60-fit reliability unverified; pyroomacoustics is a web-extra). Single source
+# of truth — reference, do not retype.
+POLYGON_ISM_GEOMETRY_NOTE: str = (
+    "The polygon image-source enumerator is GEOMETRY ONLY: it returns first-order "
+    "image-source POSITIONS (mirror of the source across each wall / floor / ceiling "
+    "plane) plus a per-image visibility flag, for an extruded simple polygon. It is "
+    "NOT an acoustic predictor: it emits NO RT60 and is NOT wired into "
+    "predict_rt60_default. Polygon-ISM RT60 is DEFERRED pending a non-shoebox "
+    "MEASURED ground-truth corpus (magnitude otherwise unverifiable), an unverified "
+    "pyroomacoustics RT60-fit reliability on sparse ISM RIR, and the pyroomacoustics "
+    "web-extra reproducibility asymmetry (see ADR 0040)."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
     "RT60_MODEL_NAME",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",
     "IMAGE_CAM_H_SCALE_NOTE",
+    "POLYGON_ISM_GEOMETRY_NOTE",
     "ROOMPLAN_MULTI_FLOOR_NOTE",
 ]

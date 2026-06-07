@@ -182,4 +182,23 @@ item 3 은 "polygon ISM lands → `predict_rt60_default` §A item 2(Eyring fallb
 
 ---
 
-> **honesty note**: 본 문서의 모든 알고리즘 선택·통합·검증 항목은 **제안/예정**이며, `polygon_image_source.py`·`is_prismatic_polygon`·3-티어 cascade·검증 fixture 는 아직 구현되지 않았다. `roomestim_web/binaural.py` 의 `_build_extrusion_room` polygon 경로만이 현재 실재하며, 이는 binaural RIR 용이지 predictor RT60 경로가 아니다. ADR Status 는 PROPOSED 이고 코드/테스트는 존재하지 않는다.
+> **honesty note (REVISED 2026-06-08, §Status-update 참조)**: 본 문서의 RT60 cascade·`is_prismatic_polygon`·predictor 통합 항목은 여전히 **제안/예정(DEFERRED)**이다. 단 §Status-update 가 기록하듯 **geometry-only 부분(image-source POSITION + visibility enumerator)은 v0.31.0 에서 LANDED** 되었다. `roomestim_web/binaural.py` 의 `_build_extrusion_room` polygon 경로(binaural RIR 용)는 변함없이 별개다.
+
+---
+
+## Status-update (2026-06-08, v0.31.0 — D100)
+
+**Geometry-only enumerator LANDED; RT60 cascade DEFERRED.**
+
+### LANDED (geometry only, in-gate verified)
+- 신규 core 모듈 `roomestim/reconstruct/polygon_image_source.py` (numpy/shapely-only, **pyroomacoustics import 없음** → default gate lane 에서 실행). 공개 API:
+  `first_order_image_sources(floor_polygon, ceiling_height_m, source, *, include_floor_ceiling=True, tol_m=1e-9) -> list[ImageSource]`.
+  extruded simple polygon (floor_polygon=xz 평면 + ceiling_height_m=수직 extrude) 에 대해 source 를 각 벽 평면(+옵션 floor/ceiling 평면)에 mirror 한 **1차 image-source POSITION** 을 enumerate 하고, 각 image 에 shapely 기반 visibility flag(`valid`)·생성 surface(`wall_index`)·`reflection_point` 를 부착해 반환한다. 이것이 §A 선택지 (a)를 **geometry 로만 엄격히 축소**한 것(±400-600 LoC RT60 mirror-ISM 전체가 아닌 positions+visibility 만).
+- visibility test (결정적, shapely): 벽 image 는 source 에서 벽 supporting line 으로 내린 수선의 발(specular reflection point)이 **유한 벽 segment 위**에 있어야 valid. §G item 6 가 물은 "`_image_inside_floor` 재사용 여부"는 — 그 아이디어(shapely `contains`/거리)를 core 로 재구현하되 web 의존 없이 사용하는 것으로 결정. 볼록 방은 모든 벽 image 보존, **비볼록(L자) 방은 supporting-line 발이 segment 밖이면 prune**(convex 가정이 잘못 보존할 image 제거).
+- 검증(in-gate, default lane, `tests/test_polygon_image_source.py`): (i) 4정점 polygon 으로 표현한 **알려진 shoebox** 의 1차 image POSITION 이 analytic mirror(x=0,x=L,z=0,z=W + floor/ceiling 평면)와 **~1e-9 일치**; (ii) **비볼록 L자** fixture 가 off-segment reflection 을 정확히 prune; (iii) determinism·input-validation. acoustic-accuracy 주장 없음.
+
+### DEFERRED (RT60 cascade 전체 — 가짜 숫자 금지)
+- **Polygon-ISM RT60 + predictor cascade (§D, PR3)**: DEFER — 비-shoebox **측정 GT 부재**(§G/제안 OQ #2)로 magnitude 입증 불가; sparse ISM-only RIR 의 pyroomacoustics RT60-fit 신뢰성 미검증(§B/제안 OQ #3); pyroomacoustics 가 **web-extra** 라 default-lane 재현성 비대칭(§C2). 지금 RT60 를 내보내면 음향 숫자를 날조하는 셈.
+- **pyroomacoustics core lazy-import (§C2)** 및 **coupled-space marker (§F/R4)**: cascade 와 함께 DEFER.
+- **byte-equal 보장**: `predictor.py` / `image_source.py` 는 **손대지 않음** → shoebox RT60 회귀 0. `PredictorName` 미변경, `predict_rt60_default` 미연결. 신규 모듈은 sibling 로만 존재.
+- disclosure 단일진실원천: `roomestim/reconstruct/_disclosure.py::POLYGON_ISM_GEOMETRY_NOTE`.
