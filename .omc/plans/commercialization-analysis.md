@@ -265,13 +265,18 @@ CapturedRoom USD 픽스처 부재로 검증난이도↑). (5) OQ-55 visual mater
   **독립 code-review 는 세션 한도로 차단→다음 세션 검토 예정**(커밋은 -W error 가법성증명+test추적+guard추적 자체검증).
 - **(D) cam_h known-size-reference prior = DEFER(doc-only)**(`66e0953` D101): auto=detector+verifiable prior 부재+cuboid-GT 검증불가;
   manual=기존 `--cam-height` 와 동일 prior 를 마찰만 늘려 재생산·정확도 이득 0. ADR 0045 §honesty (D) 기록. 코드 0줄.
-- **(C) polygon-ISM = NOT STARTED(다음 세션)**: geometry-only 이미지소스 POSITION enumerator(numpy/shapely-only, NO RT60, predictor
-  미배선) = 검증가능 honest 슬라이스. 전체 RT60 cascade 는 non-shoebox 측정 GT 부재로 DEFER(가짜숫자 트랩). 상세 빌드스펙 = 4-candidates
-  plan RESUME POINTER. MINOR→0.31.0 D100.
-- **새 default 베이스라인 = 418p/3s @v0.30.1**(414→+4: A+2, B+2). web 86p/3s 불변.
+- **(C) polygon-ISM geometry-only = DONE**(`c6eb9fd` v0.31.0 D100): core `polygon_image_source.py`(numpy/shapely-only,
+  pyroomacoustics import 0) `first_order_image_sources(...) -> list[ImageSource]` — 벽/floor/ceiling 미러링 1차 이미지 POSITION +
+  shapely on-segment 가시성. **POSITION 만, RT60 0**, predictor/image_source 무변경(shoebox byte-equal). `POLYGON_ISM_GEOMETRY_NOTE`
+  단일진실원천. 검증=known shoebox→해석적 mirror ~1e-9 + L-shape non-convex pruning. 전체 RT60 cascade 는 non-shoebox 측정 GT 부재로
+  ADR 0040 §Status-update DEFER. code-review APPROVE-WITH-FIXES 4 LOW 반영(docstring 과대주장·denom/is_valid fail-loud 가드+테스트).
+- **(B 후속) 독립 code-review = DONE**(`ed9fae2` v0.30.2): 보류됐던 B 리뷰 실행 APPROVE, 2 LOW 반영(stacklevel=3 귀속·parse()-path warns 테스트).
+- **새 default 베이스라인 = 433p/3s @v0.31.0**(414→+19: A+2, B+2, B후속+1, C+14). web 86p/3s 불변. **origin/main 푸시 완료.**
 
-**다음 세션 작업**: (1) **C geometry-only polygon image-source 빌드**(스펙=4-candidates plan), (2) **B 독립 code-review**(세션한도로 보류됨).
-그 다음 = PyPI publish(ADR 0007 reverse-criteria), 진짜 multi-room RoomCollection(ADR 0047 phased), non-shoebox 측정 RT60 GT(C RT60 unblock).
+**★ 4-candidate 사이클 종료 — A/B/C/D 모두 정직하게 해소(2 ship-feature + 1 ship-geometry + 1 doc-defer + B후속).**
+**다음 후보(전부 외부데이터 또는 대형 refactor 의존)**: PyPI publish(ADR 0007 reverse-criteria 미발동), 진짜 multi-room RoomCollection(ADR 0047
+phased+픽스처), polygon-ISM RT60 cascade(non-shoebox 측정 GT 필요·ADR 0040 §G/OQ#2), cam_h known-size prior(non-cuboid GT+detector·ADR 0045 §D).
+즉시 코드-only 후보는 소진됨 — 다음 레버는 데이터 확보(real-scan/측정 RT60 GT)가 게이트. 우선순위 사용자 결정.
 
 ---
 

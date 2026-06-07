@@ -13,11 +13,17 @@ buildable+verifiable core, never faked. New disclosure strings go in
 **Decision numbering:** last committed = D97 (`c2766ad`). This cycle = **D98 (A), D99 (B),
 D100 (C), D101 (D)**.
 
-> RESUME POINTER (updated 2026-06-08): **A DONE** (`d3457c5` v0.30.0 D98), **B DONE** (`3a02d7e`
-> v0.30.1 D99), **D DONE** (doc-only DEFER, ADR 0045 §honesty (D)). **C = NOT STARTED** (next).
-> Session-limit hit during B's review → B committed on rigorous self-verification (independent
-> code-review DEFERRED to next session). **NEXT SESSION = build C geometry-only** then run B's
-> independent review.
+> RESUME POINTER (updated 2026-06-08, 2nd session): **ALL FOUR RESOLVED.**
+> **A DONE** (`d3457c5` v0.30.0 D98), **B DONE** (`3a02d7e` v0.30.1 D99) + **B review follow-up**
+> (`ed9fae2` v0.30.2: independent code-review APPROVE, 2 LOW fixed — stacklevel=3 + parse()-path
+> warns test), **C DONE** (`c6eb9fd` v0.31.0 D100: geometry-only polygon image-source, NO RT60;
+> independent code-review APPROVE-WITH-FIXES, 4 LOW fixed — docstring overclaim, denom + is_valid
+> fail-loud guards + tests), **D DONE** (`66e0953` D101 doc-only DEFER, ADR 0045 §honesty (D)).
+> Final baseline **433p/3s @v0.31.0**, web 86p/3s, ruff/mypy EXIT0. Pushed to origin/main.
+> Remaining (future, all need external data or are large refactors): PyPI publish (ADR 0007
+> reverse-criteria), true multi-room RoomCollection (ADR 0047 phased), polygon-ISM RT60 cascade
+> (needs non-shoebox measured GT — ADR 0040 §G/OQ#2), cam_h known-size prior (needs non-cuboid GT +
+> detector — ADR 0045 §honesty (D)).
 >
 > **C resume spec (geometry-only polygon image-source, NO RT60):**
 > - NEW `roomestim/reconstruct/polygon_image_source.py` — numpy/shapely-only (NO pyroomacoustics
