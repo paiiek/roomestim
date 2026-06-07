@@ -223,10 +223,21 @@ class RoomPlanAdapter:
         path_obj = Path(path)
         suffix = path_obj.suffix.lower()
         if suffix == ".usdz":
+            # DEFERRED (researched 2026-06-07, see
+            # .omc/research/oq4-roomplan-parametric-usd-defer.md): RoomPlan's
+            # parametric semantics (surface/object category + dims) are NOT
+            # carried in the USD as queryable schemas/attributes — they are
+            # routed out-of-band via the CapturedRoom JSON and an iOS-17+
+            # String->UUID mapping file. The .usdz exposes only renderable
+            # geometry, which the mesh adapter already ingests
+            # (roomestim.adapters.mesh.MeshAdapter). So semantics come from the
+            # JSON sidecar (parsed below); geometry from MeshAdapter.
             raise NotImplementedError(
-                "RoomPlanAdapter: USDZ parametric path requires the [usd] "
-                "extra and macOS-authored fixture; use the JSON sidecar mock "
-                "for v0.1 CI."
+                "RoomPlanAdapter: parametric RoomPlan semantics are not encoded "
+                "in the .usdz (Apple routes them via the CapturedRoom JSON and a "
+                "separate String->UUID mapping file). Use the JSON sidecar with "
+                "RoomPlanAdapter for semantics, or MeshAdapter for the .usdz "
+                "geometry. See .omc/research/oq4-roomplan-parametric-usd-defer.md."
             )
         if suffix != ".json":
             raise ValueError(

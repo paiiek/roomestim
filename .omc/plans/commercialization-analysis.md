@@ -232,3 +232,27 @@ CapturedRoom USD 픽스처 부재로 검증난이도↑). (5) OQ-55 visual mater
 (6) image cam_h 자동추정(최대오차원 제거, Phase 3).
 캐노니컬 게이트 = `/home/seung/miniforge3/bin/python -m pytest -m "not web and not vision and not lab and not e2e"`
 (PATH pytest 아님; **408p/3s** 가 default 베이스라인(v0.28.0), web 86p/3s).
+
+### ★ RESUME POINTER (2026-06-07 autopilot — 3-candidate 후속 완료) — 세부 = `.omc/plans/commercialization-followups-3candidates.md`
+프레이밍=B2B installer. planner(opus)→executor(opus)→독립 code-review(opus)→full-gate 검증. 3개 후보 = 1 ship + 2 정직 DEFER.
+- **(6) image cam_h = SHIPPED**: 단일 파노는 원리적 scale-ambiguous(cam_h=global scale, `r=cam_h/tan(-v_floor)` 정확
+  선형) → 절대 cam_h 복원은 빌드 불가. 대신 **검증가능한 scale-honesty 기구**만 추가: `image.py::_cam_h_sensitivity`
+  (torch-free·정확가역; max_radius_coeff/plausible cam_h window/scale_pct_per_10cm) + anchor-미공급시 ASSUMED 경고를
+  `IMAGE_CAM_H_SCALE_NOTE`(`_disclosure.py` 단일진실원천)+민감도 인용으로 확장. **user/anchor cam_h silent override 0**,
+  provenance="reconstructed" 불변. plan item(3) floor-plane cross-estimate 는 floor 폴리곤이 cam_h 에 **scale-invariant**
+  (직각제약 포함 over-determine 안 함)임을 증명하고 **DEFER**(가짜숫자 방지). 검증갭(244 GT 100% cuboid→non-Manhattan
+  정확도 주장 금지) ADR 0045 §honesty 명문화. **테스트 6 추가(default 408→414p/3s, torch-free, vision 마커 불요)**,
+  web 86p/3s, ruff/mypy EXIT0, code-review APPROVE.
+- **(4) parametric .usdz ingest = DEFER**: 리서치(인용) 결론 — RoomPlan parametric **시맨틱은 USD 에 없음**(CapturedRoom
+  JSON + iOS17 String→UUID 매핑파일로 out-of-band). `.usdz`=geometry-only(이미 MeshAdapter ingest), 시맨틱=sidecar 가
+  이미 커버 → 후보 자체가 moot/정직빌드불가. `roomplan.py:225` NotImplementedError 메시지를 정직·정보형으로 개선(테스트는
+  NotImplementedError catch→skip 이라 안전). 재오픈=실 export `.usdz`+매핑JSON 확보 시. 근거=`.omc/research/oq4-roomplan-parametric-usd-defer.md`.
+- **(5) OQ-55 visual material = DEFER(no-commit spike)**: 리포트 `.omc/research/oq55-visual-material-feasibility.md`.
+  블로커=in-repo material/absorption GT 0 → 정확도 검증불가 → 주장금지. 트랩=material→absorption→RT60 직결 numeric
+  파이프라인(오라벨=가짜 음향수치). 향후 빌드시 계약=opt-in·ESTIMATE·RT60-neutral-unless-accepted·image-only, **별도 태스크**.
+- **side-fix**: 오토메모리 `reference_canonical_test_env.md` 에 캐노니컬 게이트 = **marker-scoped** 명문화(plain `pytest -q`
+  =over-collect 오측정). 베이스라인 체인 275/6→388/3→396/3→408/3(→이번 414/3).
+
+**다음 후보**: (4)/(5) 재오픈은 외부데이터 의존(실 RoomPlan export+mapping / material GT). 코드-only 즉시가능 후보 =
+image cam_h 의 known-size-reference prior(검증가능 prior 발견 시), multi-room(RoomModel 단일방→floor_entries[0] 한계),
+spatial_engine 절대경로 디커플+PyPI 패키징(ADR 0007), polygon-ISM acoustics(ADR 0040). 우선순위는 사용자 결정.

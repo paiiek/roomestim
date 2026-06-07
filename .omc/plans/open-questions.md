@@ -1137,3 +1137,10 @@ ADR 0045 §Status-update-2026-06-05c / D89. Allocated 2026-06-05.
 > 안 함, **rough-estimate tier 고정**; `convex_band` 는 rough-tier 내 무비용 in-tier upgrade(게이트 승급 아님). 다음 레버는
 > coverage(coverage-aware capture / TSDF / VGGT-Omega — 각각 별도 스파이크). ADR 0045 header 는 PROPOSED 유지(gate #2
 > 정확도 절반 미충족 + OQ-52/OQ-54 미해소). ADR 0045 §Status-update-2026-06-04 / §C / D84 참조.
+
+## Commercialization Follow-ups 3 Candidates - 2026-06-07
+- [ ] (4) Apple RoomPlan CapturedRoom USD schema unknown — how are walls/openings/objects + dims/transforms/categories encoded (UsdGeom.Cube + xform? customData? custom schema)? — Gates whether parametric .usdz ingest is buildable at all; if unpinnable, candidate (4) stays deferred.
+- [ ] (4) No real exported RoomPlan parametric .usdz fixture available — Self-authored fixtures only prove self-consistency, not real-Apple compatibility; parametric path must stay PROVISIONAL until a real sample is parsed.
+- [ ] (6) image cam_h is scale-ambiguous from a single pano — Is any verifiable external metric prior (known-size reference, tripod-height prior) acceptable to the product, or does cam_h stay user-supplied? Affects whether (6) ships more than the sensitivity/diagnostic surfacing.
+- [ ] (6) 244-pano GT is 100% cuboid — No way in current data to verify auto-cam_h on non-Manhattan/>4-corner rooms; any real-pano accuracy claim is un-backed until non-cuboid GT exists.
+- [ ] (5) OQ-55 — Is there ANY in-repo/obtainable labelled material→absorption GT? Without it, no material accuracy claim is verifiable and the spike must conclude DEFER for accuracy.
