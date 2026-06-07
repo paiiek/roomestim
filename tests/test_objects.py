@@ -312,9 +312,16 @@ def test_yaml_invalid_schema_version(tmp_path: Path) -> None:
 
 
 def test_default_object_material_per_kind() -> None:
-    """Per-kind defaults: column→concrete, door→painted, window→glass."""
+    """Per-kind defaults: obstacles (column/door/window) + furniture."""
     assert DEFAULT_OBJECT_MATERIAL["column"] == MaterialLabel.WALL_CONCRETE
     assert DEFAULT_OBJECT_MATERIAL["door"] == MaterialLabel.WALL_PAINTED
     assert DEFAULT_OBJECT_MATERIAL["window"] == MaterialLabel.GLASS
-    # Only the three documented kinds are present.
-    assert set(DEFAULT_OBJECT_MATERIAL.keys()) == {"column", "door", "window"}
+    # Furniture (Phase 2): soft → MISC_SOFT, hard wood → WOOD_FLOOR.
+    assert DEFAULT_OBJECT_MATERIAL["sofa"] == MaterialLabel.MISC_SOFT
+    assert DEFAULT_OBJECT_MATERIAL["bed"] == MaterialLabel.MISC_SOFT
+    assert DEFAULT_OBJECT_MATERIAL["table"] == MaterialLabel.WOOD_FLOOR
+    assert DEFAULT_OBJECT_MATERIAL["storage"] == MaterialLabel.WOOD_FLOOR
+    # The documented kinds (obstacles + acoustically-wired furniture).
+    assert set(DEFAULT_OBJECT_MATERIAL.keys()) == {
+        "column", "door", "window", "sofa", "bed", "table", "storage",
+    }

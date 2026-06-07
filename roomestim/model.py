@@ -131,7 +131,22 @@ class Point3:
 
 SurfaceKind = Literal["wall", "floor", "ceiling"]
 
-ObjectKind = Literal["column", "door", "window"]
+ObjectKind = Literal[
+    "column", "door", "window", "sofa", "table", "bed", "storage"
+]
+
+#: Free-standing objects modelled acoustically as a solid box (4 side faces +
+#: top) folded into the RT60 absorption budget, exactly like a column. Furniture
+#: (sofa/table/bed/storage from RoomPlan ``CapturedRoomObject`` categories) joins
+#: the column here: its exposed box surfaces add absorption (a furnished room is
+#: deader). The bounding box + per-kind representative material is an ESTIMATE
+#: (real furniture is not a solid uniform box), consistent with the existing
+#: TASLP furniture-budget MISC_SOFT model in ``adapters/ace_challenge.py``.
+FREESTANDING_OBJECT_KINDS: frozenset[ObjectKind] = frozenset(
+    {"column", "sofa", "table", "bed", "storage"}
+)
+#: Wall-attached objects modelled as a per-wall α override (no new box surface).
+WALL_ATTACHED_OBJECT_KINDS: frozenset[ObjectKind] = frozenset({"door", "window"})
 
 #: Room-level capture provenance (OQ-54 / ADR 0045 §F honesty). One of:
 #:   ``measured``      — real depth sensor / scan (LiDAR, RGB-D, GT survey);
@@ -230,14 +245,17 @@ def surface_index_for_wall(room: "RoomModel", wall_ordinal: int) -> int:
 
 @dataclass(frozen=True)
 class Object:
-    """An obstacle (column/door/window) inside the RoomModel.
+    """An obstacle or furnishing inside the RoomModel.
 
-    - column: standalone (wall_index=None); 5 추가 surface (4 측면 + top)
-      per ADR 0034 §C / D46.
+    - column + furniture (sofa/table/bed/storage): standalone
+      (wall_index=None); 5 추가 surface (4 측면 + top) folded into the RT60
+      absorption budget per ADR 0034 §C / D46. Furniture is modelled as a
+      free-standing box exactly like a column — see
+      :data:`FREESTANDING_OBJECT_KINDS`.
     - door/window: attached to wall (wall_index 필수); 벽 α override 영역.
 
     anchor:
-        column → base center (z = floor level).
+        column / furniture → base center (z = floor level).
         door/window → bottom-left corner (in wall-local coord).
     """
 
@@ -256,6 +274,22 @@ DEFAULT_OBJECT_MATERIAL: dict[ObjectKind, MaterialLabel] = {
     "column": MaterialLabel.WALL_CONCRETE,
     "door": MaterialLabel.WALL_PAINTED,
     "window": MaterialLabel.GLASS,
+    # Furniture: representative per-category absorption (honest ESTIMATE — the
+    # piece is treated as a solid box of this single material). Soft, upholstered
+    # furnishings are reliably absorptive (MISC_SOFT, α≈0.40); hard wooden pieces
+    # are near the UNKNOWN 0.10 floor (WOOD_FLOOR). Chairs are deliberately
+    # excluded (ambiguous hard/soft, small area).
+    #
+    # Known approximation (honest): OPEN-FRAME furniture — a ``table`` (legs +
+    # thin top) most of all — is NOT a solid box, so the 4 full side faces + top
+    # over-count its real exposed area. The acoustic error stays small because
+    # such pieces carry the low WOOD_FLOOR α≈0.10 (≈ the UNKNOWN floor), but the
+    # box fold is a conservative estimate, not a measurement — same honesty bar
+    # as the TASLP furniture-budget MISC_SOFT model in ``adapters/ace_challenge``.
+    "sofa": MaterialLabel.MISC_SOFT,
+    "bed": MaterialLabel.MISC_SOFT,
+    "table": MaterialLabel.WOOD_FLOOR,
+    "storage": MaterialLabel.WOOD_FLOOR,
 }
 
 

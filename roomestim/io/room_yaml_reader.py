@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import warnings
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import yaml
 from jsonschema import Draft202012Validator
@@ -122,9 +122,9 @@ def _surface(d: dict[str, Any]) -> Surface:
 
 
 def _parse_object(d: dict[str, Any]) -> Object:
-    """Parse a single object dict (column/door/window) into :class:`Object`."""
+    """Parse a single object dict (column/door/window/furniture) into :class:`Object`."""
     kind_str = str(d["kind"])
-    if kind_str not in ("column", "door", "window"):
+    if kind_str not in get_args(ObjectKind):
         raise ValueError(f"Invalid object kind: {kind_str!r}")
     kind: ObjectKind = kind_str  # type: ignore[assignment]
     anchor = _point3(d["anchor"])

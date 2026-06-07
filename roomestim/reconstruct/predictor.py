@@ -43,6 +43,7 @@ from typing import Literal
 
 from roomestim.geom.polygon import polygon_area_3d, room_volume
 from roomestim.model import (
+    FREESTANDING_OBJECT_KINDS,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
@@ -237,19 +238,23 @@ def _shoebox_surface_areas_and_alphas(
 
 
 def _objects_to_surfaces(objects: list[Object]) -> list[Surface]:
-    """Convert column objects into 5-face surface lists (4 sides + top).
+    """Convert free-standing objects into 5-face surface lists (4 sides + top).
 
-    Door/window objects do NOT produce new surfaces — those become wall α
-    overrides via :func:`_objects_to_wall_alpha_overrides`.
+    Free-standing kinds (:data:`FREESTANDING_OBJECT_KINDS` — column plus furniture
+    sofa/table/bed/storage) are each modelled as a solid box whose exposed faces
+    add absorption to the RT60 budget. Door/window objects do NOT produce new
+    surfaces — those become wall α overrides via
+    :func:`_objects_to_wall_alpha_overrides`.
 
-    Column orientation: anchor = base center on floor; faces emitted CCW
-    when viewed from outside the column. Top face (kind=="ceiling") is
-    CCW when viewed from above. Material defaults flow through from
-    :data:`MaterialAbsorption` / :data:`MaterialAbsorptionBands`.
+    Box orientation: anchor = base center on floor; faces emitted CCW when viewed
+    from outside the box. Top face (kind=="ceiling") is CCW when viewed from
+    above. Material defaults flow through from :data:`MaterialAbsorption` /
+    :data:`MaterialAbsorptionBands`. Furniture absorption is an ESTIMATE (the
+    piece is treated as a solid uniform box) — see :data:`FREESTANDING_OBJECT_KINDS`.
     """
     extra: list[Surface] = []
     for obj in objects:
-        if obj.kind != "column":
+        if obj.kind not in FREESTANDING_OBJECT_KINDS:
             continue
         cx, cy, cz = obj.anchor.x, obj.anchor.y, obj.anchor.z
         hw = obj.width_m / 2.0
@@ -483,7 +488,7 @@ def predict_rt60_default(
     if prefer_ism and is_rectilinear_shoebox(room):
         dims = _shoebox_dimensions_m(room)
         objects = list(room.objects)
-        column_count = sum(1 for o in objects if o.kind == "column")
+        box_count = sum(1 for o in objects if o.kind in FREESTANDING_OBJECT_KINDS)
         override_count = sum(
             1 for o in objects if o.kind in ("door", "window") and o.wall_index is not None
         )
@@ -556,8 +561,10 @@ def predict_rt60_default(
             f"shoebox L={dims[0]:.2f} W={dims[1]:.2f} H={dims[2]:.2f}: "
             f"ISM (max_order={used_order})"
         )
-        if column_count:
-            rationale += f"; objects: +{column_count * 5} column surfaces"
+        if box_count:
+            rationale += (
+                f"; objects: +{box_count * 5} box surfaces (column/furniture)"
+            )
         if override_count:
             rationale += f"; objects: +{override_count} wall α overrides"
         return RT60Prediction(
@@ -589,7 +596,7 @@ def predict_rt60_default_per_band(
     if prefer_ism and is_rectilinear_shoebox(room):
         dims = _shoebox_dimensions_m(room)
         objects = list(room.objects)
-        column_count = sum(1 for o in objects if o.kind == "column")
+        box_count = sum(1 for o in objects if o.kind in FREESTANDING_OBJECT_KINDS)
         override_count = sum(
             1 for o in objects if o.kind in ("door", "window") and o.wall_index is not None
         )
@@ -678,8 +685,10 @@ def predict_rt60_default_per_band(
                 f"; per-band α fallback used for surfaces: "
                 f"[{', '.join(fallback_surfaces)}]"
             )
-        if column_count:
-            rationale += f"; objects: +{column_count * 5} column surfaces"
+        if box_count:
+            rationale += (
+                f"; objects: +{box_count * 5} box surfaces (column/furniture)"
+            )
         if override_count:
             rationale += f"; objects: +{override_count} wall α overrides"
         return RT60Prediction(

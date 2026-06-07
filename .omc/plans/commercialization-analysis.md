@@ -195,8 +195,24 @@ inflation 가능성(2차 — 진짜 GT 엔 registration 필요, 후속).
   `footprint_register.py`(open3d FPFH+RANSAC+ICP, 신뢰게이트), `footprint_register2d.py`(중력제약 2D FFT). 격리 venv
   `/tmp/o3d-venv`(open3d 0.19, 휘발). roomestim 코어 코드 **무변경**(README+plan doc-only).
 
-**다음 후보**: (1) ~~footprint/wall 독립검증~~ → 위 NEGATIVE(데이터 한계). 재개하려면 종결경로 (a)/(c) 필요.
-(2) **Phase 2**(재질 추론·가구 와이어링·불확실성 OQ-57) — 외부데이터 없이 즉시 코딩 가능, 현 최우선 후보.
-(3) ceiling robust extraction 의 중간평면 mis-pick 에 confidence flag(잔여 residual 명시적 신뢰표시).
+### ★ Phase 2 착수: 가구 음향 배선 완료 (v0.27.0, D95; 2026-06-07 autopilot)
+**스코프 결정(정직)**: Phase 2 3항목 중 **재질 추론**(measured mesh 는 외형데이터 부재 → 기하만으론 불가; RoomPlan
+material_hint 는 이미 배선; 진짜 추론은 visual classifier=OQ-55, 저신뢰 제안만)과 **OQ-57 per-corner 수치**(‘가짜 숫자 금지’
+계류, calibration 미정)는 정직하게 빌드 불가로 판정. **가구 음향 배선**만 honest·bounded 로 구현(사용자 승인).
+**구현**: `ObjectKind` += `sofa`/`bed`/`table`/`storage`. 가구 = column 과 동일 **free-standing box**(`_objects_to_surfaces`
+5-face)로 RT60 흡음 예산에 반영; RoomPlan sidecar `_extract_objects` 가 카테고리 매핑(sofa/couch·bed·table/desk·
+storage/cabinet/shelf/wardrobe/refrigerator; chair·toilet 제외). 단일 진실원천 `FREESTANDING_OBJECT_KINDS`/
+`WALL_ATTACHED_OBJECT_KINDS`(model.py) 를 predictor·gltf·usd·room.yaml reader·`proto/room_schema.v0_2.draft.json` 공유.
+재질=대표 추정(soft→MISC_SOFT 0.40, hard wood→WOOD_FLOOR 0.10), bbox-solid ESTIMATE 정직 라벨(open-frame table 과대계수
+honesty note 포함). **기존 픽스처 RT60 byte-equal**(어떤 adapter 도 가구 미방출 → 순수 additive).
+**검증**: default **396p/3s**(388→+8 furniture), web 86p/3s, ruff/mypy EXIT0. 독립 **code-review APPROVE-WITH-FIXES**:
+HIGH(room schema 가구 enum+oneOf 미확장 → 직렬화 round-trip 깨짐) 독립 발견·수정(schema-validated write↔read 테스트 추가);
+MEDIUM(table solid-box 과대계수) honesty-note 반영; LOW×2(rationale 문자열·zero-depth degeneration=schema 가드됨) skip.
+**남은 Phase 2 (정직 defer)**: 재질 추론(OQ-55 visual classifier 필요), per-corner uncertainty(OQ-57 calibration).
+
+**다음 후보**: (1) ~~footprint/wall 독립검증~~ → NEGATIVE(데이터 한계, 종결경로 (a)/(c) 필요).
+(2) ~~가구 음향 배선~~ → 위 완료(v0.27.0). (3) ceiling robust extraction 중간평면 mis-pick confidence flag.
+(4) 가구 capture: 실제 .usdz RoomPlan parametric furniture ingest(현재 sidecar JSON 만; .usdz=geometry mesh 만).
+(5) OQ-55 visual material 제안 스파이크(저신뢰, auto-commit 금지).
 캐노니컬 게이트 = `/home/seung/miniforge3/bin/python -m pytest -m "not web and not vision and not lab and not e2e"`
-(PATH pytest 아님; 388p/3s 가 default 베이스라인, web 86p/3s).
+(PATH pytest 아님; **396p/3s** 가 default 베이스라인(v0.27.0), web 86p/3s).

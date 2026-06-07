@@ -41,6 +41,7 @@ import numpy as np
 from roomestim.adapters.base import ScaleAnchor
 from roomestim.model import (
     DEFAULT_OBJECT_MATERIAL,
+    FREESTANDING_OBJECT_KINDS,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
@@ -130,13 +131,19 @@ def _project_to_floor_polygon(points_xyz: list[list[float]]) -> list[Point2]:
 def _extract_objects(scan_data: dict[str, Any]) -> list[Object]:
     """Map RoomPlan ``CapturedRoomObject`` categories to :class:`Object`.
 
-    v0.17 ADR 0034 §C: case-insensitive substring match on ``category`` —
+    Case-insensitive substring match on ``category``. Obstacles (ADR 0034 §C):
     ``"column"`` / ``"pillar"`` → column; ``"door"`` → door; ``"window"`` →
-    window. Any other category (chair, table, …) is ignored.
+    window. Acoustically-relevant furniture (folded into the RT60 absorption
+    budget as free-standing boxes — see :data:`FREESTANDING_OBJECT_KINDS`):
+    ``"sofa"`` / ``"couch"`` → sofa; ``"bed"`` → bed; ``"table"`` / ``"desk"`` →
+    table; ``"storage"`` / ``"cabinet"`` / ``"shelf"`` / ``"wardrobe"`` /
+    ``"refrigerator"`` → storage. Chairs and other categories (toilet, sink, …)
+    remain ignored — small and/or acoustically ambiguous.
 
     ``transform[i][3]`` (4th column) is the anchor; ``dimensions`` is
-    ``[width_m, height_m, depth_m]`` (depth defaults to 0 for door/window).
-    Material defaults per :data:`DEFAULT_OBJECT_MATERIAL`.
+    ``[width_m, height_m, depth_m]`` (depth defaults to 0 for wall-attached
+    door/window; free-standing column/furniture keep their depth). Material
+    defaults per :data:`DEFAULT_OBJECT_MATERIAL`.
     """
     objects: list[Object] = []
     for entry in scan_data.get("objects", []):
@@ -148,8 +155,22 @@ def _extract_objects(scan_data: dict[str, Any]) -> list[Object]:
             kind = "door"
         elif "window" in category:
             kind = "window"
+        elif "sofa" in category or "couch" in category:
+            kind = "sofa"
+        elif "bed" in category:
+            kind = "bed"
+        elif "table" in category or "desk" in category:
+            kind = "table"
+        elif (
+            "storage" in category
+            or "cabinet" in category
+            or "shelf" in category
+            or "wardrobe" in category
+            or "refrigerator" in category
+        ):
+            kind = "storage"
         else:
-            continue  # ignored: chair, table, … (v0.17 scope)
+            continue  # ignored: chair, toilet, sink, … (acoustically minor/ambiguous)
         transform = entry.get("transform")
         if transform is None:
             continue
@@ -174,7 +195,7 @@ def _extract_objects(scan_data: dict[str, Any]) -> list[Object]:
                 anchor=anchor,
                 width_m=width_m,
                 height_m=height_m,
-                depth_m=depth_m if kind == "column" else 0.0,
+                depth_m=depth_m if kind in FREESTANDING_OBJECT_KINDS else 0.0,
                 wall_index=wall_index,
                 material=material,
             )

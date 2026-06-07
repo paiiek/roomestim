@@ -25,6 +25,7 @@ import numpy as np
 import trimesh
 
 from roomestim.model import (
+    FREESTANDING_OBJECT_KINDS,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
@@ -127,7 +128,7 @@ def _room_to_trimesh_scene(
             column_surfaces = []
         column_cursor = 0
         for obj_idx, obj in enumerate(room.objects):
-            if obj.kind == "column":
+            if obj.kind in FREESTANDING_OBJECT_KINDS:
                 for face_i in range(5):
                     if column_cursor >= len(column_surfaces):
                         break

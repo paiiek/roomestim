@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from roomestim.model import (
+    FREESTANDING_OBJECT_KINDS,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
@@ -206,7 +207,7 @@ def _room_to_usd_stage(
         for obj_idx, obj in enumerate(room.objects):
             obj_root = f"/Room/Objects/Object_{obj_idx}"
             UsdGeom.Xform.Define(stage, obj_root)
-            if obj.kind == "column":
+            if obj.kind in FREESTANDING_OBJECT_KINDS:
                 # Emit the 5 column faces using the predictor's decomposition.
                 for face_i in range(5):
                     if column_cursor >= len(column_surfaces):

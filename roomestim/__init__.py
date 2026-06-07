@@ -1,6 +1,6 @@
 """roomestim — capture-to-config: room scan -> RoomModel + speaker placement -> engine YAMLs."""
 
-__version__ = "0.26.1"
+__version__ = "0.27.0"
 __schema_version__ = "0.2-draft"
 
 from roomestim.edit import (  # noqa: E402
@@ -15,12 +15,16 @@ from roomestim.edit import (  # noqa: E402
 )
 from roomestim.model import (  # noqa: E402
     DEFAULT_OBJECT_MATERIAL,
+    FREESTANDING_OBJECT_KINDS,
+    WALL_ATTACHED_OBJECT_KINDS,
     Object,
     ObjectKind,
 )
 
 __all__ = [
     "DEFAULT_OBJECT_MATERIAL",
+    "FREESTANDING_OBJECT_KINDS",
+    "WALL_ATTACHED_OBJECT_KINDS",
     "Object",
     "ObjectKind",
     "evolve_placement",

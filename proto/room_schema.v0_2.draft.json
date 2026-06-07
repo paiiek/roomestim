@@ -78,13 +78,13 @@
     },
     "objects": {
       "type": "array",
-      "description": "Obstacle list (columns / doors / windows). Always emitted on 0.2-draft, possibly empty.",
+      "description": "Obstacle + furnishing list (columns / doors / windows + sofa / bed / table / storage). Always emitted on 0.2-draft, possibly empty.",
       "items": {
         "type": "object",
         "required": ["kind", "anchor", "width_m", "height_m", "depth_m", "wall_index", "material"],
         "additionalProperties": false,
         "properties": {
-          "kind": { "type": "string", "enum": ["column", "door", "window"] },
+          "kind": { "type": "string", "enum": ["column", "door", "window", "sofa", "bed", "table", "storage"] },
           "anchor": { "$ref": "#/$defs/point3" },
           "width_m": { "type": "number", "exclusiveMinimum": 0 },
           "height_m": { "type": "number", "exclusiveMinimum": 0 },
@@ -117,6 +117,14 @@
             "description": "column: standalone (wall_index null, depth_m > 0).",
             "properties": {
               "kind": { "const": "column" },
+              "wall_index": { "type": "null" },
+              "depth_m": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          {
+            "description": "furniture (sofa/bed/table/storage): free-standing box folded into the RT60 absorption budget like a column (wall_index null, depth_m > 0).",
+            "properties": {
+              "kind": { "enum": ["sofa", "bed", "table", "storage"] },
               "wall_index": { "type": "null" },
               "depth_m": { "type": "number", "exclusiveMinimum": 0 }
             }
