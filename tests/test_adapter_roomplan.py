@@ -238,3 +238,34 @@ def test_multi_floor_entries_warn_and_use_primary() -> None:
     assert _floor_polygon_area(room) == pytest.approx(20.0, abs=1e-9)
     floors = [s for s in room.surfaces if s.kind == "floor"]
     assert len(floors) == 1
+
+
+def test_multi_floor_warns_via_public_parse(tmp_path: Path) -> None:
+    """Parity: the disclosure also fires through the public parse() path.
+
+    Mirrors test_multi_floor_entries_warn_and_use_primary but exercises the
+    user-facing entry point (parse from a .json file), so the stacklevel=3
+    attribution and the public contract are both covered.
+    """
+    data = _sidecar_dict()
+    data["floors"] = [
+        data["floors"][0],
+        {
+            "label": "floor_1",
+            "category": "floor",
+            "polygon": [
+                [10.0, 0.0, 10.0],
+                [12.0, 0.0, 10.0],
+                [12.0, 0.0, 13.0],
+                [10.0, 0.0, 13.0],
+            ],
+            "material_hint": "wood",
+        },
+    ]
+    sidecar = tmp_path / "multi_floor.json"
+    sidecar.write_text(json.dumps(data), encoding="utf-8")
+
+    adapter = RoomPlanAdapter()
+    with pytest.warns(UserWarning, match="single-room"):
+        room = adapter.parse(sidecar)
+    assert _floor_polygon_area(room) == pytest.approx(20.0, abs=1e-9)

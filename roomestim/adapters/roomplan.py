@@ -298,11 +298,13 @@ class RoomPlanAdapter:
         # instead (single-source string, never inline-retyped). Behaviour for
         # len == 1 is unchanged. See docs/adr/0047-multi-room-deferred.md.
         if len(floor_entries) > 1:
+            # stacklevel=3: warn() -> _room_model_from_sidecar -> parse -> user
+            # call site (so attribution lands on user code, not parse()).
             warnings.warn(
                 f"RoomPlanAdapter: {len(floor_entries)} floor entries found. "
                 f"{ROOMPLAN_MULTI_FLOOR_NOTE}",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
         floor_entry = floor_entries[0]
         floor_polygon_xyz = list(floor_entry["polygon"])
