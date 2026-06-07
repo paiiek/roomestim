@@ -202,3 +202,20 @@ item 3 은 "polygon ISM lands → `predict_rt60_default` §A item 2(Eyring fallb
 - **pyroomacoustics core lazy-import (§C2)** 및 **coupled-space marker (§F/R4)**: cascade 와 함께 DEFER.
 - **byte-equal 보장**: `predictor.py` / `image_source.py` 는 **손대지 않음** → shoebox RT60 회귀 0. `PredictorName` 미변경, `predict_rt60_default` 미연결. 신규 모듈은 sibling 로만 존재.
 - disclosure 단일진실원천: `roomestim/reconstruct/_disclosure.py::POLYGON_ISM_GEOMETRY_NOTE`.
+
+### 실측 데이터 검증 (2026-06-08, dEchorate CC-BY 4.0 — geometry only)
+합성 shoebox(~1e-9) 외에 **물리적으로 측정된 실제 cuboid 방**(dEchorate 데이터셋)의 annotated early-echo
+arrival time 으로 1차 image-source **geometry** 를 독립 검증했다. dEchorate 의 calibrated recipe(`data_rooge.mat`:
+c=345.844 m/s@24℃, fs=48k, 단일 calibrated source + 12 mic, 6 surface × 12 mic = 72 reflection TOA)를 사용.
+roomestim 좌표(Point3 x·수직 y·z, floor y=0)로 명시 매핑(dEchorate 수직축 z→roomestim y; direct-path 자기일관성
+2.8 cm median 으로 매핑 독립 확인). 각 1차 image→mic 거리를 측정 echo TOA(=path/c)와 비교:
+- **median per-wall 오차 5.60 cm(0.162 ms); "south" 1면 제외 시 3.88 cm(0.112 ms), max 21 cm.**
+- 참조 **noise floor = direct-path 자기일관성 2.8 cm(0.082 ms)** — mirror geometry 가 데이터셋 자체 calibration
+  한계에 근접. 5/6 면이 ~3–4 cm(noise floor 수준).
+- "south" 1면만 전 12 mic 에서 일관된 부호의 ~42 cm offset → dEchorate 의 **가동형 패널이 nominal bound 보다
+  ~21 cm 바깥**에 놓인 **실 GT 기하 caveat**(mirror-math 결함 아님; path-length 수준 비교라 surface 라벨은 고정
+  permutation).
+- **검증된 것**: 벽 mirror(edge supporting line 반사)·floor(y→−y)·ceiling(y→2H−y) path-length 가 실측 cuboid 와
+  일치. **검증 안 된 것**: 비볼록 visibility pruning(방이 cuboid 라 미발동), RT60·흡음 등 음향량(여전히 geometry-only),
+  2차+ image, 다중 source. 즉 본 검증은 C 의 **geometry 정확성**을 실측으로 뒷받침할 뿐 acoustic 주장과 무관.
+- 근거(gitignored durable note): `.omc/research/dechorate-polygon-ism-validation.md`; throwaway 스크립트 `/tmp/dechorate_ism_validate.py`. roomestim 프로덕션/테스트/버전 무변경(doc-only).
