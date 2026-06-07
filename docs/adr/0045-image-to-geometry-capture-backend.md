@@ -242,3 +242,22 @@ OQ-60(§Status-update-2026-06-05c (c))을 240 실파노(seed=7; 주거 120 cam_h
 - **"40 m 로 상향" 권고는 기각.** 그 임계는 #1(28.1 m, GT 3.6 m) 환각을 통과시켜 3.6 m 방을 ~28 m 로 방출 → 가드 핵심 목적을 무력화한다(scientist 권고 내부모순).
 
 검증은 read-only 실측(코드/게이트 무변경). 본 update 는 doc-only — version bump 없음. scientist 분석(240 panos, ratio 분포 + 2×2 분리표 + per-k false-reject) 이 근거. **OQ-60 CLOSED.**
+
+---
+
+## §image-backend honesty (2026-06-07, D??) — cam_h scale-sensitivity surfacing (verifiable core) + scale-ambiguity / cuboid-GT 검증 갭 (Candidate 6)
+
+cold-eval(memory `project_image_backend_cold_eval`)이 지목한 **지배 오차원 = cam_h**(사용자 공급)를 정직성-우선으로 다룬다. 핵심 사실:
+
+**(1) cam_h IS the scale — 단일 파노는 원리적으로 scale-ambiguous.** `r = cam_h / tan(-v_floor)` 이고 floor point 가 `r·(sin u, -cos u)` 이므로, 복원된 방 전체가 cam_h 에 **정확히 선형**으로 스케일된다(면적은 제곱). HorizonNet 은 방의 SHAPE 만 복원하고 cam_h 가 곧 global metric scale 이다. **단일 파노에는 절대 cam_h 를 복원할 픽셀-only 신호가 없다** — anchor 없는 cam_h 는 측정이 아니라 ASSUMED prior 다. 이 사실은 `roomestim/reconstruct/_disclosure.py::IMAGE_CAM_H_SCALE_NOTE`(단일 진실원천)에 명문화했다.
+
+**(2) 빌드한 것 = 검증가능한 scale-honesty 기구 (정확도 주장 0).**
+- `image.py::_cam_h_sensitivity(cor_id, *, ref_cam_h) -> dict` — torch-free·순수 기하·정확 가역. 보고: `max_radius_coeff`(가장 먼 코너의 cam_h 1 m 당 수평반경 `1/tan(-v_floor)`), `max_plausible_cam_h_m`(모든 코너를 `_MAX_PLAUSIBLE_RADIUS_M` 이내로 유지하는 cam_h 상한 = `_MAX/max_radius_coeff`), `scale_pct_per_10cm`(ref_cam_h 에서 10 cm cam_h 오차가 만드는 방-스케일 변화 = `0.10/ref_cam_h·100`). 이 % 는 **정확도 수치가 아니다** — cam_h *가정*이 스케일로 어떻게 전파되는지를 정량화할 뿐(가정이 얼마나 틀렸는지 아님).
+- ASSUMED-scale `UserWarning`(`image.py::ImageAdapter.parse`, anchor 미공급 시)을 확장하여 `IMAGE_CAM_H_SCALE_NOTE` + 실제 복원 코너 기반 plausibility window + `±X% room scale`(`scale_pct_per_10cm`) 를 인용. 경고는 inference 후 방출되어 window 가 실제 코너를 반영한다.
+- `provenance="reconstructed"` 불변. **어떤 코드 경로도 user/anchor cam_h 를 추론값으로 silently override 하지 않는다.**
+
+**(3) DEFER — floor-plane cam_h cross-estimate (계획 item 3).** 정직하게 빌드 불가로 **SKIP**. 이유(수학적): floor point 가 `cam_h·(sin u/tan(-v_floor), -cos u/tan(-v_floor))` 이므로 cuboid 의 직각 제약을 포함한 floor 폴리곤 전체가 cam_h 에 대해 **scale-invariant** 다 — rectangle 은 어떤 스케일에서도 rectangle 이고, 천장 평면을 더해도 미지수(H, cam_h)의 비율만 결정된다. 즉 floor/ceiling 각도는 cam_h 를 **over-determine 하지 않는다**. 따라서 어떤 "cross-estimate" 도 가짜 숫자 생성기다. 절대 cam_h 복원은 외부 metric prior 없이는 불가 → 영구 DEFER.
+
+**(4) 검증 갭 (정직 고지).** 가용 real-pano GT(244-pano PanoContext/S2D3D mirror)는 **100% cuboid-labelled**(memory cold-eval)이다. 따라서 non-Manhattan / >4-corner 방의 silent-degrade 경로는 현 데이터로 **검증 불가**하고, 어떤 auto-cam_h 의 "정확도 N cm 개선" 주장도 **UN-BACKED → 금지**다. in-gate 검증은 합성 `cor_id`(known cam_h)에 대한 결정론적 분석 역산(linear 계수·window·정확 선형성)에 한정되며, 이는 fixture 의 cam_h 가 정확히 알려져 있어 정직하다. real-pano sweep 을 돌린다면 out-of-gate·cuboid-only 로만 보고하고 일반 정확도 주장으로 제시하지 않는다.
+
+**검증.** 신규 torch-free 단위테스트(`tests/test_adapter_image.py`)가 default lane 에서 통과(linear 계수 == 분석값, window == `_MAX_PLAUSIBLE_RADIUS_M`/coeff 이며 core 가드와 정합, 방 스케일이 cam_h 에 정확 선형). `vision` 마커 불요. 이 update 는 honesty/UX 개선이며 **headline 정확도 개선이 아니다** — 단일-파노 image→geometry 는 여전히 rough tier·NOT install-grade.

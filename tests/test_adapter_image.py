@@ -21,6 +21,7 @@ from roomestim.adapters.image import (
     _MAX_PLAUSIBLE_RADIUS_M,
     _MIN_FLOOR_TAN,
     ImageAdapter,
+    _cam_h_sensitivity,
     _corners_to_room,
 )
 from roomestim.export import write_room_yaml
@@ -317,3 +318,92 @@ def test_parse_with_scale_anchor_uses_measured_height(
     )
     xs = [p.x for p in room.floor_polygon]
     assert (max(xs) - min(xs)) == pytest.approx(4.0, abs=0.05)
+
+
+# --- cam_h sensitivity surfacing (Candidate 6 core — torch-free, in-gate) ---
+#
+# The 4x3 _FLOOR_CORNERS room has every corner at radius hypot(2.0, 1.5) = 2.5 m,
+# so for cam_h=1.6 each floor depression has tan(-v_floor) = cam_h/r = 1.6/2.5 =
+# 0.64, hence radius-per-metre coeff = 1/0.64 = 2.5/1.6. These are exact analytic
+# values (the fixture's cam_h is known precisely) — NO real-data accuracy claim.
+_EXPECTED_MAX_RADIUS_COEFF = 2.5 / _CAM_H
+
+
+def test_cam_h_sensitivity_reports_exact_linear_coefficients() -> None:
+    sens = _cam_h_sensitivity(_canned_cor_id(), ref_cam_h=_CAM_H)
+
+    assert sens["ref_cam_h_m"] == _CAM_H
+    # r = max_radius_coeff * cam_h, analytic: 2.5 / 1.6.
+    assert sens["max_radius_coeff"] == pytest.approx(
+        _EXPECTED_MAX_RADIUS_COEFF, rel=1e-9
+    )
+    # scale is exactly linear in cam_h -> +/-10 cm => +/-(0.10/cam_h) fraction.
+    assert sens["scale_pct_per_10cm"] == pytest.approx(
+        0.10 / _CAM_H * 100.0, rel=1e-12
+    )
+
+
+def test_cam_h_sensitivity_window_matches_max_plausible_radius() -> None:
+    """The reported window upper bound ties exactly to ``_MAX_PLAUSIBLE_RADIUS_M``.
+
+    At ``max_plausible_cam_h_m`` the farthest corner sits at exactly
+    ``_MAX_PLAUSIBLE_RADIUS_M``; the core radius guard (``r > bound`` -> raise)
+    accepts the boundary and rejects just beyond it. This proves the analytic
+    window math agrees with the core guard, with no torch and no GT.
+    """
+    canned = _canned_cor_id()
+    sens = _cam_h_sensitivity(canned, ref_cam_h=_CAM_H)
+    window = sens["max_plausible_cam_h_m"]
+    assert window is not None
+    # Analytic: _MAX / coeff.
+    assert window == pytest.approx(
+        _MAX_PLAUSIBLE_RADIUS_M / _EXPECTED_MAX_RADIUS_COEFF, rel=1e-9
+    )
+
+    # Just under the window builds; just over trips the core radius guard.
+    room = _corners_to_room(canned, window * (1.0 - 1e-6), name="under")
+    assert len(room.floor_polygon) == 4
+    with pytest.raises(ValueError, match="(?i)plausibility|implausible"):
+        _corners_to_room(canned, window * (1.0 + 1e-6), name="over")
+
+
+def test_room_scale_is_exactly_linear_in_cam_h() -> None:
+    """Doubling cam_h doubles every recovered dimension (the helper's premise)."""
+    canned = _canned_cor_id()
+    r1 = _corners_to_room(canned, 1.0, name="a")
+    r2 = _corners_to_room(canned, 2.0, name="b")
+
+    w1 = max(p.x for p in r1.floor_polygon) - min(p.x for p in r1.floor_polygon)
+    w2 = max(p.x for p in r2.floor_polygon) - min(p.x for p in r2.floor_polygon)
+    d1 = max(p.z for p in r1.floor_polygon) - min(p.z for p in r1.floor_polygon)
+    d2 = max(p.z for p in r2.floor_polygon) - min(p.z for p in r2.floor_polygon)
+
+    assert w2 == pytest.approx(2.0 * w1, rel=1e-12)
+    assert d2 == pytest.approx(2.0 * d1, rel=1e-12)
+    assert r2.ceiling_height_m == pytest.approx(2.0 * r1.ceiling_height_m, rel=1e-12)
+
+
+def test_cam_h_sensitivity_rejects_nonpositive_ref() -> None:
+    with pytest.raises(ValueError, match="(?i)ref_cam_h must be > 0"):
+        _cam_h_sensitivity(_canned_cor_id(), ref_cam_h=0.0)
+
+
+def test_cam_h_sensitivity_rejects_short_cor_id() -> None:
+    with pytest.raises(ValueError, match="(?i)even cor_id"):
+        _cam_h_sensitivity([(0.5, 0.6), (0.5, 0.4)], ref_cam_h=_CAM_H)
+
+
+def test_parse_assumed_warning_cites_scale_sensitivity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ASSUMED-scale warning surfaces the cam_h scale sensitivity (item 2)."""
+    import roomestim.adapters.image as image_mod
+
+    canned = _canned_cor_id()
+    monkeypatch.setattr(image_mod, "_infer_corners", lambda *a, **k: canned)
+    adapter = ImageAdapter()
+    with pytest.warns(UserWarning, match="(?i)room scale"):
+        adapter.parse(Path("/tmp/p.png"))
+    # The single-source disclosure (scale-ambiguity) is cited verbatim.
+    with pytest.warns(UserWarning, match="(?i)scale-ambiguous"):
+        adapter.parse(Path("/tmp/p.png"))

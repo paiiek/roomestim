@@ -28,6 +28,20 @@ RT60_DISCLOSURE: str = (
     "guaranteed value."
 )
 
+# Image-backend cam_h scale-ambiguity. A single equirectangular panorama recovers
+# room SHAPE but NOT absolute scale; the camera height IS that scale, and every
+# recovered dimension is exactly linear in it. Single source of truth — reference,
+# do not retype.
+IMAGE_CAM_H_SCALE_NOTE: str = (
+    "A single equirectangular panorama is SCALE-AMBIGUOUS: HorizonNet recovers room "
+    "SHAPE, and the camera height (cam_h) IS the global metric scale. Because "
+    "r = cam_h / tan(-v_floor), every recovered dimension is EXACTLY linear in cam_h "
+    "(floor area scales with its square), so a fractional cam_h error maps 1:1 to a "
+    "fractional room-scale error. There is NO pixel-only signal that recovers absolute "
+    "cam_h from one pano; an unanchored cam_h is an ASSUMED prior, not a measurement. "
+    "Supply a measured camera height (ScaleAnchor 'known_distance') for metric scale."
+)
+
 # Ceiling-confidence under-report guard. ``ceiling_coverage`` is a genuine
 # geometric measurement; ``ceiling_confidence`` is a HEURISTIC label, NOT a
 # calibrated probability. Single source of truth — reference, do not retype.
@@ -47,4 +61,5 @@ __all__ = [
     "RT60_DISCLOSURE",
     "RT60_MODEL_NAME",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",
+    "IMAGE_CAM_H_SCALE_NOTE",
 ]

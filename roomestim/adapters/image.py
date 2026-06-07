@@ -41,6 +41,7 @@ from roomestim.model import (
     Surface,
     canonicalize_ccw,
 )
+from roomestim.reconstruct._disclosure import IMAGE_CAM_H_SCALE_NOTE
 from roomestim.reconstruct.listener_area import default_listener_area
 from roomestim.reconstruct.walls import walls_from_floor_polygon
 
@@ -204,6 +205,73 @@ def _median(values: list[float]) -> float:
     return 0.5 * (ordered[mid - 1] + ordered[mid])
 
 
+def _cam_h_sensitivity(
+    cor_id: list[tuple[float, float]] | object,
+    *,
+    ref_cam_h: float,
+) -> dict[str, float | None]:
+    """Pure-geometry sensitivity of the recovered room scale to ``cam_h``.
+
+    TORCH-FREE and exactly invertible (deterministic). Because every floor point
+    is ``r·(sin u, -cos u)`` with ``r = cam_h / tan(-v_floor)``, the entire
+    recovered room scales EXACTLY linearly with ``cam_h``: a fractional cam_h
+    error maps 1:1 to a fractional room-scale error (and floor area scales with
+    its square). This surfaces the dominant image-backend error lever WITHOUT
+    inferring an absolute cam_h — a single pano is scale-ambiguous, see
+    :data:`IMAGE_CAM_H_SCALE_NOTE`.
+
+    Reported from the recovered corners + a reference cam_h alone (no metric
+    anchor needed):
+
+    * ``ref_cam_h_m`` — the reference camera height the report is anchored at.
+    * ``max_radius_coeff`` — the largest ``1/tan(-v_floor)`` over valid floor
+      columns, i.e. the farthest corner's horizontal radius PER METRE of cam_h
+      (``r = max_radius_coeff · cam_h``). ``None`` when no valid floor column.
+    * ``max_plausible_cam_h_m`` — the upper bound on cam_h that keeps every
+      corner within :data:`_MAX_PLAUSIBLE_RADIUS_M`
+      (``_MAX_PLAUSIBLE_RADIUS_M / max_radius_coeff``); ``None`` when no valid
+      floor column. Above this the core radius guard rejects the layout.
+    * ``scale_pct_per_10cm`` — at ``ref_cam_h``, the room-scale change for a
+      10 cm cam_h error (``0.10 / ref_cam_h · 100``); exact, since scale is
+      linear in cam_h. This is NOT an accuracy figure — it quantifies how a
+      cam_h *assumption* propagates, not how wrong the assumption is.
+    """
+    if ref_cam_h <= 0.0:
+        raise ValueError(f"ImageAdapter: ref_cam_h must be > 0, got {ref_cam_h}")
+
+    pairs = [(float(uv[0]), float(uv[1])) for uv in cor_id]  # type: ignore[union-attr]
+    if len(pairs) < 6 or len(pairs) % 2 != 0:
+        raise ValueError(
+            f"ImageAdapter: expected an even cor_id with >=6 rows "
+            f"(>=3 wall columns), got {len(pairs)}"
+        )
+
+    floor_pts = pairs[1::2]
+    coeffs: list[float] = []
+    for _u_f_norm, v_f_norm in floor_pts:
+        # Same de-normalization as _corners_to_room: row -> floor depression.
+        row_f = v_f_norm * _PANO_H
+        v_floor = -((row_f + 0.5) / _PANO_H - 0.5) * math.pi
+        tan_floor = math.tan(-v_floor)
+        if tan_floor <= _MIN_FLOOR_TAN:
+            # Degenerate column (corner at/above horizon); skipped by the core.
+            continue
+        coeffs.append(1.0 / tan_floor)
+
+    max_radius_coeff = max(coeffs) if coeffs else None
+    max_plausible_cam_h_m = (
+        _MAX_PLAUSIBLE_RADIUS_M / max_radius_coeff
+        if max_radius_coeff is not None and max_radius_coeff > 0.0
+        else None
+    )
+    return {
+        "ref_cam_h_m": ref_cam_h,
+        "max_radius_coeff": max_radius_coeff,
+        "max_plausible_cam_h_m": max_plausible_cam_h_m,
+        "scale_pct_per_10cm": 0.10 / ref_cam_h * 100.0,
+    }
+
+
 def _infer_corners(
     pano_path: Path,
     *,
@@ -351,20 +419,40 @@ class ImageAdapter:
             cam_h = scale_anchor.length_m
         else:
             cam_h = self._default_cam_height_m
-            warnings.warn(
-                "ImageAdapter: no scale_anchor supplied; scale is ASSUMED from "
-                f"the default camera height ({cam_h} m), not measured. Pass "
-                "ScaleAnchor('known_distance', <camera height m>) for a "
-                "measured anchor.",
-                UserWarning,
-                stacklevel=2,
-            )
 
         cor_id = _infer_corners(
             path_obj,
             weights=self._weights,
             accept_noncommercial=self._accept_noncommercial,
         )
+
+        # Assumed-scale disclosure (OQ-58) — cite the cam_h scale sensitivity
+        # (single-source IMAGE_CAM_H_SCALE_NOTE). Emitted after inference so the
+        # plausibility window reflects the actual recovered corners. Honesty:
+        # the percent quantifies how a cam_h ASSUMPTION propagates to room scale,
+        # NOT an accuracy figure — a single pano cannot recover absolute cam_h.
+        if scale_anchor is None:
+            sens = _cam_h_sensitivity(cor_id, ref_cam_h=cam_h)
+            pct = sens["scale_pct_per_10cm"]
+            assert pct is not None  # always set for ref_cam_h > 0
+            window = sens["max_plausible_cam_h_m"]
+            window_txt = (
+                f" cam_h above ~{window:.1f} m would push a corner past the "
+                f"{_MAX_PLAUSIBLE_RADIUS_M:.0f} m single-pano plausibility bound."
+                if window is not None
+                else ""
+            )
+            warnings.warn(
+                "ImageAdapter: no scale_anchor supplied; scale is ASSUMED from "
+                f"the default camera height ({cam_h} m), not measured. "
+                f"{IMAGE_CAM_H_SCALE_NOTE} At {cam_h} m a +/-10 cm cam_h error is "
+                f"approximately +/-{pct:.1f}% room scale.{window_txt} Pass "
+                "ScaleAnchor('known_distance', <camera height m>) for a measured "
+                "anchor.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         return _corners_to_room(
             cor_id, cam_h, name=path_obj.stem, octave_band=octave_band
         )
