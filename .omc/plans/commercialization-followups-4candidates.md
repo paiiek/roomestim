@@ -13,7 +13,29 @@ buildable+verifiable core, never faked. New disclosure strings go in
 **Decision numbering:** last committed = D97 (`c2766ad`). This cycle = **D98 (A), D99 (B),
 D100 (C), D101 (D)**.
 
-> RESUME POINTER: none of A/B/C/D started. Recommended order **A → B → C → D**.
+> RESUME POINTER (updated 2026-06-08): **A DONE** (`d3457c5` v0.30.0 D98), **B DONE** (`3a02d7e`
+> v0.30.1 D99), **D DONE** (doc-only DEFER, ADR 0045 §honesty (D)). **C = NOT STARTED** (next).
+> Session-limit hit during B's review → B committed on rigorous self-verification (independent
+> code-review DEFERRED to next session). **NEXT SESSION = build C geometry-only** then run B's
+> independent review.
+>
+> **C resume spec (geometry-only polygon image-source, NO RT60):**
+> - NEW `roomestim/reconstruct/polygon_image_source.py` — numpy/shapely-only (NO pyroomacoustics
+>   import; must run default lane). Deterministic function: given floor_polygon + ceiling_height,
+>   enumerate first-order (optionally low-order) image-source POSITIONS by mirroring the source
+>   across each wall plane, with a shapely visibility/validity test (reuse the
+>   `roomestim_web/binaural.py:70` `_image_inside_floor` shapely-contains pattern, but keep this
+>   module CORE). Emit POSITIONS ONLY — NO RT60, do NOT import/modify `predictor.py` or
+>   `image_source.py`.
+> - NEW `tests/test_polygon_image_source.py` — for a known shoebox-as-4-corner-polygon, assert
+>   first-order image positions == analytic mirror positions (reflect across x=0,x=L,z=0,z=W) to
+>   ~1e-9; add an L-shape (non-convex) fixture asserting visibility prunes images whose reflection
+>   point falls outside the polygon. Default lane, additive.
+> - `docs/adr/0040-polygon-ism-design.md` §Status-update: geometry-only landed; **RT60 cascade
+>   DEFERRED** (no non-shoebox measured GT §G/OQ#2; pra RT60-fit unverified OQ#3; pyroomacoustics
+>   web-extra reproducibility asymmetry). predictor/image_source byte-equal, shoebox RT60 unchanged.
+> - Version: MINOR → 0.31.0, D100. Full gate (default 418+, web 86p/3s, ruff/mypy EXIT0) + no
+>   pyroomacoustics import in core.
 > Each candidate is a separate commit. After each: re-run the FULL canonical gate
 > (default + web + ruff + mypy), not just the new tests (per auto-memory `feedback_verify_each_step`).
 

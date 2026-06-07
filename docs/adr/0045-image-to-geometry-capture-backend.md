@@ -261,3 +261,15 @@ cold-eval(memory `project_image_backend_cold_eval`)이 지목한 **지배 오차
 **(4) 검증 갭 (정직 고지).** 가용 real-pano GT(244-pano PanoContext/S2D3D mirror)는 **100% cuboid-labelled**(memory cold-eval)이다. 따라서 non-Manhattan / >4-corner 방의 silent-degrade 경로는 현 데이터로 **검증 불가**하고, 어떤 auto-cam_h 의 "정확도 N cm 개선" 주장도 **UN-BACKED → 금지**다. in-gate 검증은 합성 `cor_id`(known cam_h)에 대한 결정론적 분석 역산(linear 계수·window·정확 선형성)에 한정되며, 이는 fixture 의 cam_h 가 정확히 알려져 있어 정직하다. real-pano sweep 을 돌린다면 out-of-gate·cuboid-only 로만 보고하고 일반 정확도 주장으로 제시하지 않는다.
 
 **검증.** 신규 torch-free 단위테스트(`tests/test_adapter_image.py`)가 default lane 에서 통과(linear 계수 == 분석값, window == `_MAX_PLAUSIBLE_RADIUS_M`/coeff 이며 core 가드와 정합, 방 스케일이 cam_h 에 정확 선형). `vision` 마커 불요. 이 update 는 honesty/UX 개선이며 **headline 정확도 개선이 아니다** — 단일-파노 image→geometry 는 여전히 rough tier·NOT install-grade.
+
+---
+
+## §image-backend honesty (D) — cam_h known-size-reference prior = **DEFER** (2026-06-08; candidate D)
+
+v0.29.0 candidate (6) 의 후속으로 "known-size-reference 로 cam_h 를 추정" 제안을 정직하게 평가한 결과 **DEFER**(코드 0줄). 두 형태 모두 거부:
+
+**(D-auto) 자동 known-size 검출(예: 문 높이 ≈ 2.03 m 자동 인식 → cam_h 역산) = DEFER.** (1) vision **detector**(별도 capability, 현재 미보유)가 필요하고, (2) detector 가 주는 것은 측정이 아니라 또 하나의 **prior** 이며, (3) 244-pano GT 가 **100% cuboid** 라 어떤 cam_h-prior 의 정확도도 **검증 불가**(§(4) 검증 갭) → "정확도 N cm 개선" 주장은 UN-BACKED. 즉 빌드해도 정직하게 검증할 수 없음 → 가짜 숫자 위험. 이전 세션도 동일 이유로 명시 deferral 했다.
+
+**(D-manual) 수동 known-object-height anchor(사용자가 객체 높이+파노 내 픽셀/각도 범위 입력 → cam_h 결정론 역산) = DEFER(권고).** 기하 역산 자체는 합성 픽스처로 검증가능(torch-free·정확)하나, 이는 이미 존재하는 `--cam-height`(`cli.py` → `ScaleAnchor("known_distance", cam_height)`)가 주는 **동일한 metric prior** 를 **더 큰 UX 마찰**(사용자가 equirect 파노에서 객체를 수동 마킹)로 재생산할 뿐이고 **정확도 이득 0**, cuboid-GT 상 검증도 불가. 따라서 surface area 만 늘리고 정직한 가치가 없음 → DEFER. (사용자가 명시적으로 원하면 MINOR additive `ScaleAnchor` variant 로 합성-only 기하 테스트 + ASSUMED 라벨 + `--cam-height` silent-override 금지 조건으로 빌드 가능 — 단 정확도 주장은 절대 불가.)
+
+**재오픈 조건**: 검증가능한 **non-cuboid 이미지 GT** + known-size **detector** 확보, 또는 수동 anchor 에 대한 사용자 명시 요구. `--cam-height` 가 이미 honest opt-in metric anchor 이므로 그때까지 추가 코드 불필요. (OQ 추적: `.omc/plans/open-questions.md` "(D) cam_h known-size reference".)
