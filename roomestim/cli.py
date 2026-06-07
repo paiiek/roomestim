@@ -433,6 +433,27 @@ def _maybe_print_estimated_notice(room: RoomModel) -> None:
         )
 
 
+def _maybe_print_low_ceiling_notice(room: RoomModel) -> None:
+    """Warn (stderr) when the measured ceiling height may be UNDER-reported.
+
+    Fires only on ``ceiling_confidence == "low"`` (measured/mesh path). The
+    threshold behind the flag is a HEURISTIC, not a calibrated probability —
+    stated in the message. Not mutually exclusive with the reconstructed notice;
+    called at the same sites.
+    """
+    if getattr(room, "ceiling_confidence", "unknown") == "low":
+        coverage = getattr(room, "ceiling_coverage", None)
+        coverage_str = f"{coverage:.0%}" if coverage is not None else "an unknown share"
+        print(
+            "NOTE: ceiling height may be UNDER-reported — the detected ceiling "
+            f"plane covers only {coverage_str} of the floor footprint (heuristic "
+            "threshold 50%). A tabletop, mezzanine slab, or under-sampled ceiling "
+            "may have been mis-picked. Verify ceiling height before install. "
+            "(ceiling_confidence=low, HEURISTIC not calibrated.)",
+            file=sys.stderr,
+        )
+
+
 # --------------------------------------------------------------------------- #
 # Placement dispatch
 # --------------------------------------------------------------------------- #
@@ -484,6 +505,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     write_room_yaml(room, out_path)
     print(f"wrote {out_path}")
     _maybe_print_estimated_notice(room)
+    _maybe_print_low_ceiling_notice(room)
     return 0
 
 
@@ -511,6 +533,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
     write_layout_yaml(result, out_path)
     print(f"wrote {out_path}")
     _maybe_print_estimated_notice(room)
+    _maybe_print_low_ceiling_notice(room)
     return 0
 
 
@@ -630,6 +653,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"wrote {room_out}")
     print(f"wrote {layout_out}")
     _maybe_print_estimated_notice(room)
+    _maybe_print_low_ceiling_notice(room)
     return 0
 
 

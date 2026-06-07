@@ -1232,3 +1232,141 @@ def test_mesh_adapter_usdz_from_real_arkit_scan(tmp_path: Path) -> None:
         f"{src.parent.name}: USDZ ceiling height {room.ceiling_height_m:.2f} m "
         "outside [2.0, 6.0] — up-axis likely misdetected through the USD path."
     )
+
+
+# --------------------------------------------------------------------------- #
+# v0.28.0 — ceiling-confidence under-report guard (annotation only)
+# --------------------------------------------------------------------------- #
+#
+# ceiling_coverage is a genuine geometric MEASUREMENT (fraction of the floor
+# footprint the detected ceiling plane spans); ceiling_confidence is a
+# documented HEURISTIC label (high/low/unknown), NOT a calibrated probability.
+# The flag only ANNOTATES ceiling_height_m — it never changes the extracted
+# value. Synthetic fixtures only (no calibration claim against real data).
+
+
+def test_mesh_adapter_ceiling_confidence_high_on_clean_shoebox() -> None:
+    """A clean committed shoebox reads coverage ~ 1.0 and confidence 'high'.
+
+    Floor + walls + ceiling all populate every footprint cell, so the detected
+    ceiling plane spans essentially the whole footprint.
+    """
+    room = MeshAdapter().parse(FIXTURE_DIR / "lab_room.obj")
+    assert room.ceiling_coverage is not None
+    assert room.ceiling_coverage >= 0.9, (
+        f"clean shoebox coverage {room.ceiling_coverage} unexpectedly < 0.9"
+    )
+    assert room.ceiling_confidence == "high"
+
+
+def test_mesh_adapter_ceiling_height_byte_equal_with_confidence() -> None:
+    """The confidence annotation must NOT perturb ceiling_height_m.
+
+    The new fields only annotate; the extracted shoebox height stays exactly the
+    pre-change 2.5 m (within the same tolerance the dedicated dims test uses).
+    """
+    room = MeshAdapter().parse(FIXTURE_DIR / "lab_room.obj")
+    assert room.ceiling_height_m == pytest.approx(2.5, abs=0.10)
+    # Annotation present but height unchanged: the flag is additive metadata.
+    assert room.ceiling_confidence in ("high", "low", "unknown")
+
+
+def _write_tabletop_mispick_ply(path: Path) -> None:
+    """Write a room shell whose TRUE ceiling is under-sampled and a small dense
+    tabletop sits just below it (the documented mis-pick scenario).
+
+    Dense floor (y=0) + four dense walls spanning the whole 6 m x 6 m footprint
+    up to the true ceiling at y=3.0, but the true ceiling is SPARSE (40 points).
+    A small (1 m x 1 m) DENSE horizontal plane at y=2.6 is the topmost still-dense
+    bin, so ``_robust_floor_ceiling_y`` mis-picks it as the ceiling and
+    UNDER-reports the height (~2.58 m vs the true 3.0 m). The coverage metric must
+    catch this: the tabletop spans only a small XZ patch of the footprint.
+    """
+    import numpy as np
+    import trimesh
+
+    rng = np.random.default_rng(1)
+    fx = fz = 6.0
+    height = 3.0
+    floor = np.column_stack(
+        [rng.uniform(0, fx, 6000), np.zeros(6000), rng.uniform(0, fz, 6000)]
+    )
+    per = 2000
+    walls = [
+        np.column_stack(
+            [rng.uniform(0, fx, per), rng.uniform(0, height, per), np.zeros(per)]
+        ),
+        np.column_stack(
+            [rng.uniform(0, fx, per), rng.uniform(0, height, per), np.full(per, fz)]
+        ),
+        np.column_stack(
+            [np.zeros(per), rng.uniform(0, height, per), rng.uniform(0, fz, per)]
+        ),
+        np.column_stack(
+            [np.full(per, fx), rng.uniform(0, height, per), rng.uniform(0, fz, per)]
+        ),
+    ]
+    # SPARSE true ceiling (under-sampled) at y=3.0.
+    ceil = np.column_stack(
+        [rng.uniform(0, fx, 40), np.full(40, height), rng.uniform(0, fz, 40)]
+    )
+    # Small DENSE tabletop (1 m x 1 m) at y=2.6, just below the true ceiling.
+    tw = 1.0
+    cx = cz = 2.5
+    tab = np.column_stack(
+        [rng.uniform(cx, cx + tw, 3000), np.full(3000, 2.6), rng.uniform(cz, cz + tw, 3000)]
+    )
+    verts = np.vstack([floor, *walls, ceil, tab])
+    n_keep = (verts.shape[0] // 3) * 3
+    verts = verts[:n_keep]
+    faces = np.arange(n_keep).reshape(-1, 3)
+    trimesh.Trimesh(vertices=verts, faces=faces, process=False).export(path)
+
+
+def test_mesh_adapter_ceiling_confidence_low_on_tabletop_mispick(tmp_path: Path) -> None:
+    """A tabletop mis-pick is flagged 'low' with coverage well below 0.50.
+
+    up_axis is pinned to Y so this isolates the coverage metric from the
+    gravity detector (which has its own tests). The fixture is built so the
+    tabletop is unambiguously small — coverage lands far from the 0.50 boundary.
+    """
+    ply = tmp_path / "tabletop_mispick.ply"
+    _write_tabletop_mispick_ply(ply)
+
+    room = MeshAdapter(up_axis="y").parse(ply)
+
+    # The adapter mis-picked the tabletop (~2.6 m), UNDER-reporting the true 3.0 m
+    # ceiling — exactly the residual the flag exists to catch.
+    assert room.ceiling_height_m < 2.9, (
+        f"fixture sanity: expected an under-reported height (<2.9 m), got "
+        f"{room.ceiling_height_m:.3f} m"
+    )
+    assert room.ceiling_coverage is not None
+    assert room.ceiling_coverage < 0.50, (
+        f"tabletop coverage {room.ceiling_coverage} not < 0.50 — fixture too "
+        "close to the boundary; make the tabletop smaller (do NOT tune constants)."
+    )
+    assert room.ceiling_confidence == "low"
+
+
+def test_ceiling_coverage_failsafe_returns_none_on_degenerate() -> None:
+    """``_ceiling_coverage`` never raises; degenerate input → None → 'unknown'.
+
+    A single-plane / tiny array with no finite footprint or an empty array must
+    return None (fail-safe), and the classifier must map None → 'unknown'.
+    """
+    import numpy as np
+
+    # Empty input → None.
+    empty = np.empty((0, 3), dtype=float)
+    assert MeshAdapter._ceiling_coverage(empty, ceiling_y=0.0) is None
+
+    # Non-finite input → None (no raise).
+    nan_verts = np.array([[np.nan, 0.0, 0.0], [1.0, 1.0, 1.0]], dtype=float)
+    assert MeshAdapter._ceiling_coverage(nan_verts, ceiling_y=1.0) is None
+
+    # Classifier maps the fail-safe None to the least-claim 'unknown'.
+    assert MeshAdapter._classify_ceiling_confidence(None) == "unknown"
+    assert MeshAdapter._classify_ceiling_confidence(1.0) == "high"
+    assert MeshAdapter._classify_ceiling_confidence(0.0) == "low"
+    assert MeshAdapter._classify_ceiling_confidence(0.5) == "high"  # boundary inclusive

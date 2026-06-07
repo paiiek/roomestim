@@ -39,7 +39,11 @@ from roomestim.model import (
     Point3,
     RoomModel,
 )
-from roomestim.reconstruct._disclosure import RT60_DISCLOSURE, RT60_MODEL_NAME
+from roomestim.reconstruct._disclosure import (
+    CEILING_CONFIDENCE_HEURISTIC_NOTE,
+    RT60_DISCLOSURE,
+    RT60_MODEL_NAME,
+)
 
 if TYPE_CHECKING:
     pass  # pxr is intentionally not imported at module load.
@@ -312,6 +316,12 @@ def _build_acoustics_sidecar(room: RoomModel) -> dict[str, Any]:
         "acoustics_model": RT60_MODEL_NAME,
         "disclaimer": RT60_DISCLOSURE,
         "materials_status": "UNKNOWN/assumed" if materials_unknown else "assigned",
+        # Ceiling under-report guard (measured/mesh path). ceiling_coverage is an
+        # honest geometric measurement (or None when not measured); ceiling_
+        # confidence is a HEURISTIC label, NOT a calibrated probability.
+        "ceiling_confidence": room.ceiling_confidence,
+        "ceiling_coverage": room.ceiling_coverage,
+        "ceiling_confidence_note": CEILING_CONFIDENCE_HEURISTIC_NOTE,
         "surfaces": surfaces_out,
         "objects": objects_out,
     }

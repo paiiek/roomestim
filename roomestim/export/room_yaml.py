@@ -136,6 +136,15 @@ def room_model_to_dict(room: RoomModel, *, schema_version: str = "0.2-draft") ->
         # objects[]) so legacy 0.1 output stays byte-equal. Always emitted on
         # 0.2-draft for round-trip determinism.
         out["provenance"] = room.provenance
+        # Ceiling under-report guard (measured/mesh path). Emitted ONLY when
+        # coverage was actually measured (mesh adapter) so non-mesh / image /
+        # hand-authored 0.2-draft rooms keep byte-equal YAML — an ABSENT key
+        # honestly means "not measured" (the None / "unknown" defaults). When
+        # present, both keys round-trip: ceiling_coverage is an honest geometric
+        # measurement, ceiling_confidence is a HEURISTIC (not calibrated) label.
+        if room.ceiling_coverage is not None:
+            out["ceiling_coverage"] = room.ceiling_coverage
+            out["ceiling_confidence"] = room.ceiling_confidence
     return out
 
 

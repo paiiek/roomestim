@@ -311,3 +311,42 @@ def test_import_cli_is_torch_free() -> None:
     )
     assert proc.returncode == 0, proc.stderr
     assert "OK" in proc.stdout
+
+
+# --------------------------------------------------------------------------- #
+# v0.28.0 — low-ceiling under-report stderr notice
+# --------------------------------------------------------------------------- #
+
+
+def test_low_ceiling_notice_fires_on_low_confidence(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The stderr NOTE fires only for ceiling_confidence='low' and labels HEURISTIC."""
+    from roomestim.cli import _maybe_print_low_ceiling_notice
+
+    room = shoebox(name="low_ceiling")
+    room.ceiling_coverage = 0.18
+    room.ceiling_confidence = "low"
+    _maybe_print_low_ceiling_notice(room)
+    captured = capsys.readouterr()
+    assert "UNDER-reported" in captured.err
+    assert "18%" in captured.err
+    assert "HEURISTIC not calibrated" in captured.err
+    assert captured.out == ""
+
+
+def test_low_ceiling_notice_silent_on_high_and_unknown(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No notice for high-confidence or unknown (non-measured) rooms."""
+    from roomestim.cli import _maybe_print_low_ceiling_notice
+
+    high = shoebox(name="high_ceiling")
+    high.ceiling_coverage = 0.95
+    high.ceiling_confidence = "high"
+    _maybe_print_low_ceiling_notice(high)
+    assert capsys.readouterr().err == ""
+
+    unknown = shoebox(name="unknown_ceiling")  # default unknown / None
+    _maybe_print_low_ceiling_notice(unknown)
+    assert capsys.readouterr().err == ""

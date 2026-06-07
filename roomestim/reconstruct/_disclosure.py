@@ -28,4 +28,23 @@ RT60_DISCLOSURE: str = (
     "guaranteed value."
 )
 
-__all__ = ["RT60_DISCLOSURE", "RT60_MODEL_NAME"]
+# Ceiling-confidence under-report guard. ``ceiling_coverage`` is a genuine
+# geometric measurement; ``ceiling_confidence`` is a HEURISTIC label, NOT a
+# calibrated probability. Single source of truth — reference, do not retype.
+CEILING_CONFIDENCE_HEURISTIC_NOTE: str = (
+    "ceiling_confidence is a HEURISTIC label (NOT a calibrated probability) derived "
+    "from ceiling_coverage = the fraction of 25 cm floor-footprint grid cells that "
+    "contain a scan vertex within +/-10 cm of the detected ceiling plane. "
+    "coverage >= 0.50 -> 'high'; coverage < 0.50 -> 'low' (the densest upper plane "
+    "spans a minority of the footprint, so a tabletop, mezzanine slab, or severely "
+    "under-sampled ceiling may have been mis-picked and the height UNDER-reported). "
+    "The 0.50 threshold is a conservative geometric rule of thumb validated only on "
+    "synthetic fixtures; it is NOT calibrated against measured data. 'unknown' means "
+    "coverage was not measured (e.g. image-reconstructed or hand-authored geometry)."
+)
+
+__all__ = [
+    "RT60_DISCLOSURE",
+    "RT60_MODEL_NAME",
+    "CEILING_CONFIDENCE_HEURISTIC_NOTE",
+]

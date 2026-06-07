@@ -153,6 +153,17 @@
       "enum": ["measured", "reconstructed", "assumed"],
       "description": "Room-level capture provenance (OQ-54). measured = real depth sensor / scan; reconstructed = inferred from images without depth; assumed = unknown / hand-authored. Optional; defaults to 'assumed' on read."
     },
+    "ceiling_coverage": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Genuine geometric MEASUREMENT: fraction of 25 cm floor-footprint grid cells containing a scan vertex within +/-10 cm of the detected ceiling plane (measured/mesh path only). Optional; absent / null means not measured."
+    },
+    "ceiling_confidence": {
+      "type": "string",
+      "enum": ["high", "low", "unknown"],
+      "description": "HEURISTIC under-report guard on ceiling_height_m derived from ceiling_coverage via a conservative 0.50 threshold (high = covers majority of footprint; low = a tabletop / mezzanine slab / under-sampled ceiling may have been mis-picked and the height UNDER-reported). NOT a calibrated probability; validated only on synthetic fixtures. Optional; defaults to 'unknown' (not measured) on read."
+    },
     "mount_surfaces": {
       "type": "array",
       "items": {

@@ -32,7 +32,15 @@ _LEGACY_SIDECAR_KEYS = {
     "surfaces",
     "objects",
 }
-_NEW_SIDECAR_KEYS = {"acoustics_model", "disclaimer", "materials_status"}
+_NEW_SIDECAR_KEYS = {
+    "acoustics_model",
+    "disclaimer",
+    "materials_status",
+    # v0.28.0 ceiling under-report guard (additive).
+    "ceiling_confidence",
+    "ceiling_coverage",
+    "ceiling_confidence_note",
+}
 
 
 @pytest.fixture
@@ -87,3 +95,43 @@ def test_usd_sidecar_matches_gltf_disclaimer(lab_room: RoomModel) -> None:
     assert payload["disclaimer"] == RT60_DISCLOSURE
     assert payload["acoustics_model"] == RT60_MODEL_NAME
     assert set(payload) == _LEGACY_SIDECAR_KEYS | _NEW_SIDECAR_KEYS
+
+
+# --------------------------------------------------------------------------- #
+# v0.28.0 — ceiling-confidence guard surfaces in the export sidecar
+# --------------------------------------------------------------------------- #
+
+
+def test_sidecar_carries_ceiling_confidence_note() -> None:
+    """Both export sidecars carry the single-sourced heuristic note + fields.
+
+    A hand-built RoomModel with measured ceiling fields surfaces them; the note
+    is the single source of truth from ``_disclosure.py``.
+    """
+    from roomestim.export.gltf import _build_acoustics_sidecar as gltf_sidecar
+    from roomestim.export.usd import _build_acoustics_sidecar as usd_sidecar
+    from roomestim.reconstruct._disclosure import CEILING_CONFIDENCE_HEURISTIC_NOTE
+    from tests.fixtures.synthetic_rooms import shoebox
+
+    measured = shoebox()
+    measured.ceiling_coverage = 0.18
+    measured.ceiling_confidence = "low"
+
+    for build in (gltf_sidecar, usd_sidecar):
+        payload = build(measured)
+        assert payload["ceiling_confidence"] == "low"
+        assert payload["ceiling_coverage"] == pytest.approx(0.18)
+        assert payload["ceiling_confidence_note"] == CEILING_CONFIDENCE_HEURISTIC_NOTE
+        # Honest labeling: the note states it is NOT a calibrated probability.
+        assert "NOT a calibrated probability" in payload["ceiling_confidence_note"]
+
+
+def test_sidecar_ceiling_confidence_unknown_when_not_measured() -> None:
+    """A non-measured room reports 'unknown' / None (least-claim) in the sidecar."""
+    from roomestim.export.gltf import _build_acoustics_sidecar as gltf_sidecar
+    from tests.fixtures.synthetic_rooms import shoebox
+
+    room = shoebox()  # defaults: coverage None, confidence "unknown"
+    payload = gltf_sidecar(room)
+    assert payload["ceiling_confidence"] == "unknown"
+    assert payload["ceiling_coverage"] is None

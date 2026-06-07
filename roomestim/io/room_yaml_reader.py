@@ -18,6 +18,7 @@ from jsonschema.exceptions import ValidationError
 from roomestim.geom.polygon import is_simple_polygon
 from roomestim.model import (
     DEFAULT_OBJECT_MATERIAL,
+    CeilingConfidence,
     ListenerArea,
     MaterialAbsorption,
     MaterialLabel,
@@ -49,6 +50,25 @@ def _parse_provenance(value: str, *, name: str) -> Provenance:
         if value == allowed:
             return allowed
     raise ValueError(f"room '{name}': invalid provenance {value!r}")
+
+
+#: Allowed ceiling-confidence values (under-report guard). Typed as the literal
+#: tuple so a membership check narrows ``str`` to
+#: :data:`~roomestim.model.CeilingConfidence` for mypy strict (no ``cast``).
+_CEILING_CONFIDENCE_VALUES: tuple[CeilingConfidence, ...] = ("high", "low", "unknown")
+
+
+def _parse_ceiling_confidence(value: str, *, name: str) -> CeilingConfidence:
+    """Validate ``value`` is one of the three allowed ceiling-confidence strings.
+
+    The schema enums this on 0.2-draft; this runtime check is defensive (and
+    covers callers that bypass schema validation). Returns a value typed as
+    :data:`~roomestim.model.CeilingConfidence` via a narrowing comparison.
+    """
+    for allowed in _CEILING_CONFIDENCE_VALUES:
+        if value == allowed:
+            return allowed
+    raise ValueError(f"room '{name}': invalid ceiling_confidence {value!r}")
 
 
 def _proto_dir() -> Path:
@@ -229,6 +249,25 @@ def read_room_yaml(path: Path | str) -> RoomModel:
     # default to "assumed". Validated defensively even though the schema enums it.
     provenance = _parse_provenance(str(data.get("provenance", "assumed")), name=name)
 
+    # Ceiling under-report guard (measured/mesh path). Both keys are OPTIONAL and
+    # emitted by the writer only when coverage was measured, so an absent key
+    # honestly means "not measured" → coverage None / confidence "unknown" (the
+    # model defaults). ceiling_confidence is validated defensively even though the
+    # schema enums it. ceiling_coverage is a plain optional float fraction.
+    coverage_raw = data.get("ceiling_coverage")
+    ceiling_coverage = float(coverage_raw) if coverage_raw is not None else None
+    ceiling_confidence = _parse_ceiling_confidence(
+        str(data.get("ceiling_confidence", "unknown")), name=name
+    )
+    # Couple the two fields on read: the writer emits ``ceiling_confidence`` ONLY
+    # alongside a non-None ``ceiling_coverage`` (the measured/mesh path), so a
+    # confidence WITHOUT coverage can only come from external hand-authoring. Drop
+    # it to "unknown" here so reader and writer agree the fields are coupled and a
+    # round-trip never silently mutates (the writer omits both when coverage is
+    # None — without this, a hand-authored confidence would vanish on rewrite).
+    if ceiling_coverage is None:
+        ceiling_confidence = "unknown"
+
     room = RoomModel(
         name=name,
         floor_polygon=floor_polygon,
@@ -238,6 +277,8 @@ def read_room_yaml(path: Path | str) -> RoomModel:
         objects=objects,
         schema_version=schema_version,
         provenance=provenance,
+        ceiling_coverage=ceiling_coverage,
+        ceiling_confidence=ceiling_confidence,
     )
 
     # OQ-44(b) / D69: bound each door/window's wall_index against the walls-only

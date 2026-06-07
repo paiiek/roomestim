@@ -155,6 +155,16 @@ WALL_ATTACHED_OBJECT_KINDS: frozenset[ObjectKind] = frozenset({"door", "window"}
 #: Default is ``assumed`` so untagged geometry never masquerades as measured.
 Provenance = Literal["measured", "reconstructed", "assumed"]
 
+#: Heuristic under-report guard on the measured ceiling height (mesh path). One of:
+#:   ``high``    — the detected ceiling plane covers the majority of the footprint;
+#:   ``low``     — it covers a minority (a tabletop / mezzanine slab / under-sampled
+#:                 ceiling may have been mis-picked and the height UNDER-reported);
+#:   ``unknown`` — coverage was not measured (image / assumed / hand-authored).
+#: Derived from ``ceiling_coverage`` via a documented conservative threshold; it is
+#: a HEURISTIC LABEL, NOT a calibrated probability. See
+#: :data:`roomestim.reconstruct._disclosure.CEILING_CONFIDENCE_HEURISTIC_NOTE`.
+CeilingConfidence = Literal["high", "low", "unknown"]
+
 
 # --------------------------------------------------------------------------- #
 # Surfaces
@@ -324,6 +334,16 @@ class RoomModel:
     objects: list[Object] = field(default_factory=list)
     schema_version: str = "0.2-draft"
     provenance: Provenance = "assumed"
+    #: Genuine geometric measurement: fraction of the floor-footprint grid cells
+    #: that contain a scan vertex within the detected ceiling band. ``None`` when
+    #: the capture path did not measure it (image / assumed / hand-authored
+    #: rooms). An honest measurement, not a heuristic.
+    ceiling_coverage: float | None = None
+    #: HEURISTIC under-report guard derived from :attr:`ceiling_coverage` via a
+    #: documented conservative threshold (NOT a calibrated probability).
+    #: ``"unknown"`` when coverage was not measured. Annotates
+    #: :attr:`ceiling_height_m`; never changes it.
+    ceiling_confidence: CeilingConfidence = "unknown"
 
 
 # --------------------------------------------------------------------------- #

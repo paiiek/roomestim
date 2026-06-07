@@ -28,6 +28,7 @@ from shapely.geometry import Polygon as ShapelyPolygon
 
 from roomestim.adapters.base import ScaleAnchor
 from roomestim.model import (
+    CeilingConfidence,
     MaterialAbsorption,
     MaterialAbsorptionBands,
     MaterialLabel,
@@ -169,6 +170,15 @@ _MAX_CEILING_HEIGHT_M = float(os.environ.get("ROOMESTIM_MAX_CEILING_M", 20.0))
 # outlier tails on every Phase 0b + Validation scene.
 _FLOOR_CEILING_BIN_M = 0.03
 _FLOOR_CEILING_DENSITY_FRAC = 0.5
+
+# Ceiling-confidence coverage metric (under-report guard for the residual
+# mis-pick failure mode documented in ``_robust_floor_ceiling_y``). These ONLY
+# annotate ``ceiling_height_m`` via ``ceiling_coverage`` / ``ceiling_confidence``;
+# they never change the extracted height. See CEILING_CONFIDENCE_HEURISTIC_NOTE
+# in ``roomestim/reconstruct/_disclosure.py`` (single source of truth).
+_CEILING_COVERAGE_CELL_M = 0.25     # XZ grid resolution (25 cm cells)
+_CEILING_COVERAGE_BAND_M = 0.10     # half-width of the ceiling band: ceiling_y +/- 10 cm
+_CEILING_COVERAGE_MIN = 0.50        # coverage >= 0.50 -> "high", else "low" (HEURISTIC)
 
 
 class MeshAdapter:
@@ -398,10 +408,12 @@ class MeshAdapter:
         against independent Faro laser GT (living rooms with ordinary furniture,
         where the topmost dense plane IS the ceiling) and is a known, bounded
         residual rather than a silent correctness hole — heights stay plausible
-        and the absolute-ceiling guard still fires. A future improvement is an
-        explicit plane-area / coverage check (the ceiling should span most of the
-        footprint, a tabletop should not) or a confidence/uncertainty flag on the
-        returned height; deferred to keep this change minimal and the gates green.
+        and the absolute-ceiling guard still fires. This residual is now ANNOTATED
+        (not corrected) by :meth:`_ceiling_coverage` + the ``ceiling_confidence``
+        flag on the returned :class:`RoomModel`: the coverage check (the ceiling
+        should span most of the footprint, a tabletop should not) flags a likely
+        mis-pick as ``ceiling_confidence="low"``. The extracted height itself is
+        unchanged here.
         """
         lo, hi = float(coord.min()), float(coord.max())
         ext = hi - lo
@@ -436,6 +448,71 @@ class MeshAdapter:
         if ceiling_y is None:
             ceiling_y = hi
         return floor_y, ceiling_y
+
+    @staticmethod
+    def _ceiling_coverage(vertices: np.ndarray, ceiling_y: float) -> float | None:
+        """Fraction of the floor footprint spanned by the detected ceiling plane.
+
+        Honest GEOMETRIC measurement (not a heuristic): bin the XZ extent of all
+        (Y-up-normalized) ``vertices`` into ``_CEILING_COVERAGE_CELL_M`` (25 cm)
+        square cells, then return
+
+            |cells holding a vertex within +/-_CEILING_COVERAGE_BAND_M of
+             ``ceiling_y``| / |cells holding a vertex at ANY height|
+
+        clamped to ``[0, 1]``. The denominator is the room's occupied footprint
+        (occupancy, not the bbox rectangle — robust for L-shaped / non-shoebox
+        rooms). NOTE this is a vertex-OCCUPANCY measure, so it also tracks how
+        densely the ceiling is SAMPLED: a true ceiling that spans the footprint
+        AND is tessellated/scanned comparably to the floor and walls reads
+        ~1.0 (the densely-sampled real-LiDAR and clean-shoebox case); a tabletop
+        / mezzanine slab occupies only its own small XZ patch (small ratio), and
+        a true ceiling that is geometrically complete but coarsely tessellated
+        (e.g. a single low-poly quad) or severely under-sampled also reads low.
+        That makes the metric deliberately CONSERVATIVE — it raises a false
+        "low" on an under-sampled-but-complete ceiling, never a false "high" on a
+        mis-picked one — which is the safe failure direction for a guard.
+
+        This NEVER changes ``ceiling_height_m`` — it only annotates it. Returns
+        ``None`` on degenerate input (no footprint cells), mirroring the fail-safe
+        min/max fall-back style in :meth:`_robust_floor_ceiling_y` (never raises).
+        The ``ceiling_confidence`` label this feeds is a HEURISTIC, NOT a
+        calibrated probability — see CEILING_CONFIDENCE_HEURISTIC_NOTE.
+        """
+        if vertices.shape[0] == 0:
+            return None
+        # Guard the full XYZ (not just XZ): a non-finite Y silently fails the
+        # band comparison below (NaN <= band is False) and would understate
+        # coverage rather than fail safe. Reject any non-finite vertex outright.
+        if not np.all(np.isfinite(vertices[:, :3])):
+            return None
+        xz = vertices[:, [0, 2]]
+        cells = np.floor(xz / _CEILING_COVERAGE_CELL_M).astype(np.int64)
+        footprint = {(int(cx), int(cz)) for cx, cz in cells}
+        if not footprint:
+            return None
+        in_band = np.abs(vertices[:, 1] - ceiling_y) <= _CEILING_COVERAGE_BAND_M
+        band_cells = {
+            (int(cx), int(cz)) for cx, cz in cells[in_band]
+        }
+        coverage = len(band_cells) / len(footprint)
+        return float(min(1.0, max(0.0, coverage)))
+
+    @staticmethod
+    def _classify_ceiling_confidence(
+        coverage: float | None,
+    ) -> CeilingConfidence:
+        """Map a ``ceiling_coverage`` fraction to the HEURISTIC confidence label.
+
+        ``None`` (not measured) -> ``"unknown"``; ``coverage >=
+        _CEILING_COVERAGE_MIN`` -> ``"high"``; else ``"low"``. The 0.50 threshold
+        is a conservative geometric rule of thumb validated only on synthetic
+        fixtures — NOT calibrated against measured data (see
+        CEILING_CONFIDENCE_HEURISTIC_NOTE).
+        """
+        if coverage is None:
+            return "unknown"
+        return "high" if coverage >= _CEILING_COVERAGE_MIN else "low"
 
     @classmethod
     def _detect_up_axis(cls, vertices: np.ndarray) -> int:
@@ -794,6 +871,13 @@ class MeshAdapter:
         # ~1 mm on scene-class data and are byte-identical on clean fixtures.
         floor_y, ceiling_y = self._robust_floor_ceiling_y(vertices[:, 1])
         ceiling_height_m = float(ceiling_y - floor_y)
+        # Annotate (never change) the height with a coverage/confidence flag for
+        # the residual mis-pick failure mode of _robust_floor_ceiling_y (a
+        # tabletop / mezzanine slab / under-sampled ceiling can be the topmost
+        # still-dense bin). ceiling_coverage is an honest geometric measurement;
+        # ceiling_confidence is a HEURISTIC label, NOT a calibrated probability.
+        ceiling_coverage = self._ceiling_coverage(vertices, ceiling_y)
+        ceiling_confidence = self._classify_ceiling_confidence(ceiling_coverage)
         if ceiling_height_m <= 0.0:
             raise ValueError(
                 f"MeshAdapter: degenerate mesh height "
@@ -873,4 +957,6 @@ class MeshAdapter:
             objects=[],  # v0.17: no auto-detection (OQ-33); use evolve_room_add_object()
             schema_version="0.2-draft",
             provenance="measured",  # OQ-54: derived from a real scan mesh
+            ceiling_coverage=ceiling_coverage,
+            ceiling_confidence=ceiling_confidence,
         )
