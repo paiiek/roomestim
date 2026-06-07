@@ -253,6 +253,27 @@ CapturedRoom USD 픽스처 부재로 검증난이도↑). (5) OQ-55 visual mater
 - **side-fix**: 오토메모리 `reference_canonical_test_env.md` 에 캐노니컬 게이트 = **marker-scoped** 명문화(plain `pytest -q`
   =over-collect 오측정). 베이스라인 체인 275/6→388/3→396/3→408/3(→이번 414/3).
 
-**다음 후보**: (4)/(5) 재오픈은 외부데이터 의존(실 RoomPlan export+mapping / material GT). 코드-only 즉시가능 후보 =
-image cam_h 의 known-size-reference prior(검증가능 prior 발견 시), multi-room(RoomModel 단일방→floor_entries[0] 한계),
-spatial_engine 절대경로 디커플+PyPI 패키징(ADR 0007), polygon-ISM acoustics(ADR 0040). 우선순위는 사용자 결정.
+### ★ RESUME POINTER (2026-06-08 autopilot — 4-candidate A/B/C/D) — 세부 = `.omc/plans/commercialization-followups-4candidates.md`
+사용자 지시 = 4개 코드-only 후보 전부 진행. planner(opus) 정직 스코핑 → A/B/D 완료, C 미착수(세션 한도).
+- **(A) spatial_engine 절대경로 디커플 + PyPI-ready = DONE**(`d3457c5` v0.30.0 D98): `layout_yaml.py` 머신-특정 하드코딩
+  기본경로 제거→`SPATIAL_ENGINE_REPO_DIR` env-only, 미설정 시 fail-loud(기존 3 escape-hatch). 격리 venv wheel build+install+
+  콘솔스크립트+torch-free import 검증(PyPI-*ready*, publish 는 ADR 0007 여전히 deferred). conftest 머신-독립 sibling 상대탐색.
+  grep `/home/` in roomestim/ = 0. code-review APPROVE-WITH-FIXES(stale 주석 2건 수정). default 414→416p/3s.
+- **(B) multi-room 유계 슬라이스 = DONE**(`3a02d7e` v0.30.1 D99): RoomPlan `floor_entries[1:]` silent drop→`ROOMPLAN_MULTI_FLOOR_NOTE`
+  (단일진실원천) UserWarning 로 고지(primary 만 사용, merge 안 함=기하수치 미생성). 순수 additive(len==1 무경고, `-W error` 검증).
+  RoomModel/schema/export 무변경. 진짜 RoomCollection 은 ADR 0047 에 blast-radius 와 함께 DEFER(제품은 single-room). default 416→418p/3s.
+  **독립 code-review 는 세션 한도로 차단→다음 세션 검토 예정**(커밋은 -W error 가법성증명+test추적+guard추적 자체검증).
+- **(D) cam_h known-size-reference prior = DEFER(doc-only)**(`66e0953` D101): auto=detector+verifiable prior 부재+cuboid-GT 검증불가;
+  manual=기존 `--cam-height` 와 동일 prior 를 마찰만 늘려 재생산·정확도 이득 0. ADR 0045 §honesty (D) 기록. 코드 0줄.
+- **(C) polygon-ISM = NOT STARTED(다음 세션)**: geometry-only 이미지소스 POSITION enumerator(numpy/shapely-only, NO RT60, predictor
+  미배선) = 검증가능 honest 슬라이스. 전체 RT60 cascade 는 non-shoebox 측정 GT 부재로 DEFER(가짜숫자 트랩). 상세 빌드스펙 = 4-candidates
+  plan RESUME POINTER. MINOR→0.31.0 D100.
+- **새 default 베이스라인 = 418p/3s @v0.30.1**(414→+4: A+2, B+2). web 86p/3s 불변.
+
+**다음 세션 작업**: (1) **C geometry-only polygon image-source 빌드**(스펙=4-candidates plan), (2) **B 독립 code-review**(세션한도로 보류됨).
+그 다음 = PyPI publish(ADR 0007 reverse-criteria), 진짜 multi-room RoomCollection(ADR 0047 phased), non-shoebox 측정 RT60 GT(C RT60 unblock).
+
+---
+
+**(구) 다음 후보 (위 A/B/D 로 진행, C 잔여)**: (4)/(5) 재오픈은 외부데이터 의존(실 RoomPlan export+mapping / material GT). 코드-only =
+image cam_h known-size prior(→D DEFER), multi-room(→B 유계+ADR 0047 DEFER), spatial_engine 디커플+PyPI(→A DONE), polygon-ISM(→C 잔여).
