@@ -24,6 +24,7 @@ tests/fixtures/soundcam_synthesized/**/mesh.ply
 .omc/state/
 .omc/logs/
 .omc/research/
+.omc/scientist/
 .omc/sessions/
 .omc/notepad.md
 .omc/project-memory.json
