@@ -241,3 +241,26 @@ def test_low_absorption_ism_meets_eyring_lower_bound_per_band() -> None:
             f"band {band} Hz: ISM {rt} < Eyring {eyring_band[band]} - 1e-6 — "
             f"invariant violated; rationale={pred.rationale!r}"
         )
+
+
+def test_reflective_shoebox_ism_over_predicts_vs_eyring() -> None:
+    """dEchorate finding (②): in a near-rigid shoebox the ISM default's specular
+    long-tail over-predicts RT60 above the diffuse-field Eyring estimate.
+
+    Locks the PHENOMENON the widened RT60_DISCLOSURE now warns about, with a
+    LOOSE ordering assert (NOT a brittle dEchorate magnitude match — the
+    dEchorate file is gitignored and not reproducible in CI). The computed
+    ISM/Eyring ratio on this α≈0.05 shoebox is ~1.18; the 1.10 factor sits
+    comfortably below it so the assert documents the direction without becoming
+    brittle.
+    """
+    room, areas = _low_absorption_shoebox()  # all surfaces α≈0.05 (near-rigid)
+    pred_ism = predict_rt60_default(room, areas, prefer_ism=True)
+    pred_eyr = predict_rt60_default(room, areas, prefer_ism=False)
+    assert pred_ism.predictor_name == "image_source"
+    assert pred_eyr.predictor_name == "eyring"
+    # ISM diverges ABOVE Eyring in the reflective regime.
+    assert pred_ism.rt60_s > 1.10 * pred_eyr.rt60_s, (
+        f"expected ISM to over-predict vs Eyring in a near-rigid shoebox; "
+        f"ISM={pred_ism.rt60_s:.3f}s Eyring={pred_eyr.rt60_s:.3f}s"
+    )

@@ -23,9 +23,13 @@ RT60_DISCLOSURE: str = (
     "depends on surface materials. roomestim does not infer materials; when "
     "materials are UNKNOWN or assumed the estimate is indicative only. This is "
     "NOT a validated acoustic measurement and can deviate substantially from "
-    "in-situ RT60 (model error observed up to ~+/-1.4 s versus measured, larger "
-    "for coupled / non-shoebox spaces). Treat as relative GUIDANCE, not a "
-    "guaranteed value."
+    "in-situ RT60. The ~+/-1.4 s figure is the typical mixed-material-room "
+    "observation (ACE corpus); the error is BIDIRECTIONAL (the ISM default "
+    "over-predicts strongly-reflective rectilinear rooms and under-predicts "
+    "foam / absorber-dominated rooms), and for small, hard-surfaced or "
+    "unknown-material rooms the deviation can reach the same order as the RT60 "
+    "itself (observed up to ~2.3 s versus measured), and is larger for coupled "
+    "/ non-shoebox spaces. Treat as relative GUIDANCE, not a guaranteed value."
 )
 
 # Image-backend cam_h scale-ambiguity. A single equirectangular panorama recovers

@@ -60,6 +60,8 @@ def test_disclosure_constant_is_honest_and_nontrivial() -> None:
     assert "not a validated acoustic measurement" in lowered
     assert "1.4" in RT60_DISCLOSURE  # cited observed error magnitude
     assert "guidance" in lowered
+    # Phase 1: honesty clause that the model error is two-sided (dEchorate ②).
+    assert "bidirectional" in lowered
     assert isinstance(RT60_MODEL_NAME, str) and RT60_MODEL_NAME
 
 

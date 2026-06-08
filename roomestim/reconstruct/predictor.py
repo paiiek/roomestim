@@ -473,6 +473,16 @@ def predict_rt60_default(
         Used by the Eyring fallback when ISM cannot fire.
     prefer_ism:
         If False, skip the ISM branch and always use Eyring (escape hatch).
+
+        Predictor-choice guidance (validated against measured RIRs, dEchorate
+        CC-BY 4.0, 2026-06-08): for STRONGLY-REFLECTIVE rectilinear rooms the
+        ISM default can over-predict (specular long-tail between near-rigid
+        parallel surfaces); the diffuse-field Eyring path (``prefer_ism=False``)
+        is worst-case-safer there. Eyring is, however, biased LOW on the median
+        for typical mixed-material rooms, so it is an informed escape hatch, NOT
+        a better default. ISM remains the default per ADR 0030. This guidance is
+        based on ONE measured geometry with extreme absorption configs and does
+        not generalise to a coefficient or default change.
     max_order:
         ISM L1-lattice max order; default 50.
 
