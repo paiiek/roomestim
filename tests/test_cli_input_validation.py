@@ -185,3 +185,116 @@ def test_simple_floor_polygon_accepted(tmp_path: Path) -> None:
     _write_valid_room_yaml(room_yaml)
     room = read_room_yaml(room_yaml)
     assert room.name == "synthetic_shoebox"
+
+
+# --------------------------------------------------------------------------- #
+# PR3 / ADR 0042 — `--floor-reconstruction` CLI flag (v0.32.0)
+# --------------------------------------------------------------------------- #
+
+
+def _write_l_prism_obj(path: Path) -> None:
+    """Watertight L-shaped prism (6x6 minus a 3x3 notch), extruded 2.5 m tall."""
+    import numpy as np
+    import trimesh
+
+    foot = [(0.0, 0.0), (6.0, 0.0), (6.0, 3.0), (3.0, 3.0), (3.0, 6.0), (0.0, 6.0)]
+    h = 2.5
+    n = len(foot)
+    bottom = [(x, 0.0, z) for (x, z) in foot]
+    top = [(x, h, z) for (x, z) in foot]
+    verts = np.array(bottom + top, dtype=float)
+    faces: list[list[int]] = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, j + n])
+        faces.append([i, j + n, i + n])
+    for i in range(1, n - 1):
+        faces.append([0, i + 1, i])
+    for i in range(1, n - 1):
+        faces.append([n, n + i, n + i + 1])
+    mesh = trimesh.Trimesh(vertices=verts, faces=np.array(faces), process=False)
+    mesh.export(path)
+
+
+def test_cli_floor_reconstruction_concave_ingests_l_mesh(tmp_path: Path) -> None:
+    """`--floor-reconstruction concave` on a mesh backend recovers the notch."""
+    obj_path = tmp_path / "l_room.obj"
+    _write_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "concave"]
+    )
+    assert rc == 0
+    room = read_room_yaml(tmp_path / "room.yaml")
+    # Concave keeps the re-entrant corner → >=6 vertices (an L has 6 corners).
+    assert len(room.floor_polygon) >= 6
+
+
+def test_cli_floor_reconstruction_default_convex_collapses_notch(
+    tmp_path: Path,
+) -> None:
+    """Default (convex) erases the notch → a 5-vertex pentagon hull."""
+    obj_path = tmp_path / "l_room.obj"
+    _write_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path)]
+    )
+    assert rc == 0
+    room = read_room_yaml(tmp_path / "room.yaml")
+    assert len(room.floor_polygon) == 5
+
+
+def test_cli_concave_notice_fires_for_non_mesh_backend(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Concave with a non-mesh backend (roomplan) emits an honest 'ignored' NOTE."""
+    rc = main(
+        ["ingest", "--backend", "roomplan", "--input", str(_FIXTURE_JSON),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "concave"]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "ignored for --backend roomplan" in captured.err
+
+
+def test_cli_concave_structural_notice_for_mesh_backend(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Concave on a mesh backend emits the UNVALIDATED structural-estimate NOTE."""
+    obj_path = tmp_path / "l_room.obj"
+    _write_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "concave"]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "STRUCTURAL estimate" in captured.err
+    assert "UNVALIDATED" in captured.err
+
+
+def test_cli_env_var_honored_when_flag_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """HIGH regression guard: omitting --floor-reconstruction still honors env var.
+
+    Pre-0.32.0 behaviour: ``ROOMESTIM_MESH_FLOOR_RECON=concave`` with no CLI
+    flag → concave mode (env var respected). The fix (default=None) preserves
+    this; a default="convex" would silently defeat the env var.
+    """
+    obj_path = tmp_path / "l_room.obj"
+    _write_l_prism_obj(obj_path)
+
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "concave")
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path)]  # NO --floor-reconstruction flag
+    )
+    assert rc == 0
+    room = read_room_yaml(tmp_path / "room.yaml")
+    # Env var honored → concave mode → notch preserved (>=6 vertices).
+    assert len(room.floor_polygon) >= 6

@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from roomestim import __version__
 
@@ -67,6 +67,24 @@ def _add_image_backend_args(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_floor_reconstruction_arg(p: argparse.ArgumentParser) -> None:
+    """Shared ``--floor-reconstruction`` arg (mesh backends only; PR3 / ADR 0042).
+
+    Inert for non-mesh backends (``roomplan``/``image``); a stderr NOTE fires in
+    ``_get_adapter`` when ``concave`` is passed to one of those, so there is no
+    silent no-op.
+    """
+    p.add_argument(
+        "--floor-reconstruction",
+        choices=["convex", "concave"],
+        default=None,
+        help="Mesh footprint extraction: 'convex' (safe over-estimate) or "
+        "'concave' (recovers re-entrant corners; UNVALIDATED accuracy — no "
+        "footprint ground truth, ADR 0042). Default: convex; honors "
+        "ROOMESTIM_MESH_FLOOR_RECON env var when unset.",
+    )
+
+
 def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = sub.add_parser("ingest", help="Parse a capture artifact into a RoomModel.")
     p.add_argument(
@@ -89,6 +107,7 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         default=False,
         help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
+    _add_floor_reconstruction_arg(p)
     _add_image_backend_args(p)
 
 
@@ -257,6 +276,7 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=False,
         help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
+    _add_floor_reconstruction_arg(p)
     _add_image_backend_args(p)
     # FIX-4 / D77: engine validation toggle (D42 / ADR 0033), at parity with
     # `export`/`edit`. CLI flag > ENV var > default ON.
@@ -375,15 +395,40 @@ class _ExperimentalGate(Exception):
 
 def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
     backend: str = args.backend
+    floor_reconstruction: str | None = getattr(args, "floor_reconstruction", None)
     if backend == "roomplan":
         from roomestim.adapters.roomplan import RoomPlanAdapter
 
+        if floor_reconstruction == "concave":
+            print(
+                f"NOTE: --floor-reconstruction concave is ignored for "
+                f"--backend {backend} (mesh-only; the RoomPlan footprint comes "
+                f"from the capture sidecar polygon, not mesh extraction).",
+                file=sys.stderr,
+            )
         return RoomPlanAdapter()
     if backend == "polycam":
         from roomestim.adapters.polycam import PolycamAdapter
 
-        return PolycamAdapter()
+        if floor_reconstruction == "concave":
+            print(
+                "NOTE: concave footprint is a STRUCTURAL estimate; accuracy is "
+                "UNVALIDATED (no footprint ground truth, ADR 0042).",
+                file=sys.stderr,
+            )
+        from roomestim.adapters.mesh import FloorReconstruction
+
+        return PolycamAdapter(
+            floor_reconstruction=cast("FloorReconstruction | None", floor_reconstruction)
+        )
     if backend == "image":
+        if floor_reconstruction == "concave":
+            print(
+                f"NOTE: --floor-reconstruction concave is ignored for "
+                f"--backend {backend} (mesh-only; the image backend is its own "
+                f"single-panorama tier, not mesh extraction).",
+                file=sys.stderr,
+            )
         # HARD GATE (ADR 0045): experimental rough-estimate tier. Fires BEFORE
         # constructing the adapter so no torch import happens on this path.
         if not getattr(args, "experimental", False):
