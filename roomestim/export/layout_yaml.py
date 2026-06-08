@@ -242,6 +242,17 @@ def placement_to_dict(
                 "(see design §6.1, A8 item #4); got wfs_f_alias_hz=None"
             )
         out["x_wfs_f_alias_hz"] = _round9(float(result.wfs_f_alias_hz))  # D56
+    # Top-level extension key — placement algorithm label (OQ-38 / ADR 0041 PR1).
+    # Emitted ONLY for non-VBAP algorithms so VBAP layouts (the reader's natural
+    # default) stay byte-equal — matching the "emit only when non-default" pattern
+    # of x_wfs_f_alias_hz / x_geometry_provenance. This closes the round-trip
+    # LABEL defect: DBAP/WFS/AMBISONICS labels are now persisted instead of
+    # silently collapsing to VBAP on read. NOTE: this round-trips the label only;
+    # roomestim still has no AMBISONICS placement producer (PR2-4 deferred, ADR
+    # 0041 §D-3a engine gate). geometry_schema.json root additionalProperties:true
+    # → validates with no schema change.
+    if result.target_algorithm != "VBAP":
+        out["x_target_algorithm"] = result.target_algorithm
     # Top-level extension key — geometry capture provenance (OQ-54 / ADR 0046).
     # Emitted ONLY when non-default so every existing placement (defaults to
     # "assumed") stays byte-equal; reconstructed (rough-tier marker) and measured

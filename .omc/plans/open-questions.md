@@ -677,6 +677,28 @@ algorithm-aware 검증 도입 → `x_target_algorithm` extension key.
 
 ---
 
+### OQ-38 status-update (v0.33.0 — **CLOSED**, ADR 0041 PR1, D102)
+
+**CLOSED**: `x_target_algorithm` top-level extension key 채택 (resolution
+candidate (1)). writer (`layout_yaml.py:placement_to_dict`) 는 non-VBAP 알고리즘
+(DBAP/WFS/AMBISONICS) 에만 키 방출 (VBAP=reader 기본값 → golden byte-equal,
+"emit only when non-default" 선례), reader (`placement_yaml_reader.py`) 는
+restore-first/infer-fallback — 키 있으면 복원(enum {VBAP,DBAP,WFS,AMBISONICS}
+검증, out-of-enum → `ValueError`, `_parse_provenance` 가드 미러), 없으면 기존
+추론(pre-v0.32 key-less layout backward-compat). DBAP/AMBISONICS 라벨 붕괴 종결.
+
+**Scope honesty**: 이는 round-trip **라벨** 결함만 종결 — roomestim 은 여전히
+ambisonics rig 을 **생산하지 않음** (placement producer 부재). ADR 0041 PR2-4
+(`place/ambisonics.py` + dispatch + CLI `--order`) 는 DEFERRED, trigger=§D-3a
+engine 식별·라우팅 gate (require.md ambisonics mandatory 승격 또는 engine 팀 합의).
+
+검증: round-trip 18p (DBAP/AMBISONICS/WFS 키-복원·VBAP 키-미방출·key-less
+backward-compat·out-of-enum ValueError·AMBISONICS write→read→write fixed-point),
+default 452→457p, web 86p 무변, golden byte-equal, ruff/mypy(strict) EXIT0.
+Decision: D102. ADR ref: ADR 0041 §OQ.
+
+---
+
 ### OQ-34 status-update (v0.18.4 — re-deferred to v0.21, D58)
 
 Trigger 미충족: 사용자 cylinder/arch column 요청 0건; acoustic 모델 = rectilinear

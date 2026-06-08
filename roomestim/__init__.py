@@ -1,6 +1,6 @@
 """roomestim — capture-to-config: room scan -> RoomModel + speaker placement -> engine YAMLs."""
 
-__version__ = "0.32.0"
+__version__ = "0.33.0"
 __schema_version__ = "0.2-draft"
 
 from roomestim.edit import (  # noqa: E402

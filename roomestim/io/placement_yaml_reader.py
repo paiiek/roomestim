@@ -14,6 +14,12 @@ import yaml
 from roomestim.io.room_yaml_reader import _parse_provenance
 from roomestim.model import PlacedSpeaker, PlacementResult, Point3
 
+#: Allowed placement-algorithm labels (OQ-38 / ADR 0041). Mirrors
+#: :class:`roomestim.place.algorithm.TargetAlgorithm`. Used to validate the
+#: ``x_target_algorithm`` extension key on read, mirroring the ``_parse_provenance``
+#: guardrail.
+_TARGET_ALGORITHM_VALUES: tuple[str, ...] = ("VBAP", "DBAP", "WFS", "AMBISONICS")
+
 
 def _point3_from_speaker(d: dict[str, Any]) -> Point3:
     """Reconstruct Point3 from az/el/dist spherical form via coords."""
@@ -79,11 +85,26 @@ def read_placement_yaml(path: Path | str) -> PlacementResult:
         layout_version = str(data.get("version", "1.0"))
         regularity_hint = str(data["regularity_hint"])
 
-        # Infer target_algorithm from regularity_hint (best-effort; not stored in
-        # YAML). Use x_wfs_f_alias_hz presence as the WFS discriminator.
+        # target_algorithm: restore-first, infer-fallback (OQ-38 / ADR 0041 PR1).
+        # When x_target_algorithm is present (written for every non-VBAP layout),
+        # restore the label directly so DBAP/WFS/AMBISONICS no longer collapse to
+        # "VBAP". Validate against the known enum (raise ValueError on an
+        # out-of-enum value, mirroring the _parse_provenance guardrail); the call
+        # stays inside this try/except to honor the module's ValueError contract.
+        # When the key is absent (pre-v0.32 / VBAP layouts) fall back to the
+        # existing inference for backward compatibility.
         wfs_f_alias_hz: float | None = None
         if "x_wfs_f_alias_hz" in data:
             wfs_f_alias_hz = float(data["x_wfs_f_alias_hz"])
+        if "x_target_algorithm" in data:
+            target_algorithm = str(data["x_target_algorithm"])
+            if target_algorithm not in _TARGET_ALGORITHM_VALUES:
+                raise ValueError(
+                    f"layout '{path}': invalid x_target_algorithm "
+                    f"{target_algorithm!r} (expected one of "
+                    f"{sorted(_TARGET_ALGORITHM_VALUES)})"
+                )
+        elif "x_wfs_f_alias_hz" in data:
             target_algorithm = "WFS"
         elif regularity_hint == "LINEAR":
             target_algorithm = "WFS"

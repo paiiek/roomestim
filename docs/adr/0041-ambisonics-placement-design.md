@@ -1,7 +1,9 @@
 # ADR 0041 — Ambisonics 배치 알고리즘 설계 (B5, draft)
 
-**Status**: Proposed (draft, 2026-05-29) — 구현 미착수. 본 문서는 설계 합의를
-선행 기록하기 위한 draft이며, 코드/CLI/스키마 변경은 아직 없다.
+**Status**: Partially-Accepted (v0.33.0, 2026-06-08) — **PR1 SHIPPED** (OQ-38
+`x_target_algorithm` round-trip, D102; §Status-update-v0.33.0). **PR2-4 (ambisonics
+placement producer) DEFERRED** — gate=§D-3a engine 식별·라우팅 합의 or require.md
+ambisonics mandatory 승격. 원 draft(2026-05-29)는 설계 합의 선행 기록.
 **REVISED 2026-05-29** — critic 리뷰(ACCEPT-WITH-RESERVATIONS; 0 CRITICAL, 3 MAJOR)
 반영: require.md precondition 명시(§Pre-conditions), OQ-38 자기참조 트리거 → cadence+D26
 재근거(§Context), engine 식별·라우팅 pre-implementation gate 신설(§D-3a), PR1에 collapse
@@ -236,7 +238,8 @@ IRREGULAR 멀티스피커 layout과 구분할 수 없다 — engine이 IRREGULAR
 ## OQ / decisions 갱신 제안
 
 - **OQ-38**: 본 ADR PR1로 **CLOSE 제안** (`x_target_algorithm` 후보 (1) 채택). reverse
-  조건(라벨 손실)이 ambisonics 도입으로 발화됨을 명시.
+  조건(라벨 손실)이 ambisonics 도입으로 발화됨을 명시. **→ v0.33.0 (D102)에서 CLOSED**
+  (§Status-update-v0.33.0 참조).
 - **신규 OQ (ambisonics order↔n_speakers 추론 규칙)**: `--n-speakers`
   미지정 시 order→권장값 추론 정확 규칙, 사용자가 비표준 n을 줄 때 가장 가까운
   규칙 리그로 라운딩할지/거부할지. evaluation cadence는 PR3 착수 시.
@@ -275,3 +278,30 @@ IRREGULAR 멀티스피커 layout과 구분할 수 없다 — engine이 IRREGULAR
 - **Tradeoff tension**: OQ-38을 이 ADR에 묶으면(범위 ↑, golden 재생성) vs 분리하면
   (ambisonics 신기능이 출시 즉시 round-trip 결함 보유). 권고는 PR1로 분리하되 같은
   ADR 하에 종결 — 결함 동반 출시를 피하면서 PR 단위는 독립.
+
+---
+
+## Status-update-v0.33.0 (2026-06-08, Phase 4, D102)
+
+**PR1 SHIPPED — OQ-38 CLOSED.** `x_target_algorithm` top-level extension key
+(후보 (1)) 채택·구현. writer(`export/layout_yaml.py:placement_to_dict`)는
+non-VBAP(DBAP/WFS/AMBISONICS)에만 키 방출(VBAP=reader 자연 기본값 → golden
+`place_vbap_ring_n8_default.yaml` **byte-equal**; ADR §PR 분할에서 제안된
+"emit-for-all" 대신 **non-VBAP-only**를 PR1에서 채택 — `x_wfs_f_alias_hz`/
+`x_geometry_provenance` 의 "emit only when non-default" 선례와 golden churn 0).
+reader(`io/placement_yaml_reader.py`)는 restore-first/infer-fallback: 키 있으면
+복원하되 enum `{VBAP,DBAP,WFS,AMBISONICS}` 검증(out-of-enum → `ValueError`,
+`_parse_provenance` 가드 미러), 없으면 기존 추론(pre-v0.32 key-less backward-compat).
+collapse 계약 테스트 2건 invert(→ preservation) + 5건 신규. schema 무변경
+(`additionalProperties:true`). default 452→457p, web 86p 무변, ruff/mypy(strict) EXIT0.
+
+**정직성**: PR1은 round-trip **라벨**만 종결 — roomestim 은 여전히 ambisonics rig 을
+**생산하지 않는다**(placement producer 부재). "roomestim supports ambisonics" 주장 금지.
+AMBISONICS enum 멤버는 ADR 0003 forward-compat 로 유지(삭제 안 함).
+
+**PR2-4 DEFERRED.** `place/ambisonics.py` producer + dispatch branch + CLI `--order`
+는 미착수 유지. **Trigger(gate) = §D-3a engine 식별·라우팅 gate**: engine 이
+`x_target_algorithm=="AMBISONICS"` 를 읽어 SH 디코더(`ipc_schema.md:21-22`
+`/sys/ambi_order`)로 라우팅함을 확인(engine 팀 합의) **또는** `spatial_engine/require.md`
+가 Ambisonics 를 mandatory 로 승격(§Pre-conditions). 둘 다 현재 미충족 → decoder 없이
+rig 방출 시 end-to-end 검증 불가한 fake-completeness trap(§5)이므로 DEFER 유지.

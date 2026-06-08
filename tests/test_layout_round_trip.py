@@ -1,9 +1,14 @@
 """v0.18 — layout.yaml round-trip fidelity contract (D50; ADR 0036 §C).
 
-Level 1 ({VBAP, WFS}): position (≤1e-9) + channel + regularity + WFS meta + aim
-direction (reader-restored) are structurally preserved. target_algorithm is
-preserved only for {VBAP, WFS}; DBAP/AMBISONICS collapse to "VBAP" on read
-(OQ-38). notes / per-speaker id are excluded (no engine schema slot).
+Level 1: position (≤1e-9) + channel + regularity + WFS meta + aim direction
+(reader-restored) are structurally preserved. target_algorithm now round-trips
+for all of {VBAP, DBAP, WFS, AMBISONICS} via the ``x_target_algorithm`` extension
+key (OQ-38 / ADR 0041 PR1, v0.33.0): non-VBAP labels are persisted by the writer
+and restored by the reader instead of silently collapsing to "VBAP". Key-less
+(pre-v0.32) layouts still fall back to inference (VBAP default). This round-trips
+the LABEL only — roomestim still has no AMBISONICS placement producer (PR2-4
+deferred, ADR 0041 §D-3a engine gate). notes / per-speaker id are excluded (no
+engine schema slot).
 
 Byte-equal idempotency (Gate 20/21/23) uses axis-aligned fixtures (az ∈
 {0,90,180,270}°, el=0, integer radius) which are genuine single write→read→write
@@ -146,25 +151,111 @@ def test_channel_regularity_wfs_preserved(tmp_path: Path) -> None:
     assert r2.wfs_f_alias_hz == pytest.approx(1500.0, abs=1e-9)
 
 
-def test_dbap_target_algorithm_collapses_to_vbap(tmp_path: Path) -> None:
-    # D50 honesty / OQ-38: DBAP has no round-trip label slot → reads as "VBAP".
+def test_dbap_target_algorithm_round_trips(tmp_path: Path) -> None:
+    # OQ-38 / ADR 0041 PR1: DBAP label now persists via x_target_algorithm.
     r = _axis_aligned_result(algorithm="DBAP", regularity="CIRCULAR")
     p = tmp_path / "layout.yaml"
     _write(r, p)
     r2 = read_placement_yaml(p)
-    assert r2.target_algorithm == "VBAP"  # collapse (label not preserved)
+    assert r2.target_algorithm == "DBAP"  # label preserved (no collapse)
     # position still preserved ≤1e-9
     for a, b in zip(r.speakers, r2.speakers):
         assert b.position.x == pytest.approx(a.position.x, abs=1e-9)
         assert b.position.z == pytest.approx(a.position.z, abs=1e-9)
 
 
-def test_ambisonics_target_algorithm_collapses_to_vbap(tmp_path: Path) -> None:
+def test_ambisonics_target_algorithm_round_trips(tmp_path: Path) -> None:
+    # OQ-38 / ADR 0041 PR1: AMBISONICS label round-trips (label only — there is
+    # still no ambisonics placement producer; PR2-4 deferred).
     r = _axis_aligned_result(algorithm="AMBISONICS", regularity="CIRCULAR")
     p = tmp_path / "layout.yaml"
     _write(r, p)
     r2 = read_placement_yaml(p)
+    assert r2.target_algorithm == "AMBISONICS"
+
+
+def test_wfs_target_algorithm_round_trips_via_key(tmp_path: Path) -> None:
+    # OQ-38 / ADR 0041 PR1: WFS now restores from x_target_algorithm (it also
+    # carries x_wfs_f_alias_hz, which still round-trips).
+    r = _axis_aligned_result(
+        algorithm="WFS", regularity="CIRCULAR", wfs_f_alias_hz=1200.0
+    )
+    p = tmp_path / "layout.yaml"
+    _write(r, p)
+    data = yaml.safe_load(p.read_text(encoding="utf-8"))
+    assert data["x_target_algorithm"] == "WFS"
+    r2 = read_placement_yaml(p)
+    assert r2.target_algorithm == "WFS"
+    assert r2.wfs_f_alias_hz == pytest.approx(1200.0, abs=1e-9)
+
+
+def test_vbap_emits_no_target_algorithm_key(tmp_path: Path) -> None:
+    # VBAP is the reader's natural default → writer emits no x_target_algorithm
+    # key (keeps the VBAP golden byte-equal; "emit only when non-default" pattern).
+    r = _axis_aligned_result(algorithm="VBAP", regularity="CIRCULAR")
+    p = tmp_path / "layout.yaml"
+    _write(r, p)
+    data = yaml.safe_load(p.read_text(encoding="utf-8"))
+    assert "x_target_algorithm" not in data
+    r2 = read_placement_yaml(p)
     assert r2.target_algorithm == "VBAP"
+
+
+def test_keyless_layout_reads_as_vbap_backward_compat(tmp_path: Path) -> None:
+    # LOW-2: backward-compat proof using a *non-VBAP* source result (DBAP and
+    # AMBISONICS) so the pop actually exercises the fallback path.  A pre-v0.32
+    # file has no x_target_algorithm key even for non-VBAP algorithms; the
+    # reader must fall back to legacy inference (→ "VBAP") rather than crashing.
+    for algo in ("DBAP", "AMBISONICS"):
+        r = _axis_aligned_result(algorithm=algo, regularity="CIRCULAR")
+        p = tmp_path / f"keyless_{algo}.yaml"
+        _write(r, p)
+        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        # Simulate a pre-v0.32 file by removing the key the writer now emits.
+        assert data.pop("x_target_algorithm") == algo, "precondition: key present"
+        p.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        r2 = read_placement_yaml(p)
+        assert r2.target_algorithm == "VBAP", (
+            f"legacy key-less {algo} layout should collapse to VBAP via inference"
+        )
+
+
+def test_unknown_target_algorithm_raises(tmp_path: Path) -> None:
+    # Out-of-enum x_target_algorithm fails loud (mirrors the provenance guard).
+    r = _axis_aligned_result(algorithm="DBAP", regularity="CIRCULAR")
+    p = tmp_path / "layout.yaml"
+    _write(r, p)
+    data = yaml.safe_load(p.read_text(encoding="utf-8"))
+    data["x_target_algorithm"] = "BOGUS"
+    p.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid x_target_algorithm"):
+        read_placement_yaml(p)
+
+
+def test_dbap_write_read_write_fixed_point(tmp_path: Path) -> None:
+    # LOW-4: write→read→write byte-equal fixed point for DBAP (same non-VBAP /
+    # no-alias code path as AMBISONICS; rounds out the fixed-point matrix).
+    r = _axis_aligned_result(algorithm="DBAP", regularity="CIRCULAR")
+    p1 = tmp_path / "a.yaml"
+    p2 = tmp_path / "b.yaml"
+    _write(r, p1)
+    r2 = read_placement_yaml(p1)
+    assert r2.target_algorithm == "DBAP"
+    _write(r2, p2)
+    assert _sha(p1) == _sha(p2)
+
+
+def test_ambisonics_write_read_write_fixed_point(tmp_path: Path) -> None:
+    # write→read→write byte-equal fixed point for an AMBISONICS-labelled result:
+    # the label survives the cycle and does not perturb idempotency.
+    r = _axis_aligned_result(algorithm="AMBISONICS", regularity="CIRCULAR")
+    p1 = tmp_path / "a.yaml"
+    p2 = tmp_path / "b.yaml"
+    _write(r, p1)
+    r2 = read_placement_yaml(p1)
+    assert r2.target_algorithm == "AMBISONICS"
+    _write(r2, p2)
+    assert _sha(p1) == _sha(p2)
 
 
 def test_edit_then_validate(tmp_path: Path) -> None:

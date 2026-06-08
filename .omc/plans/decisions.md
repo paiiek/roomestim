@@ -2689,3 +2689,33 @@ misdetect→density 판별자로 해소; R2 MEDIUM=sparse-narrow degenerate→ar
 `RELEASE_NOTES_v0.25.3.md`, `docs/adr/0027-...md`(§Status-update-2026-06-07), `.omc/plans/commercialization-analysis.md`, 본 D91.
 **Cross-refs**: ADR 0027(mesh 어댑터)·ADR 0001(measured 경로)·ADR 0042(live-mesh, PROPOSED), D89(fail-loud 철학 선례),
 commercialization Phase 0(0a 완료·0b=독립 GT·0c=acoustics 정직성 대기).
+
+---
+
+## D102 — OQ-38 CLOSED: `x_target_algorithm` round-trip 라벨 보존 (ADR 0041 PR1; v0.33.0; Phase 4, 2026-06-08)
+
+**문제**: layout.yaml writer 가 `target_algorithm` 을 영속하지 않고 reader 가 재추론(`regularity_hint` +
+`x_wfs_f_alias_hz` 존재 → WFS-vs-VBAP 만 구별) → `target_algorithm ∈ {DBAP, AMBISONICS}` 인 layout 이 read 시
+**"VBAP" 로 silent 붕괴**(OQ-38). nudge round-trip 후 알고리즘 라벨 손실. ADR 0041 PR1 로 종결.
+
+**수정(additive ~25 LOC)**: (1) writer `export/layout_yaml.py:placement_to_dict` — non-VBAP(DBAP/WFS/AMBISONICS)
+에만 `out["x_target_algorithm"]` 방출(VBAP=reader 자연 기본값 → **golden byte-equal**, `x_wfs_f_alias_hz`/
+`x_geometry_provenance` 와 동일한 "emit only when non-default" 선례). (2) reader `io/placement_yaml_reader.py` —
+**restore-first/infer-fallback**: 키 있으면 복원하되 enum `{VBAP,DBAP,WFS,AMBISONICS}` 검증(out-of-enum →
+`ValueError`, `_parse_provenance` 가드 미러, 기존 try/except 안에 두어 documented ValueError 계약 유지), 없으면
+기존 추론 그대로(pre-v0.32 key-less layout backward-compat). schema 무변경(`additionalProperties:true`).
+
+**정직성 가드**: 이는 round-trip **라벨** 결함만 종결 — roomestim 은 ambisonics rig 을 **생산하지 않음**(producer
+부재). AMBISONICS enum 멤버는 ADR 0003 forward-compat 로 유지(삭제 안 함). ADR 0041 PR2-4(`place/ambisonics.py`
+producer + dispatch branch + CLI `--order`)는 **DEFERRED**, trigger=§D-3a engine 식별·라우팅 gate(require.md
+ambisonics mandatory 승격 또는 engine 팀 합의) — fake-completeness trap(decoder 없는데 rig 방출) 회피.
+
+**검증**: round-trip 테스트 2건 invert(collapse→preservation) + 5건 신규(WFS 키-복원, VBAP 키-미방출, key-less
+backward-compat, out-of-enum ValueError, AMBISONICS write→read→write byte-equal fixed-point) → 18p.
+**Version** 0.32.0→0.33.0 MINOR(순수 additive·backward-compat). default 452→457p/6s, web 86p/3s 무변,
+golden `place_vbap_ring_n8_default.yaml` byte-equal, ruff/mypy(strict) EXIT0.
+**변경 파일**: `roomestim/export/layout_yaml.py`, `roomestim/io/placement_yaml_reader.py`,
+`tests/test_layout_round_trip.py`, `roomestim/__init__.py`·`pyproject.toml`(0.33.0),
+`docs/adr/0041-ambisonics-placement-design.md`(§OQ status), `.omc/plans/open-questions.md`(OQ-38 CLOSED), 본 D102.
+**Cross-refs**: ADR 0041(ambisonics placement)·ADR 0036 §C(layout round-trip)·ADR 0003(forward-compat enum),
+D50(round-trip fidelity), D61(OQ-38 v0.20 재유예), OQ-38(CLOSED).
