@@ -196,13 +196,17 @@ class MeshAdapter:
     ----------
     floor_reconstruction:
         ``"convex"`` (default) takes the convex hull of the floor-projected
-        vertices — the legacy, byte-equal path. ``"concave"`` recovers a
-        non-shoebox footprint via :func:`floor_polygon_from_mesh`.
+        vertices — the legacy, byte-equal path. ``"concave"`` can in principle
+        *represent* re-entrant geometry via :func:`floor_polygon_from_mesh`, but
+        at the shipped default (``ratio=0.4``) does **not** recover real
+        re-entrant corners — ICL-NUIM L-shape validation (n=1) shows concave
+        +8.8% over-read vs. GT +5.5% concavity (convex +10.1%); notch recovery
+        only appeared at a hand-tuned, non-default ``min_count=5`` knife-edge.
         ``"occupancy"`` denoises first via a density + connected-component grid
         (:func:`floor_polygon_from_mesh_occupancy`) that rejects sparse floaters
-        before delegating to the concave path. Both opt-in modes fall back to
-        the convex hull (with a :class:`UserWarning`) when reconstruction
-        degenerates. When left at its sentinel default the
+        before delegating to the concave path (occupancy +8.6% on the same
+        scene). Both opt-in modes fall back to the convex hull (with a
+        :class:`UserWarning`) when reconstruction degenerates. When left at its sentinel default the
         ``ROOMESTIM_MESH_FLOOR_RECON`` environment variable selects the mode; an
         explicit argument always wins over the env var.
     up_axis:
