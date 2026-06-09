@@ -45,7 +45,11 @@ floaters (= dominant end-to-end error source, ~+17% of +22% on Redwood recon); o
 NOT default. Touch: `FloorReconstruction` Literal, `floor_polygon.py` new extractor (scipy.ndimage), `mesh.py`
 _resolve + parse wiring + convex fallback on degeneracy, CLI `--floor-reconstruction` choices, tests, version MINOR.
 Full OMC: architect design → executor → code-review → verifier. Gate GREEN. Commit.
-STATUS: ⬜ PENDING
+STATUS: ✅ DONE — committed **`67f98b5` v0.34.0**. `floor_reconstruction="occupancy"` opt-in 3rd mode
+(density 5cm grid → count≥min_count → largest 8-conn comp scipy.ndimage → delegate cell-centers to concave
+extractor; convex default byte-equal). Honest framing = FLOATER-REJECTION not notch-recovery (Phase A evidence).
+code-review APPROVE (0 CRIT/HIGH/MED; LOW-1 finite-guard + LOW-2 8×2 axis-lock test applied; LOW-3 backlog).
+Gate GREEN: default 558p/7s (544+14, 0 regress), web 86p/3s, ruff/mypy clean, smoke 0.34.0, golden byte-equal.
 
 ### Phase C — ④ polygon-ISM RT60 cascade (acoustics, LOWEST priority)  ← code
 Extend geometry-only `polygon_image_source.py` (v0.31.0 candidate C) into an RT60-relevant acoustic step,
@@ -57,7 +61,13 @@ STATUS: 🔵 DESIGN DONE (`.omc/plans/phaseC-polygon-ism-rt60-design.md`). Decis
 config-independent first-order **path-length/TOA helper** to `polygon_image_source.py` (cannot overfit; analytic
 in-gate + measured dEchorate out-of-gate backing); predictor UNTOUCHED → all RT60 byte-equal. Found "non-shoebox
 Eyring" is ALREADY shipped (predictor routes non-shoebox→Eyring). Option H (predictor numeric change)=DEFER w/
-regression guard (SoundCam α=0.85 ratio band + ACE ±1.4s envelope + shoebox byte-equal). Version 0.34→0.35. EXECUTE PENDING.
+regression guard (SoundCam α=0.85 ratio band + ACE ±1.4s envelope + shoebox byte-equal). Version 0.34→0.35.
+STATUS: ✅ DONE (commit pending). `polygon_image_source.py` += `ImagePath` frozen dataclass +
+`first_order_path_lengths(images, receiver, *, sound_speed_m_s=None)` = geometry-only first-order path-length/TOA
+(image-source identity ‖image−receiver‖); predictor/ISM/Eyring/_disclosure UNTOUCHED → RT60 byte-equal. In-gate
+analytic test (independent specular-point P, receiver≠source, ~1e-9) + measured dEchorate backing out-of-gate.
+code-review APPROVE (0 HIGH+; reviewer independently cross-checked path-lengths via orthogonal reflection matrix,
+max dev 0.0; 3 LOW non-blocking). Gate GREEN: default 562p/7s (558+4, 0 regress), web 86p/3s, ruff/mypy clean, smoke 0.35.0.
 
 ## RESUME POINTER
 - 2026-06-09: cycle created. Baseline v0.33.0. Order = A (GT) → B (occupancy ⑥ code) → C (RT60 code).

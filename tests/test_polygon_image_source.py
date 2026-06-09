@@ -14,9 +14,11 @@ import pytest
 
 from roomestim.model import Point2, Point3
 from roomestim.reconstruct.polygon_image_source import (
+    ImagePath,
     ImageSource,
     _reflect_point_across_line_2d,
     first_order_image_sources,
+    first_order_path_lengths,
 )
 
 
@@ -279,3 +281,154 @@ def test_degenerate_edge_reflection_raises() -> None:
         _reflect_point_across_line_2d(
             (1.0, 1.0), (2.0, 2.0), (2.0, 2.0 + 1e-12)
         )
+
+
+# --------------------------------------------------------------------------- #
+# Test 4 — receiver-relative first-order path length / TOA (geometry only).
+# --------------------------------------------------------------------------- #
+
+
+def _dist(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return math.sqrt(sum((ai - bi) ** 2 for ai, bi in zip(a, b)))
+
+
+def _axis_aligned_specular_point(
+    source: tuple[float, float, float],
+    receiver: tuple[float, float, float],
+    axis: int,
+    plane_coord: float,
+) -> tuple[float, float, float]:
+    """True specular reflection point on an axis-aligned plane ``axis = c``.
+
+    Derived INDEPENDENTLY of the module's stored ``reflection_point`` (which is
+    computed for a receiver co-located with the source). For a plane normal to
+    ``axis`` at ``plane_coord`` with source and receiver on the same side, the
+    specular point interpolates source -> receiver in proportion to their
+    perpendicular distances to the plane.
+    """
+    ds = abs(source[axis] - plane_coord)
+    dr = abs(receiver[axis] - plane_coord)
+    t = ds / (ds + dr)
+    p = [source[k] + t * (receiver[k] - source[k]) for k in range(3)]
+    p[axis] = plane_coord
+    return (p[0], p[1], p[2])
+
+
+def test_shoebox_path_length_matches_analytic_broken_path() -> None:
+    """For a shoebox, each first-order ``path_length_m`` equals the analytic
+    broken-path length ``‖S−P‖ + ‖P−R‖`` for the TRUE specular point P on that
+    surface (derived independently of any stored reflection_point), to ~1e-9.
+    """
+    length_m = 6.0  # x extent (L), edges: x=0 and x=L
+    width_m = 4.0  # z extent (W), edges: z=0 and z=W
+    height_m = 3.0  # y extent (H)
+    sx, sy, sz = 2.0, 1.2, 1.5
+    source = Point3(sx, sy, sz)
+    source_t = (sx, sy, sz)
+    # Arbitrary receiver, strictly inside the room and != source.
+    rx, ry, rz = 4.3, 2.1, 2.7
+    receiver = Point3(rx, ry, rz)
+    receiver_t = (rx, ry, rz)
+
+    floor_polygon = [
+        Point2(0.0, 0.0),
+        Point2(length_m, 0.0),
+        Point2(length_m, width_m),
+        Point2(0.0, width_m),
+    ]
+    images = first_order_image_sources(
+        floor_polygon, ceiling_height_m=height_m, source=source
+    )
+    paths = first_order_path_lengths(images, receiver, sound_speed_m_s=343.0)
+
+    # axis: 0=x, 1=y, 2=z. Map each surface to its plane.
+    plane_for_wall = {
+        0: (2, 0.0),  # edge 0: z=0
+        1: (0, length_m),  # edge 1: x=L
+        2: (2, width_m),  # edge 2: z=W
+        3: (0, 0.0),  # edge 3: x=0
+    }
+
+    assert len(paths) == len(images) == 6
+    for path in paths:
+        im = path.image
+        if im.surface_kind == "wall":
+            axis, coord = plane_for_wall[im.wall_index]
+        elif im.surface_kind == "floor":
+            axis, coord = 1, 0.0
+        else:  # ceiling
+            axis, coord = 1, height_m
+        p = _axis_aligned_specular_point(source_t, receiver_t, axis, coord)
+        broken = _dist(source_t, p) + _dist(p, receiver_t)
+        assert math.isclose(path.path_length_m, broken, abs_tol=1e-9), (
+            im.surface_kind,
+            im.wall_index,
+            path.path_length_m,
+            broken,
+        )
+
+
+def test_path_length_toa_units_and_speed_guard() -> None:
+    floor_polygon = [
+        Point2(0.0, 0.0),
+        Point2(6.0, 0.0),
+        Point2(6.0, 4.0),
+        Point2(0.0, 4.0),
+    ]
+    images = first_order_image_sources(
+        floor_polygon, ceiling_height_m=3.0, source=Point3(2.0, 1.2, 1.5)
+    )
+    receiver = Point3(4.3, 2.1, 2.7)
+
+    c = 343.0
+    with_speed = first_order_path_lengths(images, receiver, sound_speed_m_s=c)
+    for path in with_speed:
+        assert path.toa_s is not None
+        assert math.isclose(path.toa_s, path.path_length_m / c, rel_tol=0.0, abs_tol=1e-12)
+
+    # sound_speed_m_s=None -> all toa_s is None.
+    without_speed = first_order_path_lengths(images, receiver)
+    assert all(path.toa_s is None for path in without_speed)
+
+    # Non-positive / non-finite sound speed raises.
+    for bad in (0.0, -1.0, float("nan"), float("inf")):
+        with pytest.raises(ValueError):
+            first_order_path_lengths(images, receiver, sound_speed_m_s=bad)
+
+
+def test_path_length_non_finite_receiver_raises() -> None:
+    floor_polygon = [
+        Point2(0.0, 0.0),
+        Point2(6.0, 0.0),
+        Point2(6.0, 4.0),
+        Point2(0.0, 4.0),
+    ]
+    images = first_order_image_sources(
+        floor_polygon, ceiling_height_m=3.0, source=Point3(2.0, 1.2, 1.5)
+    )
+    for bad_receiver in (
+        Point3(float("nan"), 1.0, 1.0),
+        Point3(1.0, float("inf"), 1.0),
+        Point3(1.0, 1.0, float("nan")),
+    ):
+        with pytest.raises(ValueError):
+            first_order_path_lengths(images, bad_receiver)
+
+
+def test_path_length_deterministic_and_order_preserving() -> None:
+    floor_polygon = [
+        Point2(0.0, 0.0),
+        Point2(6.0, 0.0),
+        Point2(6.0, 4.0),
+        Point2(0.0, 4.0),
+    ]
+    images = first_order_image_sources(
+        floor_polygon, ceiling_height_m=3.0, source=Point3(2.0, 1.2, 1.5)
+    )
+    receiver = Point3(4.3, 2.1, 2.7)
+    first = first_order_path_lengths(images, receiver, sound_speed_m_s=343.0)
+    second = first_order_path_lengths(images, receiver, sound_speed_m_s=343.0)
+    assert first == second
+    # Order preserved: each ImagePath wraps the corresponding input image.
+    assert [p.image for p in first] == list(images)
+    assert all(isinstance(p, ImagePath) for p in first)

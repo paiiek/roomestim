@@ -22,6 +22,9 @@ Why geometry only (ADR 0040 §Status-update; 가짜 숫자 금지):
     visibility — is exactly what this module provides. It is the honest
     foundation a future cycle could turn into RT60 *once a measured
     non-shoebox GT exists*.
+  - A receiver-relative first-order **path length** (metres) / **TOA** (seconds)
+    is likewise pure geometry — the image-source identity ``‖image − receiver‖``
+    — and is emitted with still **NO RT60, NO absorption, NO energy**.
 
 Core purity: this module imports only numpy + shapely (both core
 dependencies) and the core disclosure string — NO web-extra ISM library — so
@@ -83,9 +86,11 @@ from roomestim.model import Point2, Point3
 from roomestim.reconstruct._disclosure import POLYGON_ISM_GEOMETRY_NOTE
 
 __all__ = [
+    "ImagePath",
     "ImageSource",
     "POLYGON_ISM_GEOMETRY_NOTE",
     "first_order_image_sources",
+    "first_order_path_lengths",
 ]
 
 # Surface that produced an image source.
@@ -124,6 +129,35 @@ class ImageSource:
     wall_index: int | None
     reflection_point: Point3
     valid: bool
+
+
+@dataclass(frozen=True)
+class ImagePath:
+    """A receiver-relative first-order path length / TOA (geometry only).
+
+    GEOMETRY ONLY — no RT60, no absorption, no energy. By the image-source
+    identity, the broken ``source -> surface -> receiver`` path length of a
+    first-order reflection equals the straight-line distance from the mirrored
+    image position to the receiver.
+
+    Attributes
+    ----------
+    image:
+        The first-order :class:`ImageSource` this path belongs to.
+    receiver:
+        The receiver position (:class:`Point3`, metres) the path terminates at.
+    path_length_m:
+        ``‖image.position − receiver‖`` in metres — the broken reflected-path
+        length (geometry only).
+    toa_s:
+        ``path_length_m / sound_speed_m_s`` in seconds when a sound speed was
+        supplied, else ``None``. A time-of-arrival, not an acoustic magnitude.
+    """
+
+    image: ImageSource
+    receiver: Point3
+    path_length_m: float
+    toa_s: float | None
 
 
 def _reflect_point_across_line_2d(
@@ -324,3 +358,96 @@ def first_order_image_sources(
         )
 
     return images
+
+
+def first_order_path_lengths(
+    images: Sequence[ImageSource],
+    receiver: Point3,
+    *,
+    sound_speed_m_s: float | None = None,
+) -> list[ImagePath]:
+    """Compute receiver-relative first-order path lengths / TOAs (geometry only).
+
+    GEOMETRY ONLY — emits no RT60 / absorption / energy number (see module
+    docstring and :data:`POLYGON_ISM_GEOMETRY_NOTE`). Deterministic: preserves
+    the input image order.
+
+    By the image-source identity, the broken ``source -> surface -> receiver``
+    path length of a first-order reflection equals the straight-line distance
+    from the mirrored image position to the receiver. This function therefore
+    returns, for each image, ``path_length_m = ‖image.position − receiver‖`` and
+    (optionally) ``toa_s = path_length_m / sound_speed_m_s``.
+
+    Parameters
+    ----------
+    images:
+        The first-order :class:`ImageSource` sequence (e.g. the output of
+        :func:`first_order_image_sources`).
+    receiver:
+        Receiver position as a :class:`Point3` ``(x, y, z)`` in metres.
+    sound_speed_m_s:
+        When given, must be finite and strictly positive; the per-image
+        ``toa_s`` is then ``path_length_m / sound_speed_m_s`` (seconds). When
+        ``None`` (default) every ``toa_s`` is ``None``.
+
+    Returns
+    -------
+    list[ImagePath]
+        One :class:`ImagePath` per input image, in the same order, each carrying
+        the source image, the receiver, the broken-path length and the optional
+        TOA.
+
+    Raises
+    ------
+    ValueError
+        If any ``receiver`` coordinate is non-finite, or if
+        ``sound_speed_m_s`` is given but is non-finite or not strictly positive.
+    """
+    for attr, value in (
+        ("x", receiver.x),
+        ("y", receiver.y),
+        ("z", receiver.z),
+    ):
+        if not np.isfinite(value):
+            raise ValueError(
+                f"first_order_path_lengths: receiver.{attr} must be finite; "
+                f"got {value!r}"
+            )
+    if sound_speed_m_s is not None and (
+        not np.isfinite(sound_speed_m_s) or sound_speed_m_s <= 0.0
+    ):
+        raise ValueError(
+            "first_order_path_lengths: sound_speed_m_s must be a finite "
+            f"value > 0 when given; got {sound_speed_m_s!r}"
+        )
+
+    receiver_xyz = np.array(
+        [float(receiver.x), float(receiver.y), float(receiver.z)], dtype=float
+    )
+
+    paths: list[ImagePath] = []
+    for image in images:
+        image_xyz = np.array(
+            [
+                float(image.position.x),
+                float(image.position.y),
+                float(image.position.z),
+            ],
+            dtype=float,
+        )
+        path_length_m = float(np.linalg.norm(image_xyz - receiver_xyz))
+        toa_s = (
+            path_length_m / float(sound_speed_m_s)
+            if sound_speed_m_s is not None
+            else None
+        )
+        paths.append(
+            ImagePath(
+                image=image,
+                receiver=receiver,
+                path_length_m=path_length_m,
+                toa_s=toa_s,
+            )
+        )
+
+    return paths
