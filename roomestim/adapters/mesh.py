@@ -7,10 +7,12 @@ world space, and fed into the SAME up-axis-normalized floor/ceiling/wall
 extraction the other formats use (geometry meshes — Polycam/ARKit/generic;
 RoomPlan's parametric CapturedRoom schema is a richer follow-up).
 
-Geometry: convex hull of XY-projected vertices by default; an opt-in concave
-reconstruction (``floor_reconstruction="concave"`` or the
-``ROOMESTIM_MESH_FLOOR_RECON`` env override) recovers non-shoebox footprints
-via :func:`roomestim.reconstruct.floor_polygon.floor_polygon_from_mesh`.
+Geometry: convex hull of XY-projected vertices by default; opt-in
+reconstructions (``floor_reconstruction="concave"``/``"occupancy"`` or the
+``ROOMESTIM_MESH_FLOOR_RECON`` env override) recover non-shoebox footprints via
+:func:`roomestim.reconstruct.floor_polygon.floor_polygon_from_mesh`, with
+``"occupancy"`` first rejecting sparse floaters via a density + connected-
+component grid (:func:`...floor_polygon_from_mesh_occupancy`).
 Material defaults per :data:`MaterialLabel`.
 """
 
@@ -38,7 +40,10 @@ from roomestim.model import (
     Surface,
     canonicalize_ccw,
 )
-from roomestim.reconstruct.floor_polygon import floor_polygon_from_mesh
+from roomestim.reconstruct.floor_polygon import (
+    floor_polygon_from_mesh,
+    floor_polygon_from_mesh_occupancy,
+)
 from roomestim.reconstruct.listener_area import default_listener_area
 from roomestim.reconstruct.walls import walls_from_floor_polygon
 
@@ -46,7 +51,7 @@ __all__ = ["MeshAdapter"]
 
 _SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply", ".usdz"})
 
-FloorReconstruction = Literal["convex", "concave"]
+FloorReconstruction = Literal["convex", "concave", "occupancy"]
 
 # Explicit up-axis override. ``"auto"`` (default) runs the gravity-axis
 # detector; ``"x"`` / ``"y"`` / ``"z"`` force a known axis when the caller has
@@ -192,11 +197,14 @@ class MeshAdapter:
     floor_reconstruction:
         ``"convex"`` (default) takes the convex hull of the floor-projected
         vertices — the legacy, byte-equal path. ``"concave"`` recovers a
-        non-shoebox footprint via :func:`floor_polygon_from_mesh`, falling
-        back to the convex hull (with a :class:`UserWarning`) when the
-        concave reconstruction degenerates. When left at its sentinel
-        default the ``ROOMESTIM_MESH_FLOOR_RECON`` environment variable
-        selects the mode; an explicit argument always wins over the env var.
+        non-shoebox footprint via :func:`floor_polygon_from_mesh`.
+        ``"occupancy"`` denoises first via a density + connected-component grid
+        (:func:`floor_polygon_from_mesh_occupancy`) that rejects sparse floaters
+        before delegating to the concave path. Both opt-in modes fall back to
+        the convex hull (with a :class:`UserWarning`) when reconstruction
+        degenerates. When left at its sentinel default the
+        ``ROOMESTIM_MESH_FLOOR_RECON`` environment variable selects the mode; an
+        explicit argument always wins over the env var.
     up_axis:
         Which mesh axis points "up" (against gravity). ``"auto"`` (default)
         detects the gravity axis from the mesh geometry — required for real
@@ -231,21 +239,22 @@ class MeshAdapter:
         explicit: FloorReconstruction | None,
     ) -> FloorReconstruction:
         """Resolve the floor-reconstruction mode (constructor arg > env > convex)."""
+        modes = get_args(FloorReconstruction)
         if explicit is not None:
-            if explicit not in ("convex", "concave"):
+            if explicit not in modes:
                 raise ValueError(
-                    f"MeshAdapter: floor_reconstruction must be 'convex' or "
-                    f"'concave', got {explicit!r}."
+                    f"MeshAdapter: floor_reconstruction must be 'convex', "
+                    f"'concave', or 'occupancy', got {explicit!r}."
                 )
             return explicit
         env_value = os.environ.get(_FLOOR_RECON_ENV)
         if env_value is None:
             return "convex"
         normalized = env_value.strip().lower()
-        if normalized not in ("convex", "concave"):
+        if normalized not in modes:
             raise ValueError(
                 f"MeshAdapter: {_FLOOR_RECON_ENV}={env_value!r} is invalid; "
-                f"expected 'convex' or 'concave'."
+                f"expected 'convex', 'concave', or 'occupancy'."
             )
         return cast(FloorReconstruction, normalized)
 
@@ -899,14 +908,22 @@ class MeshAdapter:
 
         # Reconstruct the floor footprint. ``convex`` (default) takes the
         # convex hull of the floor-projected vertices — the byte-equal legacy
-        # path. ``concave`` recovers re-entrant corners (non-shoebox rooms) and
-        # falls back to convex on degeneracy.
-        if self._floor_reconstruction == "concave":
+        # path. ``concave`` recovers re-entrant corners (non-shoebox rooms);
+        # ``occupancy`` adds a density + connected-component denoiser in front
+        # of the concave path (rejects sparse floaters). Both opt-in modes fall
+        # back to convex on degeneracy with a UserWarning.
+        recon = self._floor_reconstruction
+        if recon in ("concave", "occupancy"):
+            extractor = (
+                floor_polygon_from_mesh
+                if recon == "concave"
+                else floor_polygon_from_mesh_occupancy
+            )
             try:
-                floor_polygon_2d = floor_polygon_from_mesh(vertices)
+                floor_polygon_2d = extractor(vertices)
             except ValueError as exc:
                 warnings.warn(
-                    f"MeshAdapter: concave floor reconstruction failed "
+                    f"MeshAdapter: {recon} floor reconstruction failed "
                     f"({exc}); falling back to convex hull.",
                     UserWarning,
                     stacklevel=2,

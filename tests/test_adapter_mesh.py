@@ -177,6 +177,115 @@ def _write_l_prism_obj(path: Path) -> None:
     mesh.export(path)
 
 
+def _write_dense_l_prism_obj(path: Path) -> None:
+    """Write a DENSE L-prism mesh (subdivided) for the occupancy footprint mode.
+
+    The occupancy grid needs many vertices per 5 cm cell; the sparse 12-vertex
+    ``_write_l_prism_obj`` would put ~1 vertex per cell and fail ``min_count``.
+    Subdividing every edge below 4 cm packs the floor/walls densely enough for
+    the occupancy path to recover the true L footprint.
+    """
+    import numpy as np
+    import trimesh
+
+    foot = [(0.0, 0.0), (6.0, 0.0), (6.0, 3.0), (3.0, 3.0), (3.0, 6.0), (0.0, 6.0)]
+    h = 2.5
+    n = len(foot)
+    bottom = [(x, 0.0, z) for (x, z) in foot]
+    top = [(x, h, z) for (x, z) in foot]
+    verts = np.array(bottom + top, dtype=float)
+    faces: list[list[int]] = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, j + n])
+        faces.append([i, j + n, i + n])
+    for i in range(1, n - 1):
+        faces.append([0, i + 1, i])
+    for i in range(1, n - 1):
+        faces.append([n, n + i, n + i + 1])
+    dense_v, dense_f = trimesh.remesh.subdivide_to_size(
+        verts, np.array(faces), max_edge=0.04
+    )
+    mesh = trimesh.Trimesh(vertices=dense_v, faces=dense_f, process=False)
+    mesh.export(path)
+
+
+def test_mesh_adapter_occupancy_mode_constructor(tmp_path: Path) -> None:
+    """Phase B: occupancy mode (constructor) round-trips a dense L-mesh with a notch."""
+    obj_path = tmp_path / "dense_l.obj"
+    _write_dense_l_prism_obj(obj_path)
+
+    room = MeshAdapter(floor_reconstruction="occupancy").parse(obj_path)
+
+    assert isinstance(room, RoomModel)
+    assert room.provenance == "measured"
+    # Occupancy keeps the re-entrant corner → more than 4 floor vertices.
+    assert len(room.floor_polygon) > 4
+    walls = [s for s in room.surfaces if s.kind == "wall"]
+    assert len(walls) == len(room.floor_polygon), "one wall per floor edge"
+    # Recovers the true L area (27 m²), not the convex bounding hull.
+    area = float(ShapelyPolygon([(p.x, p.z) for p in room.floor_polygon]).area)
+    assert area == pytest.approx(27.0, rel=0.10)
+
+
+def test_mesh_adapter_occupancy_mode_env_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase B: ``ROOMESTIM_MESH_FLOOR_RECON=occupancy`` opts into occupancy mode."""
+    obj_path = tmp_path / "dense_l.obj"
+    _write_dense_l_prism_obj(obj_path)
+
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "occupancy")
+    room = MeshAdapter().parse(obj_path)
+    assert len(room.floor_polygon) > 4
+
+
+def test_mesh_adapter_occupancy_explicit_arg_overrides_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Precedence: ctor convex wins over env=occupancy (uses the sparse L-prism)."""
+    obj_path = tmp_path / "l_room.obj"
+    _write_l_prism_obj(obj_path)
+
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "occupancy")
+    room = MeshAdapter(floor_reconstruction="convex").parse(obj_path)
+    # Convex erases the L's re-entrant corner → a 5-vertex pentagon hull.
+    assert len(room.floor_polygon) == 5
+
+
+def test_mesh_adapter_occupancy_degeneracy_falls_back_to_convex(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase B: occupancy degeneracy falls back to convex with a UserWarning."""
+    import roomestim.adapters.mesh as mesh_mod
+
+    def _boom(_vertices: object) -> object:
+        raise ValueError("synthetic occupancy degeneracy")
+
+    monkeypatch.setattr(mesh_mod, "floor_polygon_from_mesh_occupancy", _boom)
+
+    with pytest.warns(UserWarning, match="falling back to convex"):
+        room = MeshAdapter(floor_reconstruction="occupancy").parse(
+            FIXTURE_DIR / "lab_room.obj"
+        )
+    assert isinstance(room, RoomModel)
+    # Fallback yields the convex shoebox floor (4 vertices).
+    assert len(room.floor_polygon) == 4
+
+
+def test_mesh_adapter_occupancy_env_value_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Negative-of-negative: ``occupancy`` is a now-VALID env value (no ValueError).
+
+    Contrast ``test_mesh_adapter_invalid_env_value_raises`` (``bogus`` raises);
+    construction alone exercises the resolver, so no dense parse is needed.
+    """
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "occupancy")
+    adapter = MeshAdapter()
+    assert adapter._floor_reconstruction == "occupancy"
+
+
 def test_mesh_adapter_default_is_convex_byte_equal() -> None:
     """B2(a): the default adapter still takes the convex hull (no regression).
 

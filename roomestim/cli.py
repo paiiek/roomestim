@@ -76,12 +76,15 @@ def _add_floor_reconstruction_arg(p: argparse.ArgumentParser) -> None:
     """
     p.add_argument(
         "--floor-reconstruction",
-        choices=["convex", "concave"],
+        choices=["convex", "concave", "occupancy"],
         default=None,
-        help="Mesh footprint extraction: 'convex' (safe over-estimate) or "
+        help="Mesh footprint extraction: 'convex' (safe over-estimate), "
         "'concave' (recovers re-entrant corners; UNVALIDATED accuracy — no "
-        "footprint ground truth, ADR 0042). Default: convex; honors "
-        "ROOMESTIM_MESH_FLOOR_RECON env var when unset.",
+        "footprint ground truth, ADR 0042), or 'occupancy' (density + "
+        "connected-component footprint; rejects sparse floaters in noisy RGB-D "
+        "reconstructions — robustness lever, n=1 Redwood evidence, NOT an "
+        "accuracy guarantee). Default: convex; honors ROOMESTIM_MESH_FLOOR_RECON "
+        "env var when unset.",
     )
 
 
@@ -399,11 +402,11 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
     if backend == "roomplan":
         from roomestim.adapters.roomplan import RoomPlanAdapter
 
-        if floor_reconstruction == "concave":
+        if floor_reconstruction in ("concave", "occupancy"):
             print(
-                f"NOTE: --floor-reconstruction concave is ignored for "
-                f"--backend {backend} (mesh-only; the RoomPlan footprint comes "
-                f"from the capture sidecar polygon, not mesh extraction).",
+                f"NOTE: --floor-reconstruction {floor_reconstruction} is ignored "
+                f"for --backend {backend} (mesh-only; the RoomPlan footprint "
+                f"comes from the capture sidecar polygon, not mesh extraction).",
                 file=sys.stderr,
             )
         return RoomPlanAdapter()
@@ -416,17 +419,25 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
                 "UNVALIDATED (no footprint ground truth, ADR 0042).",
                 file=sys.stderr,
             )
+        elif floor_reconstruction == "occupancy":
+            print(
+                "NOTE: occupancy footprint is a ROBUSTNESS lever (density + "
+                "connectivity rejects floaters); accuracy is UNVALIDATED as a "
+                "default — single-scene (n=1) Redwood evidence, NOT an accuracy "
+                "guarantee.",
+                file=sys.stderr,
+            )
         from roomestim.adapters.mesh import FloorReconstruction
 
         return PolycamAdapter(
             floor_reconstruction=cast("FloorReconstruction | None", floor_reconstruction)
         )
     if backend == "image":
-        if floor_reconstruction == "concave":
+        if floor_reconstruction in ("concave", "occupancy"):
             print(
-                f"NOTE: --floor-reconstruction concave is ignored for "
-                f"--backend {backend} (mesh-only; the image backend is its own "
-                f"single-panorama tier, not mesh extraction).",
+                f"NOTE: --floor-reconstruction {floor_reconstruction} is ignored "
+                f"for --backend {backend} (mesh-only; the image backend is its "
+                f"own single-panorama tier, not mesh extraction).",
                 file=sys.stderr,
             )
         # HARD GATE (ADR 0045): experimental rough-estimate tier. Fires BEFORE

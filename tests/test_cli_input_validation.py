@@ -277,6 +277,83 @@ def test_cli_concave_structural_notice_for_mesh_backend(
     assert "UNVALIDATED" in captured.err
 
 
+def _write_dense_l_prism_obj(path: Path) -> None:
+    """Dense (subdivided) L-prism for the occupancy footprint mode.
+
+    The sparse 12-vertex L-prism puts ~1 vertex per 5 cm occupancy cell and
+    would fail ``min_count``; subdividing below 4 cm packs it densely enough for
+    the occupancy path to recover the L footprint.
+    """
+    import numpy as np
+    import trimesh
+
+    foot = [(0.0, 0.0), (6.0, 0.0), (6.0, 3.0), (3.0, 3.0), (3.0, 6.0), (0.0, 6.0)]
+    h = 2.5
+    n = len(foot)
+    bottom = [(x, 0.0, z) for (x, z) in foot]
+    top = [(x, h, z) for (x, z) in foot]
+    verts = np.array(bottom + top, dtype=float)
+    faces: list[list[int]] = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, j + n])
+        faces.append([i, j + n, i + n])
+    for i in range(1, n - 1):
+        faces.append([0, i + 1, i])
+    for i in range(1, n - 1):
+        faces.append([n, n + i, n + i + 1])
+    dense_v, dense_f = trimesh.remesh.subdivide_to_size(
+        verts, np.array(faces), max_edge=0.04
+    )
+    trimesh.Trimesh(vertices=dense_v, faces=dense_f, process=False).export(path)
+
+
+def test_cli_floor_reconstruction_occupancy_ingests_mesh(tmp_path: Path) -> None:
+    """`--floor-reconstruction occupancy` on a mesh backend recovers the notch."""
+    obj_path = tmp_path / "dense_l.obj"
+    _write_dense_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "occupancy"]
+    )
+    assert rc == 0
+    room = read_room_yaml(tmp_path / "room.yaml")
+    # Occupancy keeps the re-entrant corner → >=6 vertices (an L has 6 corners).
+    assert len(room.floor_polygon) >= 6
+
+
+def test_cli_occupancy_notice_for_mesh_backend(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Occupancy on a mesh backend emits the ROBUSTNESS / n=1 / NOT-guarantee NOTE."""
+    obj_path = tmp_path / "dense_l.obj"
+    _write_dense_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "occupancy"]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "ROBUSTNESS lever" in captured.err
+    assert "UNVALIDATED" in captured.err
+    assert "n=1" in captured.err
+
+
+def test_cli_occupancy_notice_ignored_for_non_mesh_backend(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Occupancy with a non-mesh backend (roomplan) emits an honest 'ignored' NOTE."""
+    rc = main(
+        ["ingest", "--backend", "roomplan", "--input", str(_FIXTURE_JSON),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "occupancy"]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "occupancy is ignored for --backend roomplan" in captured.err
+
+
 def test_cli_env_var_honored_when_flag_unset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
