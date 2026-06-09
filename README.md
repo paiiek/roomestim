@@ -293,6 +293,18 @@ cascade 의 Eyring fallback 항목을 polygon ISM 으로 승격하는 것이 rev
 > indicative 수준입니다. 단일 진실원천 disclosure 문자열은
 > `roomestim/reconstruct/_disclosure.py` 의 `RT60_DISCLOSURE` 이며 export
 > `.acoustics.json` sidecar 의 `disclaimer` 필드로도 동봉됩니다.
+>
+> **위 ~±1.4 s 는 ACE mixed-material 의 *중앙값* 규모이지 worst case 가 아닙니다.**
+> 독립 GT(**U-Rochester RIR** dataset, figshare **48711175**, **CC-BY 4.0**, 14개 방
+> 측정 RT60; raw WAV 은 repo 에 미포함, 아래는 파생 측정값) 대비, 음향적으로 **처리된
+> (treated/absorptive)** 방에 **DEFAULT/unknown 재질**을 가정하면 예측기는 **체계적으로
+> 과대예측(systematic over-prediction)** 합니다 — 직사각형 n=7 기준 **median +1.35 s
+> (+326%), 최악 +4.6 s**(combined shoebox-feed 는 큰 hall 에서 최대 **+8.9 s**), 오차는
+> **한쪽(양수)으로 치우칩니다**. 즉 unknown 재질 하에서는 오차가 **RT60 규모 그 자체**
+> (median ≈ +1.3–2.9 s, 최대 ~+9 s)이며, ±1.4 s / ±20% 수치는 **재질 regime 이 대략
+> 알려졌을 때(ACE-유사 mixed 방)에만** 적용됩니다. (U-Rochester 는 treated-room 편향이
+> 강한 high-mismatch tail 표본이므로, 이는 "roomestim 이 항상 +326% 틀린다" 가 아니라
+> "흡음 처리된 방에 default/reverberant 재질을 가정했을 때" 의 오차 상한 성격입니다.)
 
 ### `MaterialLabel` enum — 10개 항목
 
@@ -328,12 +340,20 @@ cascade 의 Eyring fallback 항목을 polygon ISM 으로 승격하는 것이 rev
 |---|---|
 | 벽 위치 | ±10 cm |
 | 스피커 각도 | ±2–5° |
-| RT60 (default 예측기) | ±20% |
+| RT60 (default 예측기) | ±20% *(재질 regime 이 대략 알려졌을 때만; 아래 각주)* |
+
+\* **RT60 ±20% 단서:** 이 ±20% 는 재질 regime 이 대략 알려진 ACE-유사 mixed 방에서만
+성립합니다. **unknown/default 재질**에서는 오차가 한 자릿수 더 커서 — 흡음 처리된 방에
+default 재질을 가정하면 **+160…+826%**(U-Rochester, figshare 48711175 / CC-BY 4.0,
+median +329%) — 오차가 **RT60 규모 그 자체**(median +1.3–2.9 s, 최대 ~+9 s)이며
+**과대예측으로 편향**됩니다. 자세한 내용은 위 RT60 정직 고지 블록 참조.
 
 캡처 노이즈가 dominant 한 오차 원인이며, sub-cm 정밀도는 명시적인 reverse goal입니다.
 이 정밀도 목표를 위반하면 lab A11 / ACE A11 게이트가 실패합니다.
 
-**독립 GT 검증 현황 (Phase 0b, 2026-06-07).** 위 ±10 cm 는 설계 **목표**입니다. 독립 GT(ARKitScenes **Faro 레이저 스캔**, roomestim 로직과 무관한 별도 센서) 대비 실측 검증은 현재 **천장 높이**만 커버합니다: 기존 full-extent(`y_max−y_min`) 추출이 실 ARKit 스캔에서 천장을 **+0.27~1.34 m 과대평가**(5-scene 0/5 가 ±10 cm 이내)하던 P0 를 robust floor/ceiling 평면 추출로 수정했고(scene 42444946 = **3.02 m vs Faro GT 3.03 m, ~1 cm**), 이로써 **천장 높이는 ±10 cm 가 실증**되었습니다. **벽 위치/footprint ±10 cm 는 독립 GT 로 미검증 상태로 남습니다 — 이번에 검증을 *시도*했고 그 결과 검증이 현 데이터로는 ill-posed 임을 확인했습니다.** Faro 레이저 GT 는 단일 방이 아니라 **건물 한 층 전체(≈72×102 m, ~7000 m², 벽 길이 ~856 m, 수직 ~24.6 m 의 multi-floor)**의 스캔이고 ARKitScenes 는 ARKit↔레이저 정합 변환을 제공하지 않으므로(`_pose.txt` 는 레이저 스캔들 사이 정합만 — `raw/README.md`), 단일 방(둘레 ~31 m, 벽 길이의 ~3.6%)의 footprint 를 비교하려면 방을 레이저 venue 좌표계로 **registration** 해야 합니다. **천장 높이는 방을 venue 내에서 위치시키지 않아도 검증됩니다** — 그것은 floor↔ceiling 분리라는 *수평위치-불변 scalar* 라 floor+ceiling 평면을 담은 임의의 국소 sub-scan 으로 복원되기 때문입니다(검증에 쓴 3.03 m GT 는 전체 multi-floor venue 가 아니라 방과 같은 층의 국소 영역에서 나온 값). 반면 **footprint 는 방을 수평으로 *localization* 해야 하며 이는 초기추정 없이는 ill-posed** 입니다: open3d **FPFH+RANSAC** 전역정합(2회)과 중력제약 **2D yaw-sweep FFT** 정합 3가지 방법 모두 신뢰 임계 미달(2D 피크 margin ≈1.00×, RANSAC fitness ~0.2)로 방을 확신 있게 배치하지 못했습니다 — 비슷한 직사각형 방이 다수인 대형 multi-room 공간에서 예상되는 결과입니다. 따라서 잘못된 정합으로 *허위* ±cm 수치를 만드는 대신 footprint 를 **미검증**으로 정직하게 둡니다. 종결 경로: (a) 방 단위로 크롭된 레이저 또는 알려진 ARKit↔레이저 대응/seed 확보, (b) 작은 단독 공간을 ARKit 으로 캡처한 레이저 scene, (c) 근사 위치 seed → ICP refine(단, seed 가 독립적으로 정당화돼야 cherry-pick 아님). 도구: `test/full_eval` 외부 spike 디렉터리의 `footprint_validate.py`·`footprint_register.py`·`footprint_register2d.py`. 또한 roomestim 의 **기본(convex-hull) footprint 경로**는 비-convex 방에서 구조적으로 과대추정되며(이 경우 정합 잔차에 센서오차와 혼재; opt-in `floor_reconstruction="concave"` 는 별도 존재), 종전 "lab A11 게이트" 의 GT 는 roomestim 로직 파생이라 tautological 이었음을 유의하십시오.
+**독립 GT 검증 현황 (Phase 0b, 2026-06-07).** 위 ±10 cm 는 설계 **목표**입니다. 독립 GT(ARKitScenes **Faro 레이저 스캔**, roomestim 로직과 무관한 별도 센서) 대비 실측 검증은 현재 **천장 높이**만 커버합니다: 기존 full-extent(`y_max−y_min`) 추출이 실 ARKit 스캔에서 천장을 **+0.27~1.34 m 과대평가**(5-scene 0/5 가 ±10 cm 이내)하던 P0 를 robust floor/ceiling 평면 추출로 수정했고(**Phase 0b 국소 sub-scan** 기준 scene 42444946 = **3.02 m vs Faro GT 3.03 m, ~1 cm** — 이 scene 은 전체-건물 레이저 GT 가 모호해 5-scene 헤드라인에서는 제외되고 국소 crop 으로만 매칭), 이로써 **천장 높이는 가장 깨끗한 단일-방 scene 들에서 few-cm 수준으로 검증**되었습니다. 다만 이는 **±10 cm 의 포괄적 실증이 아닙니다**: 신뢰할 만한 단일-방 레이저 GT 를 갖는 scene 은 **n=2–3 개로 작고**(2/3 가 ±10 cm 이내; 5-scene 헤드라인의 가장 깨끗한 2개 scene 42444966·42445021 가 각 ~1.0 cm·~3.6 cm), 표본에 남겨둔 한 scene(42445429)은 **~6 m multi-floor venue 에서 ~31.8 cm 오차**를 보입니다(레이저 GT 자체의 mezzanine/two-floor 혼입 불확실성 가능). **벽 위치/footprint ±10 cm 는 (아래 3DSES clean-laser extraction 결과를 제외하면) 실 캡처 파이프라인에 대해 독립 GT 로 미검증 상태로 남습니다 — Faro 로는 검증을 *시도*했고 그 결과 현 ARKit↔레이저 데이터로는 ill-posed 임을 확인했습니다.** Faro 레이저 GT 는 단일 방이 아니라 **건물 한 층 전체(≈72×102 m, ~7000 m², 벽 길이 ~856 m, 수직 ~24.6 m 의 multi-floor)**의 스캔이고 ARKitScenes 는 ARKit↔레이저 정합 변환을 제공하지 않으므로(`_pose.txt` 는 레이저 스캔들 사이 정합만 — `raw/README.md`), 단일 방(둘레 ~31 m, 벽 길이의 ~3.6%)의 footprint 를 비교하려면 방을 레이저 venue 좌표계로 **registration** 해야 합니다. **천장 높이는 방을 venue 내에서 위치시키지 않아도 검증됩니다** — 그것은 floor↔ceiling 분리라는 *수평위치-불변 scalar* 라 floor+ceiling 평면을 담은 임의의 국소 sub-scan 으로 복원되기 때문입니다(검증에 쓴 3.03 m GT 는 전체 multi-floor venue 가 아니라 방과 같은 층의 국소 영역에서 나온 값). 반면 **footprint 는 방을 수평으로 *localization* 해야 하며 이는 초기추정 없이는 ill-posed** 입니다: open3d **FPFH+RANSAC** 전역정합(2회)과 중력제약 **2D yaw-sweep FFT** 정합 3가지 방법 모두 신뢰 임계 미달(2D 피크 margin ≈1.00×, RANSAC fitness ~0.2)로 방을 확신 있게 배치하지 못했습니다 — 비슷한 직사각형 방이 다수인 대형 multi-room 공간에서 예상되는 결과입니다. 따라서 잘못된 정합으로 *허위* ±cm 수치를 만드는 대신 footprint 를 **미검증**으로 정직하게 둡니다. 종결 경로: (a) 방 단위로 크롭된 레이저 또는 알려진 ARKit↔레이저 대응/seed 확보, (b) 작은 단독 공간을 ARKit 으로 캡처한 레이저 scene, (c) 근사 위치 seed → ICP refine(단, seed 가 독립적으로 정당화돼야 cherry-pick 아님). 도구: `test/full_eval` 외부 spike 디렉터리의 `footprint_validate.py`·`footprint_register.py`·`footprint_register2d.py`. 또한 roomestim 의 **기본(convex-hull) footprint 경로**는 비-convex 방에서 구조적으로 과대추정되며(이 경우 정합 잔차에 센서오차와 혼재; opt-in `floor_reconstruction="concave"` 는 별도 존재), 종전 "lab A11 게이트" 의 GT 는 roomestim 로직 파생이라 tautological 이었음을 유의하십시오.
+
+**벽/footprint 의 첫 독립 GT 수치 (3DSES, registration-SOLVED clean-laser extraction — 파이프라인 정확도 아님).** ARKit↔레이저 정합이 ill-posed 였던 위 한계는 **3DSES**(Mérizette et al. 2024, Zenodo **13323342**, **CC-BY-SA 4.0**; raw 데이터는 repo 에 미포함, 아래 수치는 파생 측정값) 로 부분적으로 풀립니다 — 이 데이터셋은 CAD 모델로 **정합이 해결된**(scan↔GT 잔차 **1.3–1.9 cm**) GT 를 제공하므로, roomestim 의 추출 공식을 **깨끗한 TLS 포인트클라우드에 직접**(`MeshAdapter` 우회) 돌려 벽 위치를 측정할 수 있었습니다. axis-rectangular 방 **n=3**, 완벽 분할(tight crop) 기준: **벽 위치 median ~3.4 cm / max 5.0 cm (convex 기본; 일관되게 wall 바깥쪽으로 few-cm over-read), ~2.5 cm (occupancy)**, footprint 면적 **+1.6…+3.8% (convex), −2.2…+1.8% (occupancy)**. **결정적 프레이밍:** 이것은 **"깨끗한 레이저에 대한 추출(extraction-on-clean-laser) 정확도이지, 파이프라인 벽 정확도가 아닙니다."** 같은 추출 공식이라도 실제 RGB-D end-to-end 최악 사례에서는 **면적 +22% / 벽 +0.7…1.8 m**(Redwood) 로 **1–2 자릿수 더 느슨**합니다 — depth 노이즈·드리프트·불완전 캡처가 지배하기 때문입니다. 또한 **load-bearing 주의:** occupancy 모드는 **disconnected sparse floater** 는 제거하지만, doorway 등 **연결된 through-opening bleed 는 제거하지 못합니다**(3DSES 의 A 방 +34%→+23%, C 방 +202%→+172% loose-crop 에서 확인; largest-connected-component 가 문간으로 연결된 bleed 를 유지). 따라서 **실 캡처에서의 per-room footprint ≤15 cm 는 여전히 미검증**이며, clean-laser ≠ 현장(field) 정확도입니다.
 
 ---
 
