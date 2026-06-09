@@ -71,4 +71,18 @@ max dev 0.0; 3 LOW non-blocking). Gate GREEN: default 562p/7s (558+4, 0 regress)
 
 ## RESUME POINTER
 - 2026-06-09: cycle created. Baseline v0.33.0. Order = A (GT) → B (occupancy ⑥ code) → C (RT60 code).
-  NEXT ACTION: confirm baseline gate green, then run Phase A data hunt (scientist) → critic → doc-only.
+- **ALL 4 LEVERS DONE.** Each phase: full OMC (architect design → executor → code-review → independent gate).
+  - Phase A ✅ doc-only — footprint GT n 1→2; **first concave clean GT** (ICL-NUIM Living Room, CC-BY 3.0). Honest
+    finding: ALL footprint modes fail to carve even a mild +5.5% notch at default (occupancy min_count=3 = +8.6% = convex);
+    only hand-tuned min_count=5 → +0.5%. ⇒ occupancy = floater-rejection, NOT notch-recovery. Redwood Apartment/Lobby
+    convex n-widening BLOCKED by transient Drive quota (retry ≤24h, IDs cached in research note).
+  - Phase B ✅ `67f98b5` v0.34.0 — `floor_reconstruction="occupancy"` opt-in 3rd mode (density+connectivity floater-rejection;
+    convex default byte-equal). code-review APPROVE + LOW-1/2 applied. default 558p/7s.
+  - Phase C ✅ `4554e9a` v0.35.0 — polygon-ISM geometry path-length/TOA helper (RT60 byte-equal; predictor untouched).
+    code-review APPROVE (independent cross-check max dev 0.0). default 562p/7s. Option H (predictor numeric) = DEFER.
+- Final gate state at HEAD (v0.35.0): default 562p/7s, web 86p/3s, ruff/mypy clean, smoke 0.35.0. Goldens byte-equal.
+- **NEXT levers (durable backlog):** (a) retry Redwood Apartment/Lobby laser GT for convex n>1 (quota reset);
+  (b) auto-calibrate occupancy min_count OR connectivity-carve (Phase A showed concave/occupancy under-deliver on
+  re-entrant corners at all defaults — needs a deeper-notch concave GT); (c) Option H diffuse-cap predictor change
+  (separate review + regression guard, needs non-shoebox measured RT60 GT); (d) ⑦ ambisonics producer (engine-gated).
+- Push cycle to origin/main, then /oh-my-claudecode:cancel.
