@@ -161,6 +161,16 @@ def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
         metavar="DIR",
         help="Output directory (default: cwd).",
     )
+    p.add_argument(
+        "--check-angles",
+        action="store_true",
+        help=(
+            "Run the geometric layout-angle check (Atmos-style): print per-speaker "
+            "azimuth/elevation vs public Dolby height-speaker guidance and write a "
+            "layout.angles.json sidecar. Geometry only, NO acoustic claim. Does not "
+            "alter layout.yaml."
+        ),
+    )
 
 
 def _add_export_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -588,9 +598,43 @@ def _cmd_place(args: argparse.Namespace) -> int:
     out_path = out_dir / "layout.yaml"
     write_layout_yaml(result, out_path)
     print(f"wrote {out_path}")
+    if getattr(args, "check_angles", False):
+        _emit_layout_angle_check(result, room, out_dir)
     _maybe_print_estimated_notice(room)
     _maybe_print_low_ceiling_notice(room)
     return 0
+
+
+def _emit_layout_angle_check(
+    result: PlacementResult, room: RoomModel, out_dir: Path
+) -> None:
+    """Print the geometric layout-angle check + write the JSON sidecar.
+
+    Listener point = the room's listener-area centroid (honest default). This is
+    a geometry-only check; see ``LAYOUT_ANGLE_CHECK_NOTE``. It never mutates
+    ``result`` or ``layout.yaml``.
+    """
+    import json
+
+    from roomestim.model import Point3
+    from roomestim.place.standards import (
+        check_layout_angles,
+        format_report_lines,
+        report_to_dict,
+    )
+
+    centroid = room.listener_area.centroid
+    listener = Point3(
+        x=centroid.x, y=room.listener_area.height_m, z=centroid.z
+    )
+    report = check_layout_angles(result, listener=listener)
+    for line in format_report_lines(report):
+        print(line)
+    sidecar = out_dir / "layout.angles.json"
+    sidecar.write_text(
+        json.dumps(report_to_dict(report), indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"wrote {sidecar}")
 
 
 def _cmd_export(args: argparse.Namespace) -> int:

@@ -242,6 +242,22 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 (참고: 기본 알고리즘 선택은 이번 사이클에서 변경하지 않았습니다 — 기본값 변경은 동작 변경이므로 별도
 리뷰·사용자 승인이 필요한 보류 결정입니다.) Ambisonics 는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
 
+### `--check-angles` — 기하 레이아웃 각도 점검 (Atmos 스타일)
+
+`place` 서브커맨드에 `--check-angles` 를 붙이면, 완성된 배치의 각 스피커에 대해 청취자
+지점(기본값: `listener_area` centroid)에서 본 방위(azimuth)·고도(elevation)를 계산하고,
+고도를 **공개 Dolby 지침**(Dolby Atmos Home Theater Installation Guidelines — height 스피커
+30–55°, 이상값 45°)과 비교합니다. 출력은 사람이 읽는 per-speaker 라인 + `layout.angles.json`
+사이드카이며, **`layout.yaml` 등 기존 출력은 바꾸지 않습니다**(플래그가 없으면 동작 불변).
+
+이것은 **순수 기하 각도 준수 점검일 뿐, 음향 성능 주장이 아닙니다.** "pass" 는 마운트 각도가
+공개된 창(window) 안에 든다는 뜻이며, 음색·이미징 품질이나 방-인지를 뜻하지 않습니다 —
+고정-기하 VBAP/WFS 링도 이 점검을 통과할 수 있고, 그래도 방 기하와 무관합니다(위
+'방 기하 인지에 대한 정직 고지' 참조). CTA/CEDIA RP22 표준은 **NOT EVALUATED** 입니다
+(전문이 유료라 어떤 기준도 그에 대해 검증하지 않습니다). 밴드 구분(listener-level < 20°,
+height 20–60°, overhead > 60°)은 roomestim 의 기하 관례이며 Dolby 분류가 아닙니다.
+단일 진실원천은 `roomestim/place/standards.py` 의 `LAYOUT_ANGLE_CHECK_NOTE` 입니다.
+
 ### `n_speakers` — 스피커 개수
 
 - 권장값: **4 / 6 / 8 / 12 / 16**
