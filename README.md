@@ -135,17 +135,32 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 ---
 
-## 현재 상태 (2026-06-07)
+## 현재 상태 (2026-06-09)
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
-| **v0.27.0** | 2026-06-07 | (uncommitted) | 가구 음향 배선 (MINOR, additive) — **Phase 2(상용화)**: `ObjectKind` 에 음향관련 가구 `sofa`/`bed`/`table`/`storage` 추가. 가구는 column 과 동일한 **free-standing box**(`_objects_to_surfaces` 5-face 분해)로 RT60 흡음 예산에 반영되고, RoomPlan sidecar `_extract_objects` 가 해당 `CapturedRoomObject` 카테고리(sofa/couch·bed·table/desk·storage/cabinet/shelf/wardrobe/refrigerator)를 매핑(chair·toilet 등은 의도 제외). 단일 진실원천 `FREESTANDING_OBJECT_KINDS`/`WALL_ATTACHED_OBJECT_KINDS`(model.py) 를 predictor·gltf·usd·room.yaml reader·schema 가 공유. 재질=**대표 추정**(soft→`MISC_SOFT` 0.40, hard wood→`WOOD_FLOOR` 0.10), bbox-solid 가정의 정직한 ESTIMATE(`ace_challenge` furniture-budget 와 동일 철학). **기존 픽스처 RT60 byte-equal**(현재 어떤 adapter 도 가구 object 미방출 → 순수 additive). `proto/room_schema.v0_2.draft.json` 가구 enum+oneOf 브랜치 확장(schema-validated write↔read 라운드트립 핀). default 396p/3s·web 86p/3s·ruff/mypy EXIT0. (D95 / Phase 2). |
-| **v0.26.1** | 2026-06-07 | (uncommitted) | measured 경로 P0 정확성 수정 — robust 천장 평면 추출 (PATCH, 정확성 수정·정확도 개선 아님) — 종전 full-extent(`y_max−y_min`) 천장 추출이 실 ARKit 스캔에서 floor-아래/ceiling-위 outlier(가구·노이즈)를 잡아 천장을 **+0.27~1.34 m 과대평가**(5-scene 0/5 ±10 cm 이내)하던 P0 를, Y-축 밀도 히스토그램의 floor/ceiling **평면** 추출(`_robust_floor_ceiling_y`)로 수정 — 독립 **Faro 레이저 GT** 대비 scene 42444946 **3.02 m vs 3.03 m (~1 cm)** 실증. README ±10 cm "독립 GT 검증 현황" 정직 고지 추가(천장만 실증; 벽/footprint 는 미검증), lab 회귀 assertion 강화(≥0.10 m outlier-rejection margin). (D94 / [ADR 0027](docs/adr/0027-mesh-format-generalisation.md) §Status-update-2026-06-07 (v0.26.1)). |
-| **v0.26.0** | 2026-06-07 | (uncommitted) | .usdz mesh ingest + RT60 정직 고지 (MINOR, additive) — **Phase 1**: `.usdz`(USDZ) 지오메트리 ingest 를 `MeshAdapter` 에 추가(`[usd]` extra=usd-core; `pxr` 경유) — **default-prim 스코프** instance-proxy 순회(concrete `def`-prototype 이중계수 방지·round-3 HIGH), `metersPerUnit`→m 스케일(cm-unit USDZ 정합·round-2 HIGH), `upAxis` 힌트 교차검증, 천장 타당성 절대상한(`ROOMESTIM_MAX_CEILING_M`, 기본 20 m); v0.25.3 up-축(gravity) 정규화 재사용. **Phase 0c**: RT60 honesty labeling — 단일 진실원천 `_disclosure.RT60_DISCLOSURE`/`RT60_MODEL_NAME`, `RT60Prediction.disclosure` property, 음향 사이드카(usd/gltf)에 additive `disclaimer`/`acoustics_model`/`materials_status` 필드(**수치 불변**), README RT60 "정직 고지(모델 추정, 측정 아님 / guidance)" 블록. (D92 [0c] / D93 [Phase 1] / [ADR 0027](docs/adr/0027-mesh-format-generalisation.md) §Status-update-2026-06-07 (v0.26.0)). |
-| **v0.24.0** | 2026-06-02 | (uncommitted) | 비-shoebox floor 재구성 — opt-in concave-hull footprint (MINOR, additive core feature) — 죽은 `floor_polygon_from_mesh` stub 을 `shapely.concave_hull`(신규 의존 0; `ratio=0.4`/`simplify=0.05`)로 구현; `MeshAdapter(floor_reconstruction="convex"\|"concave")` 생성자 인자 + `ROOMESTIM_MESH_FLOOR_RECON` env(precedence arg>env>convex). default convex 는 이전 동작과 **byte-equal**(회귀 핀), concave 는 degeneracy 시 convex+UserWarning fallback. **정직성(ICL-NUIM n=1 검증)**: concave/occupancy 모드는 shipped default(ratio=0.4 / min\_count=3)에서 **re-entrant 코너(notch)를 회복하지 못함** — convex +10.1%, concave +8.8%, occupancy +8.6% (GT +5.5% concavity 대비 모두 과대); notch 회복은 비-default·비-자동보정 knife-edge 임계값(min\_count=5)에서만 관측됨(+0.5%). concave/occupancy 는 convex 대비 **볼록 과대읽기를 소폭 감소**시키는 효과가 있으나 re-entrant 코너 보존을 보장하지 않음; CLI/web user-facing default 불변. (D82 / [ADR 0042](docs/adr/0042-live-mesh-corner-extraction.md) §Status-update-v0.24.0; OQ-13e 부분진척, 실측-메시 ≤10 cm 검증은 SoundCam access 대기로 OPEN 유지). |
-| **v0.23.1** | 2026-06-01 | (uncommitted) | 바이노럴 렌더러 HRTF 좌/우 채널 스왑 수정 PATCH (web-tier correctness) — 렌더러가 pipeline 관례 azimuth(RIGHT=+az)를 SOFA 관례(LEFT=+az)로 변환 없이 `nearest_hrir` 에 넘겨 모든 측방 성분이 L↔R 거울반전되던 결함. 단일권위 `roomestim/coords.py:pipeline_to_ambix`(az→−az) 경유로 수정, 두 렌더 경로(`render_binaural_demo` / `synthesize_brir`) 동일 적용; diffuse late tail 무영향 (D80). dataset-grounded ILD 회귀테스트 2종 추가. core 무변경(회귀 0). |
-| **v0.23.0** | 2026-05-31 | (uncommitted) | RIR auralization Phase A (MINOR, additive, web-tier 한정·신규 패키지 0) — image-source 직접 조립 early per-band mono-RIR + filtered-noise late tail + 2-채널 convolvable BRIR (D79 / [ADR 0044](docs/adr/0044-rir-auralization-design.md) §Status-update-v0.23.0; OQ-48 CLOSED; OQ-47/49/51 status-update). `roomestim_web/rir.py` + `roomestim_web/late_reverb.py` + `binaural.synthesize_brir`; RT60 단일 진실원천 `predict_rt60_default_per_band` 6-band 유지; per-band energy-continuity splice. core 무변경(회귀 0). |
-| **v0.22.2** | 2026-05-31 | (uncommitted) | 감사 발견 확정결함 PATCH — ISM 기본 predictor 저흡음 적응적 max_order(Eyring 하한 불변식, D74 / [ADR 0030](docs/adr/0030-predictor-default-switch-status-updates.md) §Status-update-v0.22.2); 비-shoebox binaural DOA 축 스왑 + extrusion 렌더러 경로 활성화(D75); CLI ValidationError/YAMLError 포착(reader 가 ValueError 로 wrap, D76); `run` engine-validation 토글(D77); 자기교차 floor 거부(D78). MINOR-2(OQ-30)는 비수정. |
+| **v0.35.0** | 2026-06-09 | `4554e9a` | polygon-ISM 기하 path-length/TOA 헬퍼 (MINOR, additive, geometry-only) — polygon image-source 의 기하 path-length / TOA 계산 헬퍼 추가; RT60·음향 수치는 미방출(geometry-only)이라 shoebox RT60 **byte-equal**. (Phase C ④ / [ADR 0040](docs/adr/0040-polygon-ism-design.md)). |
+| **v0.34.0** | 2026-06-09 | `67f98b5` | occupancy footprint 모드 (MINOR, additive, opt-in) — density+connectivity 기반 floater-rejection footprint 추출 모드 추가. **NOT default**·n=1 검증·notch-recovery 아님. (Phase B ⑥ / [ADR 0042](docs/adr/0042-live-mesh-corner-extraction.md)). |
+| **v0.33.0** | 2026-06-08 | `15e4b8a` | OQ-38 layout round-trip 라벨 보존 (MINOR) — `target_algorithm` 라벨을 `x_target_algorithm` 으로 보존, AMBISONICS/DBAP silent-collapse 수정. 라벨만 보존하고 producer 는 DEFER. (Phase 4 ⑦ PR1; OQ-38 부분해소). |
+| **v0.32.0** | 2026-06-08 | `9a7d6c4` | concave footprint CLI 노출 (MINOR) — `--floor-reconstruction` 플래그로 concave 모드를 CLI 로 노출 + scan-jitter 강건성 테스트. reachability+robustness 이며 **정확도 주장 아님**. (Phase 2 ⑥ / [ADR 0042](docs/adr/0042-live-mesh-corner-extraction.md)). |
+| **v0.31.1** | 2026-06-08 | `1b7fbca` | RT60 disclosure 정직성 보정 (PATCH) — disclosure 를 **BIDIRECTIONAL** 로 보정 + 극단방 ~2.3 s 명시. 수치·디폴트 **무변경**. (Phase 1 Option E). |
+| **v0.31.0** | 2026-06-08 | `c6eb9fd` | polygon-ISM geometry-only 이미지소스 enumerator (MINOR, additive) — 신규 core `polygon_image_source.py`(numpy/shapely-only, **pyroomacoustics import 0**) `first_order_image_sources`: 벽 supporting-plane 미러링 + shapely on-segment 가시성 플래그, **POSITION 만 방출**. predictor 무변경(shoebox RT60 **byte-equal**). 단일 진실원천 `POLYGON_ISM_GEOMETRY_NOTE`. RT60 cascade 는 non-shoebox 측정 GT 부재로 DEFER. default 433p/3s. (D100 / candidate C / [ADR 0040](docs/adr/0040-polygon-ism-design.md)). |
+| **v0.30.2** | 2026-06-08 | `ed9fae2` | candidate B 독립 code-review 후속 (PATCH, 2 LOW 반영) — 다중-floor 가드(`3a02d7e`)의 독립 리뷰 반영: `roomplan.py` UserWarning `stacklevel` 2→3(사용자 호출지점 귀속), public `parse()` 경로 parity 테스트 추가. 순수 additive·기하 수치 무변경. (D99 후속). |
+| **v0.30.1** | 2026-06-08 | `3a02d7e` | RoomPlan 다중-floor 무손실 가드 (PATCH, robustness/honesty) — `floor_entries[1:]` 를 조용히 버리던 silent data-loss 를 단일 진실원천 `ROOMPLAN_MULTI_FLOOR_NOTE` UserWarning 으로 표면화(primary floor 만 표현; 나머지는 merge/export 안 함). `len==1` 경로 **byte-equal**. 진짜 multi-room RoomCollection 은 [ADR 0047](docs/adr/0047-multi-room-deferred.md) DEFER. default 418p/3s. (D99 / candidate B). |
+| **v0.30.0** | 2026-06-08 | `d3457c5` | spatial_engine 절대경로 디커플 + PyPI-ready 패키징 (MINOR, additive) — 머신-특정 하드코딩 기본경로(`layout_yaml.py`) 제거 → `SPATIAL_ENGINE_REPO_DIR` env 만 해석, 미설정 시 descriptive `FileNotFoundError` fail-loud. env/CLI 가 실 schema 를 가리킬 때 layout.yaml **byte-equal**. 격리 venv wheel build/install/torch-free import 검증(PyPI-*ready*; publish 는 [ADR 0007](docs/adr/0007-distribution-model.md) deferred). default 416p/3s. (D98 / candidate A). |
+| **v0.29.0** | 2026-06-08 | `5c93da2` | image cam_h scale-honesty surfacing (MINOR, additive, Phase 3) — 단일 파노가 원리적으로 scale-ambiguous(`r=cam_h/tan(−v_floor)`)임을 표면화: torch-free `_cam_h_sensitivity` 헬퍼 + anchor 미공급 시 ASSUMED UserWarning(단일 진실원천 `IMAGE_CAM_H_SCALE_NOTE`). user/anchor silent override 0. floor-plane cross-estimate 는 scale-INVARIANT 증명 후 DEFER. **정확도 개선 아님**(rough tier 불변)·검증갭(244 GT 100% cuboid). default 414p/3s. (D97 / candidate 6 / [ADR 0045](docs/adr/0045-image-to-geometry-capture-backend.md)). |
+| **v0.28.0** | 2026-06-07 | `d8c5ea1` | 천장 높이 confidence flag — measured-path under-report 가드 (MINOR, additive, Phase 2) — 천장 plane 이 floor footprint 를 덮는 비율(`ceiling_coverage`, 25 cm 그리드 ±10 cm 밴드) 정직 기하측정 + 0.50 보수 임계 휴리스틱(`ceiling_confidence` high/low/unknown, **NOT calibrated**)으로 tabletop/mezzanine/under-sampled 천장 오선택을 경고. `ceiling_height_m`·RT60 **무변경**, 합성 픽스처만 검증. 단일 진실원천 `CEILING_CONFIDENCE_HEURISTIC_NOTE`. default 408p/3s. (D96 / Phase 2). |
+| **v0.27.0** | 2026-06-07 | `90d050a` | 가구 음향 배선 (MINOR, additive) — **Phase 2(상용화)**: `ObjectKind` 에 음향관련 가구 `sofa`/`bed`/`table`/`storage` 추가. 가구는 column 과 동일한 **free-standing box**(`_objects_to_surfaces` 5-face 분해)로 RT60 흡음 예산에 반영되고, RoomPlan sidecar `_extract_objects` 가 해당 `CapturedRoomObject` 카테고리(sofa/couch·bed·table/desk·storage/cabinet/shelf/wardrobe/refrigerator)를 매핑(chair·toilet 등은 의도 제외). 단일 진실원천 `FREESTANDING_OBJECT_KINDS`/`WALL_ATTACHED_OBJECT_KINDS`(model.py) 를 predictor·gltf·usd·room.yaml reader·schema 가 공유. 재질=**대표 추정**(soft→`MISC_SOFT` 0.40, hard wood→`WOOD_FLOOR` 0.10), bbox-solid 가정의 정직한 ESTIMATE(`ace_challenge` furniture-budget 와 동일 철학). **기존 픽스처 RT60 byte-equal**(현재 어떤 adapter 도 가구 object 미방출 → 순수 additive). `proto/room_schema.v0_2.draft.json` 가구 enum+oneOf 브랜치 확장(schema-validated write↔read 라운드트립 핀). default 396p/3s·web 86p/3s·ruff/mypy EXIT0. (D95 / Phase 2). |
+| **v0.26.1** | 2026-06-07 | `29b9edf` | measured 경로 P0 정확성 수정 — robust 천장 평면 추출 (PATCH, 정확성 수정·정확도 개선 아님) — 종전 full-extent(`y_max−y_min`) 천장 추출이 실 ARKit 스캔에서 floor-아래/ceiling-위 outlier(가구·노이즈)를 잡아 천장을 **+0.27~1.34 m 과대평가**(5-scene 0/5 ±10 cm 이내)하던 P0 를, Y-축 밀도 히스토그램의 floor/ceiling **평면** 추출(`_robust_floor_ceiling_y`)로 수정 — 독립 **Faro 레이저 GT** 대비 scene 42444946 **3.02 m vs 3.03 m (~1 cm)** 실증. README ±10 cm "독립 GT 검증 현황" 정직 고지 추가(천장만 실증; 벽/footprint 는 미검증), lab 회귀 assertion 강화(≥0.10 m outlier-rejection margin). (D94 / [ADR 0027](docs/adr/0027-mesh-format-generalisation.md) §Status-update-2026-06-07 (v0.26.1)). |
+| **v0.26.0** | 2026-06-07 | `16759a3` | .usdz mesh ingest + RT60 정직 고지 (MINOR, additive) — **Phase 1**: `.usdz`(USDZ) 지오메트리 ingest 를 `MeshAdapter` 에 추가(`[usd]` extra=usd-core; `pxr` 경유) — **default-prim 스코프** instance-proxy 순회(concrete `def`-prototype 이중계수 방지·round-3 HIGH), `metersPerUnit`→m 스케일(cm-unit USDZ 정합·round-2 HIGH), `upAxis` 힌트 교차검증, 천장 타당성 절대상한(`ROOMESTIM_MAX_CEILING_M`, 기본 20 m); v0.25.3 up-축(gravity) 정규화 재사용. **Phase 0c**: RT60 honesty labeling — 단일 진실원천 `_disclosure.RT60_DISCLOSURE`/`RT60_MODEL_NAME`, `RT60Prediction.disclosure` property, 음향 사이드카(usd/gltf)에 additive `disclaimer`/`acoustics_model`/`materials_status` 필드(**수치 불변**), README RT60 "정직 고지(모델 추정, 측정 아님 / guidance)" 블록. (D92 [0c] / D93 [Phase 1] / [ADR 0027](docs/adr/0027-mesh-format-generalisation.md) §Status-update-2026-06-07 (v0.26.0)). |
+| **v0.25.3** | 2026-06-07 | `5064a8b` | MeshAdapter up-axis(gravity) 자동 정규화 — measured 경로 P0 정확성 수정 (PATCH) — 실 ARKit(Z-up) 스캔 천장 6.5–9.6 m→2.49–3.69 m, 모호 시 fail-loud. **정확성 수정(정확도 개선 아님)**. (D91 / Phase 0a / [ADR 0027](docs/adr/0027-mesh-format-generalisation.md)). |
+| **v0.25.2** | 2026-06-05 | `17c1264` | near-horizon 타당성 가드 + per-room 정직성 보정 (PATCH, image-backend cold-eval 후속) — 비현실 재구성(near-horizon blowup)을 조용히 내보내지 않고 명확히 거부 + README per-dim→per-room 현실 보정. **강건성·정직성 하드닝(정확도 개선 아님)**. (D89 / OQ-60). |
+| **v0.25.1** | 2026-06-05 | `376bfef` | provenance 를 layout.yaml 아티팩트 경계로 전파 + 실모델 golden 회귀 (PATCH) — rough-tier 마커가 휘발성 stderr→영속 layout 키로 전파, 실 HorizonNet 경로 golden 회귀 차단. **정직성·강건성 하드닝(정확도 개선 아님)**. (D87·D88). |
+| **v0.25.0** | 2026-06-04 | `6c9780f` | image→geometry 캡처 백엔드 출하 (MINOR, experimental rough-tier) — 단일-파노 사진→RoomModel rough-tier 백엔드. vendored HorizonNet(MIT) + `[vision]` extra(core torch-free) + provenance=reconstructed·material UNKNOWN. **install-grade 아님·정직 라벨**. (D86 / [ADR 0045](docs/adr/0045-image-to-geometry-capture-backend.md) / [ADR 0046](docs/adr/0046-room-provenance-schema.md)). |
+| **v0.24.0** | 2026-06-02 | `5d18c9c` | 비-shoebox floor 재구성 — opt-in concave-hull footprint (MINOR, additive core feature) — 죽은 `floor_polygon_from_mesh` stub 을 `shapely.concave_hull`(신규 의존 0; `ratio=0.4`/`simplify=0.05`)로 구현; `MeshAdapter(floor_reconstruction="convex"\|"concave")` 생성자 인자 + `ROOMESTIM_MESH_FLOOR_RECON` env(precedence arg>env>convex). default convex 는 이전 동작과 **byte-equal**(회귀 핀), concave 는 degeneracy 시 convex+UserWarning fallback. **정직성(ICL-NUIM n=1 검증)**: concave/occupancy 모드는 shipped default(ratio=0.4 / min\_count=3)에서 **re-entrant 코너(notch)를 회복하지 못함** — convex +10.1%, concave +8.8%, occupancy +8.6% (GT +5.5% concavity 대비 모두 과대); notch 회복은 비-default·비-자동보정 knife-edge 임계값(min\_count=5)에서만 관측됨(+0.5%). concave/occupancy 는 convex 대비 **볼록 과대읽기를 소폭 감소**시키는 효과가 있으나 re-entrant 코너 보존을 보장하지 않음; CLI/web user-facing default 불변. (D82 / [ADR 0042](docs/adr/0042-live-mesh-corner-extraction.md) §Status-update-v0.24.0; OQ-13e 부분진척, 실측-메시 ≤10 cm 검증은 SoundCam access 대기로 OPEN 유지). |
+| **v0.23.1** | 2026-06-01 | `4cb87e0` | 바이노럴 렌더러 HRTF 좌/우 채널 스왑 수정 PATCH (web-tier correctness) — 렌더러가 pipeline 관례 azimuth(RIGHT=+az)를 SOFA 관례(LEFT=+az)로 변환 없이 `nearest_hrir` 에 넘겨 모든 측방 성분이 L↔R 거울반전되던 결함. 단일권위 `roomestim/coords.py:pipeline_to_ambix`(az→−az) 경유로 수정, 두 렌더 경로(`render_binaural_demo` / `synthesize_brir`) 동일 적용; diffuse late tail 무영향 (D80). dataset-grounded ILD 회귀테스트 2종 추가. core 무변경(회귀 0). |
+| **v0.23.0** | 2026-05-31 | `fa7c48d` | RIR auralization Phase A (MINOR, additive, web-tier 한정·신규 패키지 0) — image-source 직접 조립 early per-band mono-RIR + filtered-noise late tail + 2-채널 convolvable BRIR (D79 / [ADR 0044](docs/adr/0044-rir-auralization-design.md) §Status-update-v0.23.0; OQ-48 CLOSED; OQ-47/49/51 status-update). `roomestim_web/rir.py` + `roomestim_web/late_reverb.py` + `binaural.synthesize_brir`; RT60 단일 진실원천 `predict_rt60_default_per_band` 6-band 유지; per-band energy-continuity splice. core 무변경(회귀 0). |
+| **v0.22.2** | 2026-05-31 | `2eae5eb` | 감사 발견 확정결함 PATCH — ISM 기본 predictor 저흡음 적응적 max_order(Eyring 하한 불변식, D74 / [ADR 0030](docs/adr/0030-predictor-default-switch-status-updates.md) §Status-update-v0.22.2); 비-shoebox binaural DOA 축 스왑 + extrusion 렌더러 경로 활성화(D75); CLI ValidationError/YAMLError 포착(reader 가 ValueError 로 wrap, D76); `run` engine-validation 토글(D77); 자기교차 floor 거부(D78). MINOR-2(OQ-30)는 비수정. |
 | **v0.22.1** | 2026-05-29 | `66d0f4b`* | doc-only PATCH — ADR 0030 §Status-update 블록을 companion 파일([`0030-...-status-updates.md`](docs/adr/0030-predictor-default-switch-status-updates.md))로 분리 (OQ-39 CLOSED; D73 / [ADR 0039](docs/adr/0039-adr-status-update-split-mechanism.md) NEW); README `__schema_version__` 마커 `0.1-draft`→`0.2-draft` 정직성 정정. (\*릴리즈 노트는 v0.22.0 커밋 위에 작성됨) |
 | v0.22.0 | 2026-05-29 | `66d0f4b` | web 공개배포 하드닝 — security audit closure (D71/D72 NEW; OQ-45 CLOSED; OQ-46 NEW; [ADR 0038](docs/adr/0038-input-resource-bounds.md) NEW) |
 | v0.21.0 | 2026-05-28 | `dfca44d` | edit/predict correctness — `wall_index` frame 단일화 + 음향 입력 검증 (D68/D69/D70 NEW; OQ-43/44 CLOSED; [ADR 0037](docs/adr/0037-wall-index-reference-frame.md)) |
@@ -193,14 +208,17 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 ### 출력
 
-- `room.yaml` — 10-entry `MaterialLabel` enum + per-band 흡음 계수
-- `layout.yaml` — `spatial_engine/proto/geometry_schema.json` 검증을 통과한 스피커 좌표
-- `setup_card.pdf` — 사용자가 인쇄해서 설치할 수 있는 안내 PDF (per-speaker 좌표 + 각도)
-- `binaural_demo.wav` — HUTUBS HRTF + pyroomacoustics ISM으로 합성한 30초 바이노럴 데모
-- **convolvable BRIR (auralization Phase A, v0.23.0)** — `roomestim_web.binaural.synthesize_brir` 가 geometry + 6-band 재질 + ISM 만으로 2-채널 임펄스 응답을 합성한다 (image-source 직접 조립 early + filtered-noise late tail + 2-HRIR decorrelation; RT60 단일 진실원천 = `predict_rt60_default_per_band`). diffuse tail 은 *plausible* 수준으로 기술하며 지각충실은 미검증(OQ-47). [ADR 0044](docs/adr/0044-rir-auralization-design.md)
-- `acoustic_report.json` — Sabine / Eyring / ISM RT60 + 옥타브 밴드별 결과
-- **3D 뷰어 (Plotly)** — 방 + 스피커 배치 인터랙티브 시각화
-- ZIP 아카이브 — 위 산출물 일괄 다운로드
+아래 **[core]** 는 CLI 코어(`roomestim`)가 생성하고, **[web]** 는 `[web]` extra(`roomestim_web`)에서만 생성됩니다.
+
+- **[core]** `room.yaml` — 10-entry `MaterialLabel` enum + per-band 흡음 계수
+- **[core]** `layout.yaml` — `spatial_engine/proto/geometry_schema.json` 검증을 통과한 스피커 좌표
+- **[core]** `.usdz` / `.gltf` mesh export — geometry 메시 + 음향 사이드카
+- **[web]** `setup_card.pdf` — 사용자가 인쇄해서 설치할 수 있는 안내 PDF (per-speaker 좌표 + 각도)
+- **[web]** `binaural_demo.wav` — HUTUBS HRTF + pyroomacoustics ISM으로 합성한 30초 바이노럴 데모
+- **[web]** **convolvable BRIR (auralization Phase A, v0.23.0)** — `roomestim_web.binaural.synthesize_brir` 가 geometry + 6-band 재질 + ISM 만으로 2-채널 임펄스 응답을 합성한다 (image-source 직접 조립 early + filtered-noise late tail + 2-HRIR decorrelation; RT60 단일 진실원천 = `predict_rt60_default_per_band`). diffuse tail 은 *plausible* 수준으로 기술하며 지각충실은 미검증(OQ-47). [ADR 0044](docs/adr/0044-rir-auralization-design.md)
+- **[web]** `acoustic_report.json` — Sabine / Eyring / ISM RT60 + 옥타브 밴드별 결과
+- **[web]** **3D 뷰어 (Plotly)** — 방 + 스피커 배치 인터랙티브 시각화
+- **[web]** ZIP 아카이브 — 위 산출물 일괄 다운로드
 
 ---
 
@@ -345,7 +363,8 @@ cascade 의 Eyring fallback 항목을 polygon ISM 으로 승격하는 것이 rev
 \* **RT60 ±20% 단서:** 이 ±20% 는 재질 regime 이 대략 알려진 ACE-유사 mixed 방에서만
 성립합니다. **unknown/default 재질**에서는 오차가 한 자릿수 더 커서 — 흡음 처리된 방에
 default 재질을 가정하면 **+160…+826%**(U-Rochester, figshare 48711175 / CC-BY 4.0,
-median +329%) — 오차가 **RT60 규모 그 자체**(median +1.3–2.9 s, 최대 ~+9 s)이며
+median +326% (직사각형 n=7); combined shoebox-feed n=10 은 +329%) — 오차가 **RT60 규모
+그 자체**(median +1.3–2.9 s, 최대 ~+9 s)이며
 **과대예측으로 편향**됩니다. 자세한 내용은 위 RT60 정직 고지 블록 참조.
 
 캡처 노이즈가 dominant 한 오차 원인이며, sub-cm 정밀도는 명시적인 reverse goal입니다.
@@ -434,23 +453,23 @@ canonical 테스트 환경은 miniforge 입니다: `/home/seung/miniforge3/bin/p
 
 | 레인 | 명령 | 비고 |
 |---|---|---|
-| Default | `pytest -m "not lab and not web and not e2e"` | 312 passed / 5 skipped (v0.24.0; +12 concave floor 재구성 회귀 D82) — Linux CI에서 항상 실행 |
-| Web | `pytest -m web` | 86 passed / 4 skipped (v0.24.0; core 변경이라 불변) — `[web]` extras 필요 |
+| Default | `pytest -q` | 562 passed / 7 skipped (v0.35.0; canonical default lane, miniforge) — Linux CI에서 항상 실행 |
+| Web | `pytest -q -m web` | 86 passed / 3 skipped (v0.35.0) — `[web]` extras 필요 |
 | Lab | `pytest -m lab` | A10/A11 — `tests/fixtures/lab_real.usdz` + ground-truth 필요 (human-gated) |
 | E2E | `pytest -m e2e` | ACE Challenge / SoundCam 외부 코퍼스 (env-var gated) |
 
 추가 도구:
 
 - `python scripts/lint_tense.py` — present-tense 정직성 leak 감사 ([ADR 0020](docs/adr/0020-ci-lint-tense-policy.md))
-- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.24.0 시점 38개 파일)
+- `mypy --strict roomestim/` — baseline clean (v0.13+ 강제; v0.35.0 시점 49개 파일)
 - `ruff check` — clean
 
 ### 전체 게이트 한 번에 (권장 GREEN 확인)
 
 ```bash
 PY=/home/seung/miniforge3/bin/python   # canonical env
-$PY -m pytest -m "not lab and not web and not e2e" -q   # default: 312 passed / 5 skipped
-$PY -m pytest -m web -q                                  # web:     86 passed / 4 skipped
+$PY -m pytest -q                                         # default: 562 passed / 7 skipped (v0.35.0)
+$PY -m pytest -q -m web                                  # web:     86 passed / 3 skipped (v0.35.0)
 ruff check                                               # clean
 $PY scripts/lint_tense.py                                # honesty-leak: clean (exit 0)
 ```
@@ -531,7 +550,7 @@ app.py                      # HF Spaces 진입점 (roomestim_web.app:build_demo 
 proto/                      # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked)
 tests/                      # pytest, fixtures, hypothesis property tests
 tests/fixtures/             # lab_room.usdz, ace_*/, soundcam_synthesized/, web/
-tests/web/                  # 웹 데모 테스트 (86 passed / 4 skip @ v0.24.0)
+tests/web/                  # 웹 데모 테스트 (86 passed / 3 skip @ v0.35.0)
 scripts/lint_tense.py       # honesty-leak lint (ADR 0020)
 docs/                       # architecture, room_yaml_spec, ADR 0001-0039, 주간 보고서
 docs/adr/                   # 37개 ADR 파일 (0001~0039 번호대 + 0030 status-update companion)
