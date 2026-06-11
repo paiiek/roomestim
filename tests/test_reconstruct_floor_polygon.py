@@ -14,6 +14,9 @@ from shapely.geometry import Polygon as ShapelyPolygon
 
 from roomestim.geom.polygon import is_simple_polygon
 from roomestim.reconstruct.floor_polygon import (
+    _AUTO_FLOATER_PHI_THRESHOLD,
+    auto_should_use_occupancy,
+    disconnected_floater_phi,
     floor_polygon_from_mesh,
     floor_polygon_from_mesh_occupancy,
 )
@@ -296,6 +299,159 @@ def test_occupancy_rejects_bad_params() -> None:
         floor_polygon_from_mesh_occupancy(cloud, min_count=0)
     with pytest.raises(ValueError, match="min_count"):
         floor_polygon_from_mesh_occupancy(cloud, min_count=float("nan"))  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# C1 — `auto` disconnected-floater signal (ADR 0048)
+#
+# Deterministic, RNG-free fixtures (pure np.meshgrid on pinned bounds/spacing).
+# The COMPUTED expected numbers below were reproduced live with miniforge python
+# against these exact arrays before pinning (planner derivation, NO FAKE NUMBERS):
+#   phi_clean = 1.0 (exact, single coarse component)
+#   phi_floater(cloud) = 1.3375
+#   convex-hull area clean = 20.0 m^2 ; floater cloud = 27.99 m^2 (+39.9%)
+#   occupancy(auto-fired) recovered = 19.0075 m^2 (-5.0%)  [planner table: 19.005]
+#   boundary floater @0.5 m: phi = 1.1125 (fires)
+# --------------------------------------------------------------------------- #
+
+
+def _clean_room_cloud() -> np.ndarray:
+    """Dense clean rectangle x in [0,4], z in [0,5] at 0.025 m spacing, y=0.
+
+    161 x 201 = 32 361 points. 0.025 m = 2 pts per 0.05 m cell per axis, so every
+    interior 0.05 cell holds 4 >= min_count (occupancy recovers it); at the
+    0.25 m detection grid it is one solid component (phi = 1.0 exactly).
+    True floor area = 20.0 m^2.
+    """
+    xr = np.arange(0.0, 4.0 + 1e-9, 0.025)
+    zr = np.arange(0.0, 5.0 + 1e-9, 0.025)
+    gx, gz = np.meshgrid(xr, zr, indexing="ij")
+    return np.column_stack([gx.ravel(), np.zeros(gx.size), gz.ravel()])
+
+
+def _floater_blob(x0: float, z0: float) -> np.ndarray:
+    """0.2 m x 0.2 m dense blob at 0.02 m spacing (11 x 11 = 121 points), y=0.
+
+    Dense enough (>= min_count=3 at the 0.05 m occupancy grid) to survive as its
+    own small connected component, disconnected (> 0.25 m gap) from the room.
+    """
+    fx = np.arange(x0, x0 + 0.2 + 1e-9, 0.02)
+    fz = np.arange(z0, z0 + 0.2 + 1e-9, 0.02)
+    fgx, fgz = np.meshgrid(fx, fz, indexing="ij")
+    return np.column_stack([fgx.ravel(), np.zeros(fgx.size), fgz.ravel()])
+
+
+def _l_room_cloud_dense() -> np.ndarray:
+    """Deterministic dense L-room (6x6 minus 3x3 notch) at 0.05 m spacing, y=0.
+
+    A connected non-rectangular footprint — the coarse-grid signal must read it
+    as a SINGLE component (phi = 1.0), locking the no-false-fire-on-non-rect /
+    bleed-proxy guarantee.
+    """
+    pts: list[tuple[float, float, float]] = []
+    xr = np.arange(0.0, 6.0 + 1e-9, 0.05)
+    zr = np.arange(0.0, 6.0 + 1e-9, 0.05)
+    for x in xr:
+        for z in zr:
+            if not (x > 3.0 + 1e-9 and z > 3.0 + 1e-9):
+                pts.append((float(x), 0.0, float(z)))
+    return np.array(pts, dtype=float)
+
+
+def _sparse_room_cloud() -> np.ndarray:
+    """Sparse clean rectangle x in [0,4], z in [0,5] at 0.10 m spacing, y=0.
+
+    Coarser than a cell-per-point density yet still a single coarse component →
+    phi = 1.0 (the coarse detection grid is robust to sparse-but-connected
+    clouds).
+    """
+    xr = np.arange(0.0, 4.0 + 1e-9, 0.10)
+    zr = np.arange(0.0, 5.0 + 1e-9, 0.10)
+    gx, gz = np.meshgrid(xr, zr, indexing="ij")
+    return np.column_stack([gx.ravel(), np.zeros(gx.size), gz.ravel()])
+
+
+@pytest.mark.parametrize(
+    "make_cloud",
+    [_clean_room_cloud, _l_room_cloud_dense, _sparse_room_cloud],
+    ids=["rect", "l_room", "sparse"],
+)
+def test_auto_signal_clean_never_fires(make_cloud) -> None:  # type: ignore[no-untyped-def]
+    """T-sig-clean: clean clouds are a single coarse component → phi = 1.0, no fire.
+
+    Locks the coarse-grid single-component guarantee across rectangular,
+    non-rectangular (L), and sparse footprints (incl. bleed-proxy by
+    construction: connected geometry cannot inflate phi).
+    """
+    cloud = make_cloud()
+    assert disconnected_floater_phi(cloud) == 1.0
+    assert auto_should_use_occupancy(cloud) is False
+
+
+def test_auto_signal_floater_fires() -> None:
+    """T-sig-floater: a disconnected floater inflates phi past the threshold."""
+    cloud = np.vstack([_clean_room_cloud(), _floater_blob(5.5, 6.5)])
+    phi = disconnected_floater_phi(cloud)
+    assert phi == pytest.approx(1.3375, abs=1e-4), f"reproduced phi_floater {phi}"
+    assert phi >= _AUTO_FLOATER_PHI_THRESHOLD
+    assert auto_should_use_occupancy(cloud) is True
+
+
+def test_auto_signal_boundary_pins_threshold() -> None:
+    """T-boundary: a floater 0.5 m beyond the corner just fires; clean never does.
+
+    Pins theta=1.10 from both sides: the @0.5 m floater gives phi = 1.1125
+    (>= theta, fires); the clean room gives phi = 1.0 (< theta, never fires).
+    """
+    near = np.vstack([_clean_room_cloud(), _floater_blob(4.5, 5.5)])
+    phi_near = disconnected_floater_phi(near)
+    assert phi_near == pytest.approx(1.1125, abs=1e-4), f"reproduced @0.5 m {phi_near}"
+    assert phi_near >= _AUTO_FLOATER_PHI_THRESHOLD
+
+    phi_clean = disconnected_floater_phi(_clean_room_cloud())
+    assert phi_clean == 1.0
+    assert phi_clean < _AUTO_FLOATER_PHI_THRESHOLD
+
+
+def test_auto_signal_degenerate_never_raises() -> None:
+    """T-sig-degenerate: empty / <3-point / non-finite input → 1.0 / False, no raise."""
+    empty = np.empty((0, 3), dtype=float)
+    assert disconnected_floater_phi(empty) == 1.0
+    assert auto_should_use_occupancy(empty) is False
+
+    two_pts = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 1.0]], dtype=float)
+    assert disconnected_floater_phi(two_pts) == 1.0
+
+    nonfinite = np.array(
+        [[0.0, 0.0, 0.0], [np.nan, 0.0, 1.0], [1.0, 0.0, np.inf]], dtype=float
+    )
+    assert disconnected_floater_phi(nonfinite) == 1.0
+
+    wrong_shape = np.zeros((5, 2), dtype=float)
+    assert disconnected_floater_phi(wrong_shape) == 1.0
+
+
+def test_auto_recover_area_rejects_floater() -> None:
+    """T-recover: occupancy (auto-fired) recovers ~truth, strictly < convex over-read.
+
+    On the floater cloud the convex hull over-reads to ~27.99 m^2 (+39.9% vs the
+    true 20 m^2 room), while the occupancy extractor the signal selects recovers
+    ~19.0 m^2 (-5.0%) by keeping only the room's largest component.
+    """
+    from shapely.geometry import MultiPoint
+
+    cloud = np.vstack([_clean_room_cloud(), _floater_blob(5.5, 6.5)])
+
+    occ_poly = floor_polygon_from_mesh_occupancy(cloud)
+    occ_area = float(ShapelyPolygon([(p.x, p.z) for p in occ_poly]).area)
+    convex_area = float(
+        MultiPoint([(float(v[0]), float(v[2])) for v in cloud]).convex_hull.area
+    )
+
+    assert convex_area == pytest.approx(27.99, rel=0.02), f"convex over-read {convex_area}"
+    assert occ_area == pytest.approx(19.0, rel=0.05), f"occupancy recovered {occ_area}"
+    assert occ_area < convex_area
+    assert abs(occ_area - 20.0) / 20.0 <= 0.06
 
 
 def test_occupancy_rejects_bad_shape() -> None:

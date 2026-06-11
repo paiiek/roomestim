@@ -1479,3 +1479,187 @@ def test_ceiling_coverage_failsafe_returns_none_on_degenerate() -> None:
     assert MeshAdapter._classify_ceiling_confidence(1.0) == "high"
     assert MeshAdapter._classify_ceiling_confidence(0.0) == "low"
     assert MeshAdapter._classify_ceiling_confidence(0.5) == "high"  # boundary inclusive
+
+
+# --------------------------------------------------------------------------- #
+# C1 — `auto` floor-reconstruction dispatch (ADR 0048)
+# --------------------------------------------------------------------------- #
+
+
+def _make_dense_box(
+    foot: list[tuple[float, float]], h: float, *, max_edge: float = 0.04
+) -> tuple["object", "object"]:
+    """Dense watertight prism from a CONVEX CCW footprint (vertices, faces).
+
+    Floor/ceiling are authored as fans (valid for a convex footprint) and side
+    quads close the perimeter; ``subdivide_to_size`` then packs many vertices per
+    5 cm cell so the occupancy extractor recovers the footprint.
+    """
+    import numpy as np
+    import trimesh
+
+    n = len(foot)
+    bottom = [(x, 0.0, z) for (x, z) in foot]
+    top = [(x, h, z) for (x, z) in foot]
+    verts = np.array(bottom + top, dtype=float)
+    faces: list[list[int]] = []
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, j + n])
+        faces.append([i, j + n, i + n])
+    for i in range(1, n - 1):
+        faces.append([0, i + 1, i])
+    for i in range(1, n - 1):
+        faces.append([n, n + i, n + i + 1])
+    return trimesh.remesh.subdivide_to_size(verts, np.array(faces), max_edge=max_edge)
+
+
+def _write_dense_box_with_floater_obj(path: Path) -> None:
+    """Dense 4x4x2.5 room + a small DISCONNECTED dense floater box (Y-up .obj).
+
+    The floater (0.3 m cube at x,z ~ 8 m, > 0.25 m from the room) survives the
+    occupancy grid as its own small component but is rejected by the largest-
+    component step; the convex hull engulfs it. ``auto`` must detect it (φ ≥ θ)
+    and switch to occupancy.
+    """
+    import numpy as np
+    import trimesh
+
+    room_v, room_f = _make_dense_box(
+        [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)], 2.5
+    )
+    floater_v, floater_f = _make_dense_box(
+        [(8.0, 8.0), (8.3, 8.0), (8.3, 8.3), (8.0, 8.3)], 0.3
+    )
+    room_v = np.asarray(room_v)
+    floater_v = np.asarray(floater_v)
+    verts = np.vstack([room_v, floater_v])
+    faces = np.vstack([np.asarray(room_f), np.asarray(floater_f) + room_v.shape[0]])
+    trimesh.Trimesh(vertices=verts, faces=faces, process=False).export(path)
+
+
+def _write_dense_dumbbell_obj(path: Path) -> None:
+    """Dense CONNECTED two-room mesh joined by a 0.5 m-wide neck (Y-up .obj).
+
+    Rooms A [0,2]x[0,2] and B [4,6]x[0,2] joined by a neck [2,4]x[0.75,1.25].
+    A through-opening "bleed" proxy: a SINGLE coarse-grid component → φ = 1.0 →
+    ``auto`` must NOT fire → byte-equal to convex (locks the no-bleed-claim by
+    construction). Floor/ceiling are authored from the 3 component rectangles
+    (no triangulation engine needed); side quads close the 12-edge perimeter.
+    """
+    import numpy as np
+    import trimesh
+
+    # 12 perimeter corners (CCW), interior on the left.
+    foot = [
+        (0.0, 0.0), (2.0, 0.0), (2.0, 0.75), (4.0, 0.75), (4.0, 0.0), (6.0, 0.0),
+        (6.0, 2.0), (4.0, 2.0), (4.0, 1.25), (2.0, 1.25), (2.0, 2.0), (0.0, 2.0),
+    ]
+    h = 2.5
+    n = len(foot)
+    bottom = [(x, 0.0, z) for (x, z) in foot]
+    top = [(x, h, z) for (x, z) in foot]
+    verts = np.array(bottom + top, dtype=float)
+    faces: list[list[int]] = []
+    # Side walls around the true perimeter.
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, j + n])
+        faces.append([i, j + n, i + n])
+    # Floor + ceiling caps from the 3 rectangles (indices into ``foot``):
+    #   A = (0,1,10,11)  neck = (2,3,8,9)  B = (4,5,6,7)
+    rects = [(0, 1, 10, 11), (2, 3, 8, 9), (4, 5, 6, 7)]
+    for a, b, c, d in rects:
+        faces.append([a, b, c])
+        faces.append([a, c, d])
+        faces.append([a + n, c + n, b + n])
+        faces.append([a + n, d + n, c + n])
+    dense_v, dense_f = trimesh.remesh.subdivide_to_size(
+        verts, np.array(faces), max_edge=0.04
+    )
+    trimesh.Trimesh(vertices=dense_v, faces=dense_f, process=False).export(path)
+
+
+def test_mesh_adapter_auto_clean_byte_equal_to_convex(tmp_path: Path) -> None:
+    """T-A (THE convex-preserving gate): auto == convex on clean input.
+
+    Parsing a clean shoebox through ``floor_reconstruction="auto"`` yields a
+    value-equal floor polygon AND a BYTE-EQUAL serialized room.yaml vs
+    ``"convex"``: the signal returns φ = 1.0 (single coarse component), so auto
+    dispatches the SAME ``_convex_floor_polygon`` call with un-perturbed vertices.
+    """
+    from roomestim.export.room_yaml import write_room_yaml
+
+    auto_room = MeshAdapter(floor_reconstruction="auto").parse(
+        FIXTURE_DIR / "lab_room.obj"
+    )
+    convex_room = MeshAdapter(floor_reconstruction="convex").parse(
+        FIXTURE_DIR / "lab_room.obj"
+    )
+
+    assert [(p.x, p.z) for p in auto_room.floor_polygon] == [
+        (p.x, p.z) for p in convex_room.floor_polygon
+    ]
+
+    auto_yaml = tmp_path / "auto_room.yaml"
+    convex_yaml = tmp_path / "convex_room.yaml"
+    write_room_yaml(auto_room, auto_yaml)
+    write_room_yaml(convex_room, convex_yaml)
+    assert auto_yaml.read_bytes() == convex_yaml.read_bytes(), (
+        "auto must be BYTE-EQUAL to convex on clean input"
+    )
+
+
+def test_mesh_adapter_auto_fires_on_floater(tmp_path: Path) -> None:
+    """T-fire-adapter: auto rejects a disconnected floater (area < convex mode)."""
+    obj_path = tmp_path / "floater.obj"
+    _write_dense_box_with_floater_obj(obj_path)
+
+    auto_room = MeshAdapter(floor_reconstruction="auto").parse(obj_path)
+    convex_room = MeshAdapter(floor_reconstruction="convex").parse(obj_path)
+
+    auto_area = _floor_area(auto_room)
+    convex_area = _floor_area(convex_room)
+    assert auto_area < convex_area, (
+        f"auto {auto_area} must reject the floater that bloats convex {convex_area}"
+    )
+    # Auto recovered the true ~16 m^2 room (floater rejected).
+    assert auto_area == pytest.approx(16.0, rel=0.10), f"auto recovered {auto_area}"
+
+
+def test_mesh_adapter_auto_no_fire_on_connected_bleed(tmp_path: Path) -> None:
+    """T-no-fire-bleed: a connected through-opening fixture stays byte-equal to convex.
+
+    A single coarse-grid component → φ = 1.0 → auto never fires → identical to
+    convex. Locks the NO-bleed-claim by construction.
+    """
+    from roomestim.export.room_yaml import write_room_yaml
+
+    obj_path = tmp_path / "dumbbell.obj"
+    _write_dense_dumbbell_obj(obj_path)
+
+    auto_room = MeshAdapter(floor_reconstruction="auto").parse(obj_path)
+    convex_room = MeshAdapter(floor_reconstruction="convex").parse(obj_path)
+
+    assert [(p.x, p.z) for p in auto_room.floor_polygon] == [
+        (p.x, p.z) for p in convex_room.floor_polygon
+    ]
+    auto_yaml = tmp_path / "auto.yaml"
+    convex_yaml = tmp_path / "convex.yaml"
+    write_room_yaml(auto_room, auto_yaml)
+    write_room_yaml(convex_room, convex_yaml)
+    assert auto_yaml.read_bytes() == convex_yaml.read_bytes()
+
+
+def test_mesh_adapter_auto_resolve_and_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """T-resolve: 'auto' resolves via arg + env; the bad-value error lists all four modes."""
+    assert MeshAdapter._resolve_floor_reconstruction("auto") == "auto"
+
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "auto")
+    assert MeshAdapter()._floor_reconstruction == "auto"
+
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "bogus")
+    with pytest.raises(ValueError, match="auto") as exc:
+        MeshAdapter()
+    msg = str(exc.value)
+    assert all(m in msg for m in ("convex", "concave", "occupancy", "auto"))

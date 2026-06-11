@@ -41,17 +41,22 @@ from roomestim.model import (
     canonicalize_ccw,
 )
 from roomestim.reconstruct.floor_polygon import (
+    AUTO_FLOOR_RECON_NOTE,
+    auto_should_use_occupancy,
     floor_polygon_from_mesh,
     floor_polygon_from_mesh_occupancy,
 )
 from roomestim.reconstruct.listener_area import default_listener_area
 from roomestim.reconstruct.walls import walls_from_floor_polygon
 
-__all__ = ["MeshAdapter"]
+# ``AUTO_FLOOR_RECON_NOTE`` is re-exported (single source lives in
+# ``reconstruct.floor_polygon``) so CLI/web honesty NOTEs import it from the
+# adapter surface alongside ``FloorReconstruction``.
+__all__ = ["AUTO_FLOOR_RECON_NOTE", "MeshAdapter"]
 
 _SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply", ".usdz"})
 
-FloorReconstruction = Literal["convex", "concave", "occupancy"]
+FloorReconstruction = Literal["convex", "concave", "occupancy", "auto"]
 
 # Explicit up-axis override. ``"auto"`` (default) runs the gravity-axis
 # detector; ``"x"`` / ``"y"`` / ``"z"`` force a known axis when the caller has
@@ -205,8 +210,18 @@ class MeshAdapter:
         ``"occupancy"`` denoises first via a density + connected-component grid
         (:func:`floor_polygon_from_mesh_occupancy`) that rejects sparse floaters
         before delegating to the concave path (occupancy +8.6% on the same
-        scene). Both opt-in modes fall back to the convex hull (with a
-        :class:`UserWarning`) when reconstruction degenerates. When left at its sentinel default the
+        scene). ``"auto"`` is convex-PRESERVING: a cheap coarse-grid (0.25 m)
+        convex-hull area-inflation signal
+        (:func:`disconnected_floater_phi`) switches to the ``"occupancy"``
+        extractor ONLY when it detects a spatially-DISCONNECTED floater cluster
+        (φ ≥ 1.10); on clean input the signal returns φ = 1.0 (a single coarse
+        component) so ``"auto"`` resolves to the SAME convex call → byte-equal by
+        construction. It is NOT a through-opening-bleed fix and NOT a re-entrant/
+        notch-recovery capability (connected geometry never triggers it); see
+        :data:`AUTO_FLOOR_RECON_NOTE`. The ``"concave"``/``"occupancy"`` modes
+        (and the occupancy branch ``"auto"`` may pick) fall back to the convex
+        hull (with a :class:`UserWarning`) when reconstruction degenerates. When
+        left at its sentinel default the
         ``ROOMESTIM_MESH_FLOOR_RECON`` environment variable selects the mode; an
         explicit argument always wins over the env var.
     up_axis:
@@ -248,7 +263,7 @@ class MeshAdapter:
             if explicit not in modes:
                 raise ValueError(
                     f"MeshAdapter: floor_reconstruction must be 'convex', "
-                    f"'concave', or 'occupancy', got {explicit!r}."
+                    f"'concave', 'occupancy', or 'auto', got {explicit!r}."
                 )
             return explicit
         env_value = os.environ.get(_FLOOR_RECON_ENV)
@@ -258,7 +273,7 @@ class MeshAdapter:
         if normalized not in modes:
             raise ValueError(
                 f"MeshAdapter: {_FLOOR_RECON_ENV}={env_value!r} is invalid; "
-                f"expected 'convex', 'concave', or 'occupancy'."
+                f"expected 'convex', 'concave', 'occupancy', or 'auto'."
             )
         return cast(FloorReconstruction, normalized)
 
@@ -914,9 +929,19 @@ class MeshAdapter:
         # convex hull of the floor-projected vertices — the byte-equal legacy
         # path. ``concave`` recovers re-entrant corners (non-shoebox rooms);
         # ``occupancy`` adds a density + connected-component denoiser in front
-        # of the concave path (rejects sparse floaters). Both opt-in modes fall
-        # back to convex on degeneracy with a UserWarning.
+        # of the concave path (rejects sparse floaters). ``auto`` is convex-
+        # preserving: it runs a cheap coarse-grid convex-hull area-inflation
+        # signal and switches to the occupancy extractor ONLY when a spatially-
+        # DISCONNECTED floater is detected; on clean input the signal returns
+        # φ = 1.0 (single coarse component) so ``auto`` resolves to the SAME
+        # ``_convex_floor_polygon(vertices)`` call as ``convex`` → byte-equal by
+        # construction. It is NOT a through-opening-bleed or notch-recovery fix
+        # (connected geometry never triggers it). See AUTO_FLOOR_RECON_NOTE.
         recon = self._floor_reconstruction
+        if recon == "auto":
+            recon = (
+                "occupancy" if auto_should_use_occupancy(vertices) else "convex"
+            )
         if recon in ("concave", "occupancy"):
             extractor = (
                 floor_polygon_from_mesh
