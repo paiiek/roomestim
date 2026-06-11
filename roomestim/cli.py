@@ -619,7 +619,10 @@ def _emit_layout_angle_check(
     from roomestim.model import Point3
     from roomestim.place.standards import (
         check_layout_angles,
+        compute_layout_metrics,
+        format_metrics_lines,
         format_report_lines,
+        metrics_to_dict,
         report_to_dict,
     )
 
@@ -630,9 +633,14 @@ def _emit_layout_angle_check(
     report = check_layout_angles(result, listener=listener)
     for line in format_report_lines(report):
         print(line)
+    metrics = compute_layout_metrics(result, listener=listener)
+    for line in format_metrics_lines(metrics):
+        print(line)
+    sidecar_dict = report_to_dict(report)
+    sidecar_dict["geometric_metrics"] = metrics_to_dict(metrics)
     sidecar = out_dir / "layout.angles.json"
     sidecar.write_text(
-        json.dumps(report_to_dict(report), indent=2) + "\n", encoding="utf-8"
+        json.dumps(sidecar_dict, indent=2) + "\n", encoding="utf-8"
     )
     print(f"wrote {sidecar}")
 

@@ -17,12 +17,17 @@ from roomestim.place.standards import (
     HEIGHT_EL_MAX_DEG,
     HEIGHT_EL_MIN_DEG,
     LAYOUT_ANGLE_CHECK_NOTE,
+    LAYOUT_METRICS_NOTE,
     LISTENER_LEVEL_MAX_EL_DEG,
     OVERHEAD_MIN_EL_DEG,
     LayoutAngleReport,
+    LayoutMetrics,
     SpeakerAngle,
     check_layout_angles,
+    compute_layout_metrics,
+    format_metrics_lines,
     format_report_lines,
+    metrics_to_dict,
     report_to_dict,
 )
 from roomestim.place.vbap import place_vbap_ring
@@ -275,3 +280,179 @@ def test_dataclass_types_are_frozen() -> None:
     report = check_layout_angles([_speaker_at(1, 0.0, 45.0)])
     assert isinstance(report, LayoutAngleReport)
     assert isinstance(report.speakers[0], SpeakerAngle)
+
+
+# --------------------------------------------------------------------------- #
+# B6: layout-shape geometric metrics — exact, hand-computable values
+# --------------------------------------------------------------------------- #
+
+
+def test_max_azimuth_gap_four_cardinals_is_90() -> None:
+    """4 speakers at az 0/90/180/270 -> uniform 90 deg gaps -> max gap 90.0."""
+    speakers = [
+        _speaker_at(1, 0.0, 0.0),
+        _speaker_at(2, 90.0, 0.0),
+        _speaker_at(3, 180.0, 0.0),
+        _speaker_at(4, 270.0, 0.0),
+    ]
+    m = compute_layout_metrics(speakers)
+    assert m.max_adjacent_azimuth_gap_deg is not None
+    assert math.isclose(m.max_adjacent_azimuth_gap_deg, 90.0, abs_tol=1e-9)
+
+
+def test_max_azimuth_gap_includes_wrap_around() -> None:
+    """Speakers clustered in the front -> the largest gap is the wrap-around.
+
+    az 0/30/60 -> adjacent gaps 30, 30; wrap-around gap (0+360)-60 = 300.
+    """
+    speakers = [
+        _speaker_at(1, 0.0, 0.0),
+        _speaker_at(2, 30.0, 0.0),
+        _speaker_at(3, 60.0, 0.0),
+    ]
+    m = compute_layout_metrics(speakers)
+    assert m.max_adjacent_azimuth_gap_deg is not None
+    assert math.isclose(m.max_adjacent_azimuth_gap_deg, 300.0, abs_tol=1e-6)
+
+
+def test_max_azimuth_gap_single_speaker_is_360() -> None:
+    """Documented degenerate: 1 speaker -> the lone wrap gap spans the circle."""
+    m = compute_layout_metrics([_speaker_at(1, 17.0, 0.0)])
+    assert m.max_adjacent_azimuth_gap_deg is not None
+    assert math.isclose(m.max_adjacent_azimuth_gap_deg, 360.0, abs_tol=1e-9)
+
+
+def test_max_azimuth_gap_identical_azimuths_is_360() -> None:
+    """Documented degenerate: speakers sharing one azimuth -> only wrap gap (360)."""
+    speakers = [_speaker_at(1, 45.0, 0.0), _speaker_at(2, 45.0, 10.0)]
+    m = compute_layout_metrics(speakers)
+    assert m.max_adjacent_azimuth_gap_deg is not None
+    assert math.isclose(m.max_adjacent_azimuth_gap_deg, 360.0, abs_tol=1e-9)
+
+
+def test_max_azimuth_gap_empty_is_none() -> None:
+    """Documented degenerate: 0 speakers -> None (no azimuths)."""
+    m = compute_layout_metrics([])
+    assert m.max_adjacent_azimuth_gap_deg is None
+    assert m.listener_distance_std_m is None
+
+
+def test_distance_std_equidistant_ring_is_zero() -> None:
+    """All speakers at unit distance -> population std of distances == 0.0."""
+    speakers = [
+        _speaker_at(1, 0.0, 0.0),
+        _speaker_at(2, 120.0, 0.0),
+        _speaker_at(3, 240.0, 0.0),
+    ]
+    m = compute_layout_metrics(speakers)
+    assert m.listener_distance_std_m is not None
+    assert math.isclose(m.listener_distance_std_m, 0.0, abs_tol=1e-9)
+
+
+def test_distance_std_known_two_values() -> None:
+    """Distances {1, 3} along +z from origin -> population std = 1.0.
+
+    mean = 2; variance = ((1-2)^2 + (3-2)^2)/2 = 1; std = 1.
+    """
+    speakers = [
+        PlacedSpeaker(channel=1, position=Point3(0.0, 0.0, 1.0)),
+        PlacedSpeaker(channel=2, position=Point3(0.0, 0.0, 3.0)),
+    ]
+    m = compute_layout_metrics(speakers)
+    assert m.listener_distance_std_m is not None
+    assert math.isclose(m.listener_distance_std_m, 1.0, abs_tol=1e-9)
+
+
+def test_distance_std_single_speaker_is_zero() -> None:
+    """Documented degenerate: 1 speaker -> zero population spread (0.0)."""
+    m = compute_layout_metrics([PlacedSpeaker(channel=1, position=Point3(0.0, 0.0, 2.5))])
+    assert m.listener_distance_std_m is not None
+    assert math.isclose(m.listener_distance_std_m, 0.0, abs_tol=1e-9)
+
+
+def test_distance_std_uses_listener_offset() -> None:
+    """Distances are measured FROM the listener point, not the global origin."""
+    speakers = [
+        PlacedSpeaker(channel=1, position=Point3(0.0, 0.0, 1.0)),
+        PlacedSpeaker(channel=2, position=Point3(0.0, 0.0, 5.0)),
+    ]
+    listener = Point3(0.0, 0.0, 3.0)  # distances become {2, 2} -> std 0.0
+    m = compute_layout_metrics(speakers, listener=listener)
+    assert m.listener_distance_std_m is not None
+    assert math.isclose(m.listener_distance_std_m, 0.0, abs_tol=1e-9)
+
+
+def test_metrics_on_real_dbap_fixture_runs() -> None:
+    """Metrics compute on a REAL DBAP placement regardless of algorithm."""
+    room = shoebox()
+    walls = [s for s in room.surfaces if s.kind in ("wall", "ceiling")]
+    result = place_dbap(
+        mount_surfaces=walls, n_speakers=8, listener_area=room.listener_area
+    )
+    centroid = room.listener_area.centroid
+    listener = Point3(centroid.x, room.listener_area.height_m, centroid.z)
+    m = compute_layout_metrics(result, listener=listener)
+    assert m.max_adjacent_azimuth_gap_deg is not None
+    assert 0.0 <= m.max_adjacent_azimuth_gap_deg <= 360.0
+    assert m.listener_distance_std_m is not None
+    assert m.listener_distance_std_m >= 0.0
+
+
+def test_metrics_note_has_no_quality_or_score_language() -> None:
+    """Honesty pin: the note carries NO threshold/score/'better' ordering."""
+    note = LAYOUT_METRICS_NOTE
+    assert "descriptive geometry only" in note
+    assert "NO threshold" in note
+    assert "NO score" in note
+    assert "NO perceptual or acoustic-quality claim" in note
+    assert "NOT the DBAP coverage ratio" in note
+    lower = note.lower()
+    assert "better" not in lower or "better/worse" in lower
+    assert "uniform" not in lower
+    # The metrics object carries the single source of truth verbatim.
+    assert compute_layout_metrics([]).note is LAYOUT_METRICS_NOTE
+
+
+def test_metrics_to_dict_shape() -> None:
+    m = compute_layout_metrics(
+        [_speaker_at(1, 0.0, 0.0), _speaker_at(2, 180.0, 0.0)]
+    )
+    d = metrics_to_dict(m)
+    assert set(d.keys()) == {
+        "note",
+        "max_adjacent_azimuth_gap_deg",
+        "listener_distance_std_m",
+    }
+    assert d["note"] == LAYOUT_METRICS_NOTE
+
+
+def test_metrics_to_dict_none_survives_serialization() -> None:
+    d = metrics_to_dict(compute_layout_metrics([]))
+    assert d["max_adjacent_azimuth_gap_deg"] is None
+    assert d["listener_distance_std_m"] is None
+
+
+def test_format_metrics_lines_human_readable() -> None:
+    m = compute_layout_metrics(
+        [_speaker_at(1, 0.0, 0.0), _speaker_at(2, 90.0, 0.0)]
+    )
+    lines = format_metrics_lines(m)
+    assert any("descriptive geometry only" in ln for ln in lines)
+    assert any("max adjacent azimuthal gap" in ln for ln in lines)
+    assert any("listener->speaker distance std" in ln for ln in lines)
+    assert any(ln.strip().startswith("NOTE:") for ln in lines)
+    # The header line itself carries no quality ordering; "better" only appears
+    # inside the NOTE's explicit negation ("no 'better/worse' ordering").
+    header = lines[0].lower()
+    assert "better" not in header
+    assert "no threshold/score" in header
+
+
+def test_format_metrics_lines_empty_na() -> None:
+    lines = format_metrics_lines(compute_layout_metrics([]))
+    assert any("N/A (no speakers)" in ln for ln in lines)
+
+
+def test_metrics_dataclass_is_frozen() -> None:
+    m = compute_layout_metrics([_speaker_at(1, 0.0, 45.0)])
+    assert isinstance(m, LayoutMetrics)

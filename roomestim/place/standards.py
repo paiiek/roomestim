@@ -45,12 +45,17 @@ __all__ = [
     "HEIGHT_EL_MAX_DEG",
     "HEIGHT_EL_MIN_DEG",
     "LAYOUT_ANGLE_CHECK_NOTE",
+    "LAYOUT_METRICS_NOTE",
     "LISTENER_LEVEL_MAX_EL_DEG",
     "LayoutAngleReport",
+    "LayoutMetrics",
     "OVERHEAD_MIN_EL_DEG",
     "SpeakerAngle",
     "check_layout_angles",
+    "compute_layout_metrics",
+    "format_metrics_lines",
     "format_report_lines",
+    "metrics_to_dict",
     "report_to_dict",
 ]
 
@@ -275,3 +280,153 @@ def format_report_lines(report: LayoutAngleReport) -> list[str]:
     )
     lines.append(f"  NOTE: {report.note}")
     return lines
+
+
+# --------------------------------------------------------------------------- #
+# Layout-shape geometric metrics (B6) — raw geometry, no threshold/score
+# --------------------------------------------------------------------------- #
+
+# Single source of truth — reference, do not retype. Deliberately carries NO
+# normative threshold, NO score, and NO "higher/lower is better" ordering: these
+# are raw geometry descriptors of the given layout, not a quality judgement.
+LAYOUT_METRICS_NOTE: str = (
+    "Geometric layout-shape metrics — descriptive geometry only. There is NO "
+    "threshold, NO score, and NO 'better/worse' ordering attached to either "
+    "number. (1) max_adjacent_azimuth_gap_deg: sort the speaker azimuths around "
+    "the listener and take the largest circular gap between angular neighbours, "
+    "including the wrap-around from the last back to the first. (2) "
+    "listener_distance_std_m: the population standard deviation (divisor n) of "
+    "the Euclidean listener-to-speaker distances. Both are raw geometry of the "
+    "given layout and make NO perceptual or acoustic-quality claim. They are NOT "
+    "the DBAP coverage ratio (the listener-area min/max gain ratio in "
+    "roomestim.place.dbap is a separate placement-internal property, not "
+    "re-derived here)."
+)
+
+
+@dataclass(frozen=True)
+class LayoutMetrics:
+    """Raw geometric layout-shape metrics + honesty :data:`note`.
+
+    Both fields are descriptive geometry with NO threshold, score, or quality
+    ordering (see :data:`LAYOUT_METRICS_NOTE`).
+
+    ``max_adjacent_azimuth_gap_deg``
+        EXACT formula. Let ``a_1 <= a_2 <= ... <= a_n`` be the speaker azimuths
+        (deg, measured from the listener, each in ``(-180, 180]``) sorted
+        ascending. The adjacent gaps are ``g_i = a_{i+1} - a_i`` for
+        ``i = 1..n-1`` plus the wrap-around gap ``g_n = (a_1 + 360) - a_n``. The
+        metric is ``max(g_1, ..., g_n)``. Degenerate cases (documented):
+        ``n == 0 -> None`` (no azimuths); ``n == 1 -> 360.0`` (the lone
+        wrap-around gap spans the full circle); speakers sharing one azimuth also
+        yield ``360.0`` (their only non-zero gap is the wrap-around).
+
+    ``listener_distance_std_m``
+        EXACT formula. Let ``d_1..d_n`` be the Euclidean listener->speaker
+        distances (m) and ``d_bar = (1/n) * sum(d_i)`` their mean. The metric is
+        the POPULATION standard deviation ``sqrt((1/n) * sum((d_i - d_bar)^2))``
+        (divisor ``n``, NOT ``n-1``). Degenerate cases (documented):
+        ``n == 0 -> None`` (no distances); ``n == 1 -> 0.0`` (a single distance
+        has zero population spread).
+    """
+
+    max_adjacent_azimuth_gap_deg: float | None
+    listener_distance_std_m: float | None
+    note: str
+
+
+def _azimuth_and_distance(position: Point3, listener: Point3) -> tuple[float, float]:
+    """Return ``(azimuth_deg, distance_m)`` of ``position`` seen from ``listener``.
+
+    Uses the single sign-flip authority
+    :func:`roomestim.coords.cartesian_to_pipeline` (same as the angle check), so
+    azimuth conventions stay consistent across this module.
+    """
+    dx = position.x - listener.x
+    dy = position.y - listener.y
+    dz = position.z - listener.z
+    az_rad, _el_rad, dist = cartesian_to_pipeline(dx, dy, dz)
+    return math.degrees(az_rad), dist
+
+
+def _max_adjacent_azimuth_gap_deg(azimuths_deg: list[float]) -> float | None:
+    """Largest circular gap between azimuthal neighbours (see :class:`LayoutMetrics`)."""
+    n = len(azimuths_deg)
+    if n == 0:
+        return None
+    ordered = sorted(azimuths_deg)
+    gaps = [ordered[i + 1] - ordered[i] for i in range(n - 1)]
+    gaps.append((ordered[0] + 360.0) - ordered[-1])
+    return max(gaps)
+
+
+def _listener_distance_std_m(distances_m: list[float]) -> float | None:
+    """Population standard deviation of distances (see :class:`LayoutMetrics`)."""
+    n = len(distances_m)
+    if n == 0:
+        return None
+    mean = sum(distances_m) / n
+    variance = sum((d - mean) ** 2 for d in distances_m) / n
+    return math.sqrt(variance)
+
+
+def compute_layout_metrics(
+    layout: PlacementResult | Iterable[PlacedSpeaker],
+    listener: Point3 | None = None,
+) -> LayoutMetrics:
+    """Compute the raw geometric layout-shape metrics (B6) for ANY layout.
+
+    ``layout`` is a :class:`~roomestim.model.PlacementResult` or any iterable of
+    :class:`~roomestim.model.PlacedSpeaker`. ``listener`` defaults to the
+    listener-frame origin ``Point3(0, 0, 0)`` (same convention as
+    :func:`check_layout_angles`); callers with a room should pass the
+    listener-area centroid.
+
+    See :data:`LAYOUT_METRICS_NOTE` and :class:`LayoutMetrics` — descriptive
+    geometry only, NO threshold, NO score, NO quality ordering.
+    """
+    if listener is None:
+        listener = Point3(0.0, 0.0, 0.0)
+
+    speakers_in = (
+        layout.speakers if isinstance(layout, PlacementResult) else list(layout)
+    )
+    azimuths_deg: list[float] = []
+    distances_m: list[float] = []
+    for sp in speakers_in:
+        az_deg, dist = _azimuth_and_distance(sp.position, listener)
+        azimuths_deg.append(az_deg)
+        distances_m.append(dist)
+
+    return LayoutMetrics(
+        max_adjacent_azimuth_gap_deg=_max_adjacent_azimuth_gap_deg(azimuths_deg),
+        listener_distance_std_m=_listener_distance_std_m(distances_m),
+        note=LAYOUT_METRICS_NOTE,
+    )
+
+
+def metrics_to_dict(metrics: LayoutMetrics) -> dict[str, object]:
+    """Return a plain JSON-serialisable dict for the layout sidecar."""
+    return {
+        "note": metrics.note,
+        "max_adjacent_azimuth_gap_deg": metrics.max_adjacent_azimuth_gap_deg,
+        "listener_distance_std_m": metrics.listener_distance_std_m,
+    }
+
+
+def format_metrics_lines(metrics: LayoutMetrics) -> list[str]:
+    """Return human-readable lines for CLI output (descriptive geometry only)."""
+    if metrics.max_adjacent_azimuth_gap_deg is None:
+        gap_str = "N/A (no speakers)"
+    else:
+        gap_str = f"{metrics.max_adjacent_azimuth_gap_deg:.1f} deg"
+    if metrics.listener_distance_std_m is None:
+        std_str = "N/A (no speakers)"
+    else:
+        std_str = f"{metrics.listener_distance_std_m:.3f} m"
+    return [
+        "geometric layout-shape metrics (descriptive geometry only, no threshold/score):",
+        f"  max adjacent azimuthal gap: {gap_str}",
+        f"  listener->speaker distance std: {std_str}",
+        f"  NOTE: {metrics.note}",
+    ]
