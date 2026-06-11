@@ -580,7 +580,9 @@ release되었습니다.
 
 ## 라이선스 + 출처
 
-- **메인 코드** — MIT (Anthropic Claude Code 협업 표기 포함)
+- **메인 코드** — MIT (Anthropic Claude Code 협업 표기 포함; 루트 [`LICENSE`](LICENSE))
+- **vendored HorizonNet 코드** (`roomestim/vision/horizonnet/`) — **MIT, (c) 2019 Cheng Sun** (verbatim·재라이선스 아님; 해당 디렉터리 `LICENSE`/`NOTICE`)
+- **`[vision]` 사전학습 가중치** — **MIT 아님** (`roomestim/vision/horizonnet/NOTICE`): 기본 가중치는 `st3d`(Structured3D **research dataset** 파생 — 상용 적합성 미확인), 옵트인 가중치는 `zind`(ZInD, academic / **NON-COMMERCIAL** ToU — `ROOMESTIM_ACCEPT_ZIND_TOU=1` 명시 수락 필요). 가중치는 이 저장소에 포함되지 않고 첫 사용 시 내려받으며, 상용 배포 전 어느 가중치든 해당 약관 적합성을 사용자가 직접 검증해야 한다.
 - **HRTF 데이터** — HUTUBS (TU Berlin, **CC BY 4.0**) 우선; MIT KEMAR (public domain)는 대체 출처
 - **테스트 오디오** — LibriVox (public domain)
 - **HRTF 데이터셋 선택 근거** — [ADR 0026](docs/adr/0026-hrtf-dataset-selection.md)

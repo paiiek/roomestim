@@ -54,8 +54,9 @@ _ZIND_TOU_MESSAGE = (
     "explicit acceptance. To proceed, pass accept_noncommercial=True or set "
     "the environment variable ROOMESTIM_ACCEPT_ZIND_TOU=1. By accepting you "
     "confirm your use complies with the ZInD ToU "
-    "(https://github.com/zillow/zind#license). For commercial use, use "
-    "name='st3d' instead."
+    "(https://github.com/zillow/zind#license). The default 'st3d' weights "
+    "are trained on the Structured3D research dataset and carry their own "
+    "dataset-derived terms; verify suitability for your use yourself."
 )
 
 

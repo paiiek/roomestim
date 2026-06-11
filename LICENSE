@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2026 paiiek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Third-party and vendored components
+
+The MIT license above covers roomestim's own source code only. It does NOT
+relicense the following components, which retain their own terms:
+
+1. Vendored HorizonNet inference code — `roomestim/vision/horizonnet/`
+   This directory is vendored third-party code governed by ITS OWN MIT License,
+   Copyright (c) 2019 Cheng Sun. It is kept verbatim and is NOT relicensed under
+   the copyright above. See `roomestim/vision/horizonnet/LICENSE` for the full
+   text and `roomestim/vision/horizonnet/NOTICE` for provenance.
+
+2. Optional `[vision]` pretrained weights (ZInD / Structured3D)
+   The HorizonNet model WEIGHTS downloaded on first use by the optional
+   `[vision]` extra are NOT covered by any MIT license. They carry their own
+   dataset-derived terms: the opt-in `zind` weights are governed by the Zillow
+   Indoor Dataset Terms of Use (academic / NON-COMMERCIAL, explicit acceptance
+   required), and the default `st3d` weights derive from the Structured3D
+   research dataset (commercial suitability not verified here).
+   These weights are NOT distributed in this repository. See
+   `roomestim/vision/horizonnet/NOTICE` for details; users are responsible for
+   complying with the terms of whichever weights they download.
