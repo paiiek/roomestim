@@ -20,7 +20,15 @@ def run_placement(
     wfs_f_max_hz: float = 8000.0,
     wfs_spacing_m: float | None = None,
 ) -> PlacementResult:
-    """Dispatch to the right placement function and return a PlacementResult."""
+    """Dispatch to the right placement function and return a PlacementResult.
+
+    Room-geometry awareness (honest disclosure): only ``dbap`` consumes the
+    room's actual wall/ceiling surfaces and listener area. ``vbap`` produces a
+    fixed-radius ring and ``wfs`` synthesizes its baseline from the layout
+    radius — both are independent of room geometry by construction (the room
+    argument is unused for those two paths). Use ``dbap`` for geometry-aware
+    placement.
+    """
     if algorithm == "vbap":
         from roomestim.place.vbap import place_vbap_ring
 

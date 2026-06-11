@@ -226,14 +226,21 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 ### `algorithm` — 알고리즘
 
-| 값 | 정식 명칭 | 출처 | 권장 스피커 수 | 특징 |
-|---|---|---|---|---|
-| `vbap` | Vector-Based Amplitude Panning | Pulkki 1997 | 4–16 | 가장 표준; 3-스피커 트라이앵글로 가상 음원을 패닝; sweet-spot 의존도 높음 |
-| `dbap` | Distance-Based Amplitude Panning | Lossius 2009 | 4–24 | 비대칭 / 불규칙 스피커 배치 허용; sweet-spot 자유롭지만 sharp localization 약함 |
-| `wfs` | Wave Field Synthesis | Berkhout 1988 | 8–16+ | 균등 간격 직선·곡선 어레이; wave front 재구성; 가장 정확하지만 하드웨어 요구가 큼 |
+| 값 | 정식 명칭 | 출처 | 권장 스피커 수 | 방 기하 인지 | 특징 |
+|---|---|---|---|---|---|
+| `vbap` | Vector-Based Amplitude Panning | Pulkki 1997 | 4–16 | **무관 (by construction)** — 고정 반경 링; 청취자 원점 기준 좌표만 생성 | 가장 표준; 3-스피커 트라이앵글로 가상 음원을 패닝; sweet-spot 의존도 높음 |
+| `dbap` | Distance-Based Amplitude Panning | Lossius 2009 | 4–24 | **인지 (유일)** — mount surface(벽·천장) + listener_area 를 실제로 사용 | 비대칭 / 불규칙 스피커 배치 허용; sweet-spot 자유롭지만 sharp localization 약함 |
+| `wfs` | Wave Field Synthesis | Berkhout 1988 | 8–16+ | **무관** — 합성 baseline(반경에서 유도)을 사용, 방 벽 형상 미반영 | 균등 간격 직선·곡선 어레이; wave front 재구성; 가장 정확하지만 하드웨어 요구가 큼 |
+| `ambisonics` | (stub) | — | — | **미구현 (stub)** | v0.3+ 일정에서 보류 중 |
 
 알고리즘 우선순위와 채택 배경은 [ADR 0003](docs/adr/0003-placement-algorithm-priority.md) 참조.
-Ambisonics는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
+
+**방 기하 인지에 대한 정직 고지:** 현재 배치 알고리즘 중 방의 실제 벽·천장 형상과 청취 영역을
+입력으로 사용하는 것은 `dbap` 하나뿐입니다. `vbap` 과 `wfs` 는 구조상(by construction) 청취자 원점을
+중심으로 한 고정 반경 링/합성 baseline 만 생성하며 방 기하와 무관합니다 — 따라서 동일한 스피커 수·반경
+입력이면(WFS 는 동일 WFS 파라미터 가정) 방이 달라져도 동일한 좌표를 냅니다. **기하-인지 배치가 목적이면 `--algorithm dbap` 을 사용하세요.**
+(참고: 기본 알고리즘 선택은 이번 사이클에서 변경하지 않았습니다 — 기본값 변경은 동작 변경이므로 별도
+리뷰·사용자 승인이 필요한 보류 결정입니다.) Ambisonics 는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
 
 ### `n_speakers` — 스피커 개수
 

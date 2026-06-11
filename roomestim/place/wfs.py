@@ -14,6 +14,11 @@ Speakers lie on the floor-plane baseline segment ``baseline_p0 -> baseline_p1``
 at height ``height_m``; channels are 1..n monotonic; the default per-speaker
 ``aim_direction`` points from each speaker toward the listener-area centroid
 ``(0, 0, 0)`` — the same convention as VBAP/DBAP placements.
+
+The baseline is synthesized from the supplied geometric parameters (the caller
+derives it from the layout radius), so — like VBAP — this placement is
+independent of room geometry by construction: it does not consult the room's
+wall/ceiling surfaces. Only DBAP (`place_dbap`) is room-geometry aware.
 """
 
 from __future__ import annotations

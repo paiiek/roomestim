@@ -1,5 +1,9 @@
 """DBAP greedy coverage placement (A7).
 
+Unlike VBAP (fixed-radius ring) and WFS (synthesized baseline), DBAP is the
+only room-geometry-aware placement: it samples candidates on the room's actual
+mount surfaces (walls/ceiling) and optimizes coverage over the listener area.
+
 Strategy:
   1. For each mount surface, compute the surface plane and a 2D-in-plane basis.
   2. Inset the polygon by ``inset_m`` (default 0.10 m) using shapely.
