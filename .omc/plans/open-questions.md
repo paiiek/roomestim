@@ -969,6 +969,9 @@ pass (no reverse-trigger; not OQ-numbered project questions):
   합의 필요(§D-3a)**; require.md는 아직 ambisonics를 mandatory로 안 함(ADR 0003 precondition 미충족).
   - 파생 신규 OQ 제안: ambisonics order↔n_speakers 추론/라운딩 규칙, t-design 좌표 출처/라이선스,
     engine 식별·라우팅 합의 — 모두 ADR 0041 §OQ 참조.
+  - **STATUS-UPDATE (2026-06-12, C3)**: round-trip label half (OQ-38) CLOSED since v0.33.0
+    `15e4b8a`; ambisonics producer (PR2-4) remains DEFER on the ADR 0041 §D-3a gate —
+    re-checked 2026-06-12, both require.md variants = 0 ambisonics hits, gate unmet.
 
 - **(B6 Live-mesh corner 추출 / OQ-13e 부분 resolution)** — synthesized-shoebox tautology를
   실제 메시 코너 추출로 대체. **설계 = [ADR 0042](../../docs/adr/0042-live-mesh-corner-extraction.md)**

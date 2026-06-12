@@ -305,3 +305,29 @@ AMBISONICS enum 멤버는 ADR 0003 forward-compat 로 유지(삭제 안 함).
 `/sys/ambi_order`)로 라우팅함을 확인(engine 팀 합의) **또는** `spatial_engine/require.md`
 가 Ambisonics 를 mandatory 로 승격(§Pre-conditions). 둘 다 현재 미충족 → decoder 없이
 rig 방출 시 end-to-end 검증 불가한 fake-completeness trap(§5)이므로 DEFER 유지.
+
+---
+
+## Status-update (2026-06-12, C3 — DEFER reconfirmed)
+
+**Gate re-checked 2026-06-12.** Both require.md variants searched:
+- `grep -ni ambison /home/seung/mmhoa/spatial_engine/require.md` → **0 hits**
+- `grep -ni ambison /home/seung/mmhoa/spatial_engine-convergence/require.md` → **0 hits**
+
+The §Pre-conditions gate (require.md mandatory promotion OR engine-team agreement) remains
+**unmet**. Engine IPC capability exists (`proto/ipc_schema.md:21-22` `/sys/ambi_order` +
+`/sys/ambi_decoder_type`) but capability ≠ requirement promotion — emitting an ambisonics
+rig with no contracted consumer is the fake-completeness trap §D-3a was written to prevent.
+
+**PR1 status**: SHIPPED v0.33.0 commit `15e4b8a` (D102) — `x_target_algorithm` round-trip
+label preservation. This was the only roomestim-internal, data-free slice of ADR 0041; no
+further data-free slice remains.
+
+**PR2-4 status**: DEFERRED, unchanged. Trigger remains: `spatial_engine/require.md`
+promotes Ambisonics to mandatory, OR engine-team agreement that `x_target_algorithm ==
+"AMBISONICS"` routes to the SH decoder (`/sys/ambi_order`). Neither condition is met as of
+this date.
+
+**North-star note**: Ambisonics rig geometry is product-peripheral (acoustics/placement
+lowest priority per roomestim north star). This DEFER is not a gap — it is the correct
+outcome until the engine-side contract is established.
