@@ -98,7 +98,12 @@ POLYGON_ISM_GEOMETRY_NOTE: str = (
     "predict_rt60_default. Polygon-ISM RT60 is DEFERRED pending a non-shoebox "
     "MEASURED ground-truth corpus (magnitude otherwise unverifiable), an unverified "
     "pyroomacoustics RT60-fit reliability on sparse ISM RIR, and the pyroomacoustics "
-    "web-extra reproducibility asymmetry (see ADR 0040)."
+    "web-extra reproducibility asymmetry (see ADR 0040). A multi-room MEASURED RT60 "
+    "corpus (U-Rochester, CC-BY 4.0) is now on hand, but every measured corpus is a "
+    "shoebox / cuboid, so the cascade and the shoebox diffuse-field cap/blend remain "
+    "DEFERRED (no non-shoebox GT; the cap reduces error only via a material confound "
+    "and is redundant with the existing prefer_ism=False diffuse path; see ADR 0040 "
+    "Status-update 2026-06-12 / C2)."
 )
 
 __all__ = [

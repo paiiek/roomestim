@@ -225,8 +225,15 @@ satisfied. Codex unavailable in env (no CLI on PATH) → opus agents used for Ar
       cites the established Redwood finding for design justification. Decide (a)/(b) at C1 planning. Scope refined
       by V1: occupancy fixes DISCONNECTED floaters but NOT connected through-opening bleed → C1 = disconnected-
       floater-engulfing fix ONLY; convex-preserving auto-select; clean fixtures byte-equal; NO bleed/re-entrant claim.
-- [ ] Tier 3 C2/C3 code-only drain (no data dep): C2 polygon-ISM→RT60 cascade (now testable w/ U-Rochester +
-      dEchorate GT; note ISM over-predicts treated rooms → diffuse-field cap/blend), C3 ambisonics layout.
+- [~] Tier 3 C2/C3 code-only drain (no data dep): **C2 polygon-ISM→RT60 cascade — DONE (evidence-only DEFER,
+      Option B, doc-only, NO predictor change; commit hash TBD by parent).** Evaluated diffuse-field cap/blend on
+      U-Rochester (n=10) + dEchorate (11 cfg): hard cap min(ISM,Eyring) ≡ shipped prefer_ism=False EXACTLY
+      (ISM≥Eyring enforced); U-Rochester cap "win" (2.904→0.090 med abs) is a MATERIAL-confound coincidence that
+      sign-FLIPS on dEchorate-known-materials (Eyring worse than ISM 0.131 vs 0.100); only confound-free benefit =
+      n=1 rigid 011111; §Decision-rule criterion iv (no non-shoebox / ≥3 rigid GT) FAILS → DEFER. Note
+      `.omc/research/c2-polygon-ism-rt60-cascade-evaluation.md`; ADR 0040 §Status-update (2026-06-12, C2);
+      `POLYGON_ISM_GEOMETRY_NOTE` sharpened (RT60_DISCLOSURE byte-equal); gate byte-equal 607p/7s. **C3 ambisonics
+      layout still PENDING.**
 - [ ] Tier 0a H1 concave over-claim correction (doc-only, ship FIRST)
 - [ ] Tier 0b V1 (3DSES) + V2 (U-Rochester) download & validate (parallel)
 - [ ] Tier 1 H2/H3 README reconciliation (informed by V1/V2)

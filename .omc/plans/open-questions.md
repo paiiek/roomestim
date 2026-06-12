@@ -947,6 +947,16 @@ pass (no reverse-trigger; not OQ-numbered project questions):
   스파이크 게이트 통과 전 cascade 연결 금지). **Status: 설계 완료, 구현 OPEN.**
   - 파생 신규 OQ 제안: coupled-space marker 필드(RoomModel), non-shoebox 측정 GT 코퍼스,
     pra `measure_rt60` sparse-RIR fit 신뢰성, lazy-import 재현성 비대칭 — 모두 ADR 0040 §OQ 참조.
+  - **STATUS-UPDATE (2026-06-12, C2 — evidence-backed DEFER, doc-only):** cascade 승격 + shoebox
+    diffuse-field cap/blend(Option H) 둘 다 측정으로 DEFER 재확인. ① 디스크상 측정 RT60 코퍼스
+    (U-Rochester·dEchorate·BUT)가 전부 shoebox/cuboid → 비-shoebox magnitude 검증 불가(여전히
+    non-shoebox 측정 GT 부재). ② hard cap `min(ISM,Eyring)`는 ISM≥Eyring 강제(FIX-1/D74) 때문에
+    이미 출하된 `prefer_ism=False`와 **완전 동일**(추가 가치 0). ③ U-Rochester 에서의 cap "개선"
+    (med abs 2.904→0.090)은 default 천장재(acoustic-tile α=0.55) 우연이 만든 **material-confound**
+    이며 materials-known dEchorate 에서 bias 부호가 뒤집힘(Eyring 0.131 > ISM 0.100) → 일반화 불가.
+    ④ β-blend 은 코퍼스-독립 최적 β 부재. §Decision-rule iv(≥3 독립 rigid 또는 비-shoebox 측정 GT)
+    FAIL. 근거: `.omc/research/c2-polygon-ism-rt60-cascade-evaluation.md`, ADR 0040 §Status-update
+    (2026-06-12, C2). 신규 OQ: per-material α GT 가 있으면 U-Rochester confound 해소 가능.
 
 - **(B5 Ambisonics 배치 / OQ-38 연결)** — AMBISONICS enum stub 정식화.
   **설계 = [ADR 0041](../../docs/adr/0041-ambisonics-placement-design.md)** (REVISED,
@@ -1172,6 +1182,6 @@ ADR 0045 §Status-update-2026-06-05c / D89. Allocated 2026-06-05.
 - [ ] (A) PyPI publish vs packaging-ready — ADR 0007 reverse-criteria (external `pip install` request) have not fired; stay packaging-ready without uploading? — Avoids claiming a publish that did not happen.
 - [ ] (B) multi-floor sidecar handling — disclose-only (warning) vs merge-coplanar-polygons vs raise, when floors[] has >1 entry. — Merge changes geometry numbers (needs a known-area fixture); disclose is least-claim.
 - [ ] (B) true multi-room RoomCollection — phased core refactor (5 adapters + 3 exports + placement + schema + CLI); needs a real multi-room fixture. — Large; deferred pending a dedicated ADR + fixture so single-room goldens are not risked.
-- [ ] (C) polygon-ISM RT60 — no non-shoebox MEASURED GT corpus exists (ADR 0040 §G/OQ#2); pra RT60-fit reliability on sparse ISM RIR unverified (OQ#3); pyroomacoustics is web-extra (reproducibility asymmetry). — Blocks shipping any polygon RT60 number; only the geometry-only image-source enumerator is honestly verifiable this cycle.
+- [ ] (C) polygon-ISM RT60 — no non-shoebox MEASURED GT corpus exists (ADR 0040 §G/OQ#2); pra RT60-fit reliability on sparse ISM RIR unverified (OQ#3); pyroomacoustics is web-extra (reproducibility asymmetry). — Blocks shipping any polygon RT60 number; only the geometry-only image-source enumerator is honestly verifiable this cycle. **C2 (2026-06-12) reconfirms DEFER WITH the now-acquired multi-room U-Rochester + dEchorate measured corpus: both are shoebox/cuboid so the cascade magnitude is still unverifiable; the shoebox diffuse-field cap/blend (Option H) is ALSO deferred — the hard cap ≡ shipped `prefer_ism=False`, the U-Rochester cap "win" is a material confound that sign-flips on materials-known data, and §Decision-rule iv (≥3 rigid or any non-shoebox measured GT) fails. Evidence: `.omc/research/c2-polygon-ism-rt60-cascade-evaluation.md`, ADR 0040 §Status-update 2026-06-12.**
 - [ ] (C) coupled-space marker — RoomModel has no coupled_space field (ADR 0040 §F/R4); non-shoebox coupled captures are unprotected if a polygon-ISM path is ever wired. — Needed before any polygon predictor cascade lands.
 - [ ] (D) cam_h known-size reference — auto-detection needs a vision detector + a verifiable prior that does not exist; 244-pano GT is 100% cuboid so accuracy is unverifiable; manual anchor merely duplicates `--cam-height`. — Recommended DEFER; re-open needs a non-cuboid GT + detector, or explicit user demand for a manual anchor.
