@@ -1,7 +1,8 @@
 """RoomModel -> room.yaml writer.
 
-Validates against ``proto/room_schema.draft.json`` (Stage 1) by default and
-``proto/room_schema.json`` (Stage 2 strict) when ``schema_version="0.1"``.
+Validates against ``roomestim/proto/room_schema.draft.json`` (Stage 1) by
+default and ``roomestim/proto/room_schema.json`` (Stage 2 strict) when
+``schema_version="0.1"``.
 Every numeric leaf is checked with :func:`assert_finite` BEFORE writing.
 """
 
@@ -31,13 +32,14 @@ from roomestim.model import (
 
 
 def _proto_dir() -> Path:
-    """Resolve the repo-root ``proto/`` directory.
+    """Resolve the in-package ``roomestim/proto/`` directory.
 
-    The schema files live at the repo root (``/.../roomestim/proto/``), not
-    inside the package. ``__file__`` is at
-    ``<repo>/roomestim/export/room_yaml.py`` so ``parents[2]`` is the repo root.
+    The schema files are bundled inside the package (``<...>/roomestim/proto/``)
+    so an installed wheel ships and resolves them (ADR 0007). ``__file__`` is at
+    ``<...>/roomestim/export/room_yaml.py`` so ``parents[1]`` is the
+    ``roomestim/`` package root.
     """
-    return Path(__file__).resolve().parents[2] / "proto"
+    return Path(__file__).resolve().parents[1] / "proto"
 
 
 def _schema_path(schema_version: str) -> Path:

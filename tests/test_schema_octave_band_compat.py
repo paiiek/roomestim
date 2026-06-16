@@ -25,7 +25,7 @@ from roomestim.model import (
     Surface,
 )
 
-_PROTO_DIR = Path(__file__).parent.parent / "proto"
+_PROTO_DIR = Path(__file__).parent.parent / "roomestim" / "proto"
 
 
 def _load_schema(name: str) -> dict[str, Any]:

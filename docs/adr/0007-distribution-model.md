@@ -90,19 +90,31 @@ cross-machine **bug fix**, not a behavior regression.
 torch-free). This is what "PyPI-ready" means here: **builds + installs cleanly + console-script runs +
 machine-independent** — NOT a registry upload.
 
-**Honest limitation (known follow-up, NOT claimed fixed).** The room.yaml validation schemas live at
-the **repo-root** `proto/*.json` and are resolved at runtime via `_proto_dir()` =
-`Path(__file__).parents[2] / "proto"` (room_yaml.py / room_yaml_reader.py). In an installed wheel this
-resolves to a nonexistent `site-packages/proto`, and the wheel currently ships **zero** `proto/*.json`
-(the `[tool.setuptools.package-data] roomestim = ["proto/*.json", ...]` glob targets a nonexistent
-in-package `roomestim/proto/`). Therefore an installed copy can build + run `--help` + emit a
-layout.yaml with `--no-engine-validation`, but **cannot yet self-validate/emit room.yaml** unless run
-from a repo checkout. The honest fix is a small bundling refactor (relocate `proto/` into
-`roomestim/proto/` and point `_proto_dir()` at the in-package location so the existing package-data
-glob ships them), which touches runtime + golden round-trip surface and is therefore **out of
-Candidate A's scope** (this cycle's bound was the engine-path decouple + a pyproject-only packaging
-fix). Recorded here so "PyPI-ready" is not overclaimed: the wheel builds/installs/runs, but full
-room.yaml self-validation in an installed copy is a tracked follow-up.
+**Proto-bundling limitation — FIXED in v0.37.1.** *(Prior state, kept for record:)* the room.yaml
+validation schemas lived at the **repo-root** `proto/*.json` and were resolved at runtime via
+`_proto_dir()` = `Path(__file__).parents[2] / "proto"` (room_yaml.py / room_yaml_reader.py). In an
+installed wheel that resolved to a nonexistent `site-packages/proto`, and the wheel shipped **zero**
+`proto/*.json` (the `[tool.setuptools.package-data] roomestim = ["proto/*.json", ...]` glob targeted a
+then-nonexistent in-package `roomestim/proto/`). So an installed copy could build + run `--help` + emit
+a layout.yaml with `--no-engine-validation`, but **could not self-validate/emit room.yaml** unless run
+from a repo checkout.
+
+*(Resolution, v0.37.1.)* The three schema files were relocated (`git mv`, **byte-identical** contents)
+from repo-root `proto/` into in-package `roomestim/proto/`, and `_proto_dir()` was repointed to
+`Path(__file__).resolve().parents[1] / "proto"` in both room_yaml.py and room_yaml_reader.py. The
+existing `[tool.setuptools.package-data] roomestim = ["proto/*.json", ...]` glob now matches the real
+in-package location, so a built wheel both **ships** the schemas and **resolves** them — an installed
+copy now self-validates/emits room.yaml. Checkout-case behavior is unchanged: golden round-trip
+emit/read/validate tests pass byte-identically. A regression guard (`tests/test_proto_packaging.py`)
+asserts `_proto_dir()` points inside the `roomestim` package and that the three schema files exist
+there. This is a packaging-correctness fix only; it does **not** publish anything.
+
+*(Empirical proof, captured 2026-06-16.)* `python -m build --wheel` → the built
+`roomestim-0.37.1-py3-none-any.whl` contains exactly `roomestim/proto/{room_schema.draft.json,
+room_schema.json,room_schema.v0_2.draft.json}` (was **zero** before). `pip install`-ing that wheel into
+a fresh venv and importing: `_proto_dir()` resolves to `…/site-packages/roomestim/proto`, all three
+schema files present, core import torch-free. This is the gold-standard substitute for the prior
+checkout-only validation.
 
 **Reverse criteria for an actual PyPI publish remain UNCHANGED** (see above). Stay packaging-ready; do
 not upload.

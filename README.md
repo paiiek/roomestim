@@ -139,6 +139,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.37.1** | 2026-06-16 | (commit) | proto-bundling packaging fix (PATCH, no checkout behavior change) — relocated the room.yaml JSON schemas from repo-root `proto/` into in-package `roomestim/proto/` (`git mv`, byte-identical contents) and pointed `_proto_dir()` at `parents[1]/"proto"` so an installed wheel now ships (via the existing `[tool.setuptools.package-data]` glob) AND resolves the schemas, fixing self-validation/emit of room.yaml in an installed copy. Checkout golden round-trips unchanged. Regression guard: `tests/test_proto_packaging.py`. (ADR 0007 Honest-limitation → FIXED). |
 | **v0.37.0** | 2026-06-12 | (commit) | floater-robust auto-select footprint (MINOR, additive, opt-in) — new `--floor-reconstruction auto`: coarse-grid (0.25 m) convex-hull area-inflation signal (φ≥1.10) switches to the occupancy extractor ONLY when a DISCONNECTED floater is detected, else stays convex (clean input byte-equal by construction). NOT default · NOT a bleed/re-entrant fix · threshold synthetic-fixture-validated (Redwood +22%→+5% cited). Single source `AUTO_FLOOR_RECON_NOTE`. (C1 / [ADR 0048](docs/adr/0048-auto-floater-footprint-select.md)). |
 | **v0.35.0** | 2026-06-09 | `4554e9a` | polygon-ISM 기하 path-length/TOA 헬퍼 (MINOR, additive, geometry-only) — polygon image-source 의 기하 path-length / TOA 계산 헬퍼 추가; RT60·음향 수치는 미방출(geometry-only)이라 shoebox RT60 **byte-equal**. (Phase C ④ / [ADR 0040](docs/adr/0040-polygon-ism-design.md)). |
 | **v0.34.0** | 2026-06-09 | `67f98b5` | occupancy footprint 모드 (MINOR, additive, opt-in) — density+connectivity 기반 floater-rejection footprint 추출 모드 추가. **NOT default**·n=1 검증·notch-recovery 아님. (Phase B ⑥ / [ADR 0042](docs/adr/0042-live-mesh-corner-extraction.md)). |
@@ -571,7 +572,7 @@ python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,web]"
 roomestim/                  # core 패키지 — model, adapters, place, reconstruct, export, viz
 roomestim_web/              # 웹 데모 패키지 (v0.12-web.0+; sibling)
 app.py                      # HF Spaces 진입점 (roomestim_web.app:build_demo 임포트)
-proto/                      # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked)
+roomestim/proto/            # room.yaml JSON Schema (Stage 1 draft + Stage 2 locked; in-package, ships in wheel)
 tests/                      # pytest, fixtures, hypothesis property tests
 tests/fixtures/             # lab_room.usdz, ace_*/, soundcam_synthesized/, web/
 tests/web/                  # 웹 데모 테스트 (86 passed / 3 skip @ v0.35.0)

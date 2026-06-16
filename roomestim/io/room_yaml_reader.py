@@ -72,7 +72,13 @@ def _parse_ceiling_confidence(value: str, *, name: str) -> CeilingConfidence:
 
 
 def _proto_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "proto"
+    """Resolve the in-package ``roomestim/proto/`` directory (ADR 0007).
+
+    ``__file__`` is at ``<...>/roomestim/io/room_yaml_reader.py`` so
+    ``parents[1]`` is the ``roomestim/`` package root; the schemas are bundled
+    in-package so an installed wheel ships and resolves them.
+    """
+    return Path(__file__).resolve().parents[1] / "proto"
 
 
 def _schema_path(schema_version: str) -> Path:

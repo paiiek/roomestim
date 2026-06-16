@@ -24,7 +24,8 @@ from tests.fixtures.synthetic_rooms import l_shape_room, shoebox
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PROTO_DIR = REPO_ROOT / "proto"
+# Schemas are bundled in-package (ADR 0007) so an installed wheel ships them.
+PROTO_DIR = REPO_ROOT / "roomestim" / "proto"
 
 
 def _load_schema(name: str) -> dict[str, Any]:

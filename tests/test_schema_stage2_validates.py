@@ -40,7 +40,8 @@ def test_stage2_schema_flip_marker_and_strict_mode() -> None:
     assert room.schema_version == "0.2-draft"
     # Backward-compat: Stage-2 strict file + legacy draft + new draft all
     # coexist on disk.
-    schema_root = Path(roomestim.__file__).resolve().parent.parent / "proto"
+    # In-package bundle (ADR 0007): roomestim/__init__.py -> roomestim/proto/.
+    schema_root = Path(roomestim.__file__).resolve().parent / "proto"
     assert (schema_root / "room_schema.json").exists(), (
         "Stage-2 schema file preserved for re-flip"
     )
