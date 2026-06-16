@@ -123,8 +123,9 @@ def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
     p.add_argument(
         "--algorithm",
         choices=["vbap", "dbap", "wfs"],
-        required=True,
-        help="Placement algorithm.",
+        required=False,
+        default="vbap",
+        help="Placement algorithm (default: vbap).",
     )
     p.add_argument(
         "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
@@ -245,8 +246,9 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p.add_argument(
         "--algorithm",
         choices=["vbap", "dbap", "wfs"],
-        required=True,
-        help="Placement algorithm.",
+        required=False,
+        default="vbap",
+        help="Placement algorithm (default: vbap).",
     )
     p.add_argument(
         "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."

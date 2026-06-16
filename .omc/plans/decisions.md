@@ -2719,3 +2719,27 @@ golden `place_vbap_ring_n8_default.yaml` byte-equal, ruff/mypy(strict) EXIT0.
 `docs/adr/0041-ambisonics-placement-design.md`(§OQ status), `.omc/plans/open-questions.md`(OQ-38 CLOSED), 본 D102.
 **Cross-refs**: ADR 0041(ambisonics placement)·ADR 0036 §C(layout round-trip)·ADR 0003(forward-compat enum),
 D50(round-trip fidelity), D61(OQ-38 v0.20 재유예), OQ-38(CLOSED).
+
+## D103 — CLI `--algorithm` 기본값 추가: `place`/`run` 에서 생략 시 `vbap` (v0.38.0; 사용자 승인 2026-06-16)
+
+**질문**: `roomestim place`/`run` 의 `--algorithm` 은 그동안 `required=True`(기본값 없음)이라 생략하면
+argparse 오류로 종료됐다. 기본값을 추가할 것인가? 추가한다면 어떤 알고리즘을 기본으로?
+
+**결정**: `--algorithm` 두 정의(`_add_place_parser` cli.py:124-128, `_add_run_parser` cli.py:246-250)를
+`required=False, default="vbap"` 로 변경했다(`choices=["vbap","dbap","wfs"]` 불변). 사용자가 2026-06-16
+승인했다. 생략 시 `vbap` 으로 기본 동작한다.
+
+**근거**: (1) `vbap` 은 고정 반경 링이라 벽·천장 surface 없이 **항상 동작**한다. (2) `dbap` 은
+`place/dispatch.py:45` 가 "DBAP placement requires at least one wall or ceiling surface" 를 raise 하므로,
+기본값으로 두면 기하 없는(surface-less) 입력에서 crash → 기본값 부적합. (3) **정직성 제약**: `vbap` 은
+구조상 geometry-blind(README '방 기하 인지에 대한 정직 고지' 참조) → 새 기본값은 기하-인지 배치가 아니며,
+README note 는 이를 흐리지 않고 명시한다("기하-인지 배치가 목적이면 `--algorithm dbap` 을 지정"). downstream
+은 모두 `args.algorithm` 을 동일하게 읽으므로(명시 설정 가정 코드 없음) 순수 backward-compatible.
+
+**검증**: `tests/test_cli_input_validation.py` 에 (a) parser 기본값(`--algorithm` 생략 시
+`args.algorithm == "vbap"`), (b) end-to-end `place` 무-flag 실행이 vbap layout 산출, 두 테스트 추가.
+기존의 명시적 `--algorithm vbap|dbap|wfs` 호출은 동작 불변. MINOR 범프(0.37.1→0.38.0; 신규 능력, additive).
+**변경 파일**: `roomestim/cli.py`(2 edit), `README.md`(honesty note + changelog row),
+`roomestim/__init__.py`·`pyproject.toml`(0.38.0), `tests/test_cli_input_validation.py`(+2), 본 D103.
+**Cross-refs**: README '방 기하 인지에 대한 정직 고지' note, ADR 0003(placement algorithm priority),
+`place/dispatch.py:45`(DBAP surface 요구), D102.

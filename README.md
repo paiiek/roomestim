@@ -139,6 +139,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.38.0** | 2026-06-16 | (commit) | `place`/`run` `--algorithm` 기본값 추가 (MINOR, backward-compatible new capability) — `--algorithm` 을 생략하면 이제 오류 대신 `vbap` 으로 기본 동작한다(사용자 승인 2026-06-16). `vbap` 은 벽·천장 표면 없이 항상 동작하기 때문에 기본값으로 선택; `dbap` 은 `place/dispatch.py` 가 surface(벽·천장) 1개 이상을 요구하므로 기하 없는 입력에서 crash 하여 기본값으로 부적합. **정직 고지: 이 기본값은 geometry-blind 다 — 기하-인지 배치가 목적이면 명시적으로 `--algorithm dbap` 을 지정해야 한다.** 명시적 `--algorithm vbap\|dbap\|wfs` 호출은 동작 불변. (D103). |
 | **v0.37.1** | 2026-06-16 | (commit) | proto-bundling packaging fix (PATCH, no checkout behavior change) — relocated the room.yaml JSON schemas from repo-root `proto/` into in-package `roomestim/proto/` (`git mv`, byte-identical contents) and pointed `_proto_dir()` at `parents[1]/"proto"` so an installed wheel now ships (via the existing `[tool.setuptools.package-data]` glob) AND resolves the schemas, fixing self-validation/emit of room.yaml in an installed copy. Checkout golden round-trips unchanged. Regression guard: `tests/test_proto_packaging.py`. (ADR 0007 Honest-limitation → FIXED). |
 | **v0.37.0** | 2026-06-12 | (commit) | floater-robust auto-select footprint (MINOR, additive, opt-in) — new `--floor-reconstruction auto`: coarse-grid (0.25 m) convex-hull area-inflation signal (φ≥1.10) switches to the occupancy extractor ONLY when a DISCONNECTED floater is detected, else stays convex (clean input byte-equal by construction). NOT default · NOT a bleed/re-entrant fix · threshold synthetic-fixture-validated (Redwood +22%→+5% cited). Single source `AUTO_FLOOR_RECON_NOTE`. (C1 / [ADR 0048](docs/adr/0048-auto-floater-footprint-select.md)). |
 | **v0.35.0** | 2026-06-09 | `4554e9a` | polygon-ISM 기하 path-length/TOA 헬퍼 (MINOR, additive, geometry-only) — polygon image-source 의 기하 path-length / TOA 계산 헬퍼 추가; RT60·음향 수치는 미방출(geometry-only)이라 shoebox RT60 **byte-equal**. (Phase C ④ / [ADR 0040](docs/adr/0040-polygon-ism-design.md)). |
@@ -241,8 +242,10 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 입력으로 사용하는 것은 `dbap` 하나뿐입니다. `vbap` 과 `wfs` 는 구조상(by construction) 청취자 원점을
 중심으로 한 고정 반경 링/합성 baseline 만 생성하며 방 기하와 무관합니다 — 따라서 동일한 스피커 수·반경
 입력이면(WFS 는 동일 WFS 파라미터 가정) 방이 달라져도 동일한 좌표를 냅니다. **기하-인지 배치가 목적이면 `--algorithm dbap` 을 사용하세요.**
-(참고: 기본 알고리즘 선택은 이번 사이클에서 변경하지 않았습니다 — 기본값 변경은 동작 변경이므로 별도
-리뷰·사용자 승인이 필요한 보류 결정입니다.) Ambisonics 는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
+(참고: v0.38.0(사용자 승인 2026-06-16)부터 `--algorithm` 의 기본값은 `vbap` 입니다 — `vbap` 은 벽·천장
+표면 없이 항상 동작하기 때문입니다(고정 반경 링). **이 기본값은 위에서 밝힌 대로 방 기하와 무관(geometry-blind)
+합니다 — 기본값을 그대로 쓰면 기하-인지 배치가 되지 않으며, 기하-인지 배치가 목적이면 명시적으로
+`--algorithm dbap` 을 지정해야 합니다.**) Ambisonics 는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
 
 ### `--check-angles` — 기하 레이아웃 각도 점검 (Atmos 스타일)
 

@@ -375,3 +375,60 @@ def test_cli_env_var_honored_when_flag_unset(
     room = read_room_yaml(tmp_path / "room.yaml")
     # Env var honored → concave mode → notch preserved (>=6 vertices).
     assert len(room.floor_polygon) >= 6
+
+
+# --------------------------------------------------------------------------- #
+# D103 — `--algorithm` default = vbap (v0.38.0; user-approved 2026-06-16)
+# --------------------------------------------------------------------------- #
+# Omitting --algorithm used to be a parser error (required=True). It now
+# defaults to vbap (always-works fixed-radius ring; geometry-blind). dbap was
+# NOT chosen as default because place/dispatch.py requires a wall/ceiling
+# surface and would crash on geometry-less inputs.
+
+
+def test_place_algorithm_defaults_to_vbap_in_parser(tmp_path: Path) -> None:
+    """Parser default: omitting --algorithm resolves to vbap (not a parse error)."""
+    from roomestim.cli import _build_parser
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        ["place", "--in-room", str(tmp_path / "room.yaml"),
+         "--out-dir", str(tmp_path / "out")]  # NO --algorithm flag
+    )
+    assert args.algorithm == "vbap"
+
+
+def test_run_algorithm_defaults_to_vbap_in_parser() -> None:
+    """The composite `run` subparser also defaults --algorithm to vbap."""
+    from roomestim.cli import _build_parser
+
+    parser = _build_parser()
+    args = parser.parse_args(
+        ["run", "--backend", "roomplan", "--input", str(_FIXTURE_JSON),
+         "--out-dir", "/tmp/out"]  # NO --algorithm flag
+    )
+    assert args.algorithm == "vbap"
+
+
+def test_place_without_algorithm_produces_vbap_layout(tmp_path: Path) -> None:
+    """End-to-end: `place` with no --algorithm == explicit `--algorithm vbap`."""
+    room_yaml = tmp_path / "room.yaml"
+    _write_valid_room_yaml(room_yaml)
+
+    out_default = tmp_path / "out_default"
+    out_explicit = tmp_path / "out_explicit"
+
+    rc_default = main(
+        ["place", "--in-room", str(room_yaml), "--out-dir", str(out_default)]
+    )  # NO --algorithm flag
+    rc_explicit = main(
+        ["place", "--in-room", str(room_yaml), "--algorithm", "vbap",
+         "--out-dir", str(out_explicit)]
+    )
+
+    assert rc_default == 0
+    assert rc_explicit == 0
+    layout_default = (out_default / "layout.yaml").read_text(encoding="utf-8")
+    layout_explicit = (out_explicit / "layout.yaml").read_text(encoding="utf-8")
+    # Default resolves to vbap → byte-identical to the explicit-vbap layout.
+    assert layout_default == layout_explicit
