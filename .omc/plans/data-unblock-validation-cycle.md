@@ -248,3 +248,60 @@ All tiers shipped:
 - Tier 2 C1 `2c822b3` v0.37.0 — floater-robust auto-select footprint (coarse-grid φ≥1.10 signal)
 - Tier 3 C2 `32eda0b` — polygon-ISM→RT60 cascade DEFER (evidence-backed, doc-only)
 - Tier 3 C3 (this commit) — ambisonics layout DEFER reconfirmed (gate unmet, doc-only)
+
+---
+## REOPENED 2026-06-16 — V1-NR · 3DSES NON-RECT notch-bridging slice (the deferred line 137 work)
+
+**Trigger:** full 7.3 GB `3DSES.zip` now downloaded + verified (ZIP OK, 7007 MB, gitignored at
+`/home/seung/mmhoa/data-gt/3dses/`). The 2026-06-12 V1 note used only the 220 MB test subset = 3
+axis-RECTANGULAR rooms → "walls unmeasurable by convex hull: 0 of 12" and explicitly DEFERRED the
+re-entrant/L-shaped notch-bridging over-read measurement to the full pull (note line 136-137).
+
+**Data confirmed (this session):**
+- Gold tier extracted: 7 scans S163/164/165/168/169/178/179, each (N,9) float64 =
+  `x,y,z,r,g,b,intensity,label_col7,label_col8` — Z-up geo coords (Lambert global-shift frame),
+  TWO semantic-label columns (real + pseudo-from-CADmodel; mapping TBD from arXiv 2501.17534).
+- Coarse all-points occupancy/convex-hull area ratio (10 cm grid, largest-CC, hole-filled):
+  S163 0.901 · S164 0.520 · S165 0.752 · S168 0.692 · S169 0.811 · S178 0.555 · S179 0.716 →
+  **ALL non-rect; strongest re-entrant candidates S164, S178, S168.** (Proxy only — furniture/TLS
+  occlusion confound; rigorous footprint needs floor/wall-labeled points.)
+
+**METHOD (inherits V1 amd.1-5; NO FAKE NUMBERS):**
+1. Establish label→class map from AUTHORITATIVE source (arXiv 2501.17534 / Zenodo readme), not guessed.
+   Identify which col = real vs pseudo label; pick wall/floor/ceiling class ids.
+2. GT footprint per non-rect room = true (concave) room polygon from labeled WALL points (inner face)
+   ∩ floor extent; disclose the GT-construction choice + the ~1.5 cm registration floor (no CAD here →
+   GT is label-derived, a DIFFERENT GT basis than the test-subset CAD note — label this clearly).
+3. Run roomestim's SHIPPED convex floor path (`_convex_floor_polygon`) AND occupancy/concave
+   (`floor_polygon_from_mesh_occupancy`, min_count=3, ratio=0.4) — adapter BYPASSED, same as V1.
+4. Metrics: (a) footprint-area % error convex vs occupancy SEPARATELY; (b) **notch-bridging over-read**
+   = convex_area − GT_concave_area (the re-entrant area the convex hull falsely fills); (c) "walls
+   unmeasurable by convex hull: N of M" coverage line per room; (d) does occupancy/concave RECOVER the
+   re-entrant corner here (real TLS) when it did NOT on ICL-NUIM synthetic (H1: +8.8%/+8.6% no-recover)?
+5. Honest confounds: furniture clutter, TLS through-opening bleed + occlusion gaps, label noise,
+   double-height/overhead structure (cf S180 in V1 note).
+
+**Output:** append a "NON-RECT (full-pull)" section to `.omc/research/3dses-footprint-wall-validation.md`.
+**Doc-only** unless a real reviewable code gain surfaces (then SEPARATE review pass). Route through
+scientist → critic/verifier. This DIRECTLY tests the H1 README claim that concave/occupancy modes do
+NOT recover re-entrant corners — on REAL non-rect rooms for the first time.
+
+**RESUME STATE:** ✅ DONE 2026-06-16. scientist(opus) executed steps 1-5 → independent critic(opus)
+ACCEPT-WITH-FIXES; 3 fixes applied (H1 repro-script now prints every table column; H2 CORE-notch def
+corrected to ÷core-own-area; M1 README kept number-free). Claims A/B/C independently reproduced from raw `.npy`.
+
+**FINDINGS (first-ever real non-rect TLS footprint test):**
+- 3DSES Gold has NO clean strong-L room; coarse occ/convex proxy (0.52–0.81) was reading through-doorway
+  floor bleed, not architecture. Genuine core re-entrancy mild (CORE notch +4…+20%, median +8%).
+- Convex default over-reads true floor median **+112%** (max +222% S164); occupancy/largest-CC → **+14%**
+  by dropping DISCONNECTED far-floor patches → **CONFIRMS** README load-bearing occupancy claim (disconnected
+  yes, connected through-opening bleed no). No fix to L403.
+- **DECISIVE:** dense real TLS → shipped ratio=0.4 occupancy yields visibly NON-CONVEX output + partially
+  trims convex over-read — direction-CONTRADICTS synthetic ICL-NUIM "no recovery" (cause=point density).
+  v0.24.0 H1 line was an UNDER-statement on dense real data.
+
+**SHIPPED (doc-only, gate GREEN):** README L163 number-free qualitative honesty touch
+("(2026-06-16 보강, 3DSES Gold n=6)"; NO recovery% quoted — GT has no CAD reg, 25–47% non-wall-backed,
+occlusion → uncalibrated). Research note section + `nr_notch_repro.py` (both gitignored, on-disk).
+Gates: default 528p/6s · web 86p/3s · ruff+mypy clean (baseline 611p/7s @ v0.38.0, no regression).
+Tracked diff = README.md + this plan. **NOT YET COMMITTED** (awaiting user go per commit-on-ask rule).
