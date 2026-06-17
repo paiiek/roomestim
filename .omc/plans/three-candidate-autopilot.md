@@ -54,8 +54,20 @@ Canonical gate (MANDATORY every code step): `/home/seung/miniforge3/bin/python -
 ## RESUME POINTER  (update EVERY phase — session may end anytime)
 
 - 2026-06-17 INIT: plan created from AskUserQuestion answer (do 1,2,3 in order, autopilot, survive
-  session breaks). Prior commit `5aa3150` (3DSES Gold footprint) pushed. Baseline v0.38.0 611p/7s.
-- **CURRENT STEP: CAND-1 not yet started.** Next action = launch scientist(opus) for 3DSES wall
-  inner-face validation per CAND-1 above.
-- CAND-2: PENDING.
+  session breaks). Prior commit `5aa3150` (3DSES Gold footprint) pushed.
+  NOTE: actual v0.38.0 full `pytest -q` baseline = **614p/7s** (memory's 611 was v0.37.1; the
+  v0.38.0 `--algorithm` commit added +3). web 86p/3s · ruff · mypy clean.
+- **CAND-1: ✅ DONE 2026-06-17.** scientist(opus) → independent critic(opus) ACCEPT-WITH-FIXES (repro
+  PASS exact, CAD-in-frame non-circular, architecture verified, NO fabricated numbers). 5 fixes applied:
+  MED-1 (state real clean-wall criterion: documented gate=7 walls median 8.6cm vs post-hoc ~3 walls 0-3cm),
+  MED-2 (z-bullet provenance — script reproduces residuals/over-reads/coverage only), MED-3 (README:163
+  "CAD registration 없고"→"label-derived GT 기준이고… CAD 정합 확인했으나 미적용"), LOW-1 (V1 agreement =
+  magnitude-only n=3, not sign-level), LOW-2 (45° hardcoded). KEY RESULT: CAD registers to Gold at sub-cm
+  (0.4–0.7cm) → defensible wall GT exists, but single-station occlusion + convex bleed → only ~3/24 walls
+  cleanly measurable → wall position VALIDATED NARROWLY / UNVALIDATED IN AGGREGATE; NO product README change.
+  Gate GREEN 614p/7s · web 86p/3s · ruff · mypy clean (doc-only, 0 regression).
+  Tracked diff = README.md (MED-3) + this plan. Research note + nr_wall_repro.py gitignored on-disk.
+  Commit: (this commit). → push → CAND-2.
+- **CURRENT STEP: CAND-2 (PyPI publish prep) — NOT yet started.** Next action = executor builds wheel/sdist,
+  twine check, TestPyPI upload if creds, install-smoke; STOP before real pypi.org.
 - CAND-3: PENDING.
