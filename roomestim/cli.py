@@ -516,6 +516,109 @@ def _add_collection_parser(sub: argparse._SubParsersAction[argparse.ArgumentPars
     )
 
 
+def _add_structure_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Additive `structure` subcommand (ADR 0050, Phase S1).
+
+    Splits ONE real Apple RoomPlan ``CapturedStructure`` JSON export into N
+    single-room ``RoomModel`` (one per ``section``) by the documented
+    nearest-section-center wall HEURISTIC, then feeds them into the SAME
+    composition path ``collection`` uses (per-room placement + per-room
+    ``room.<name>.yaml`` / ``layout.<name>.yaml`` + a ``collection.yaml``
+    manifest). The per-room split is a RECONSTRUCTION, not Apple-authoritative —
+    see ``ROOMPLAN_STRUCTURE_SPLIT_NOTE``. NO aggregate footprint/volume/RT60.
+    """
+    p = sub.add_parser(
+        "structure",
+        help="Split a RoomPlan CapturedStructure export into a per-room collection.",
+    )
+    p.add_argument(
+        "--in-structure",
+        required=True,
+        metavar="PATH",
+        help="A RoomPlan CapturedStructure .json export (real device scan).",
+    )
+    p.add_argument(
+        "--name",
+        default="structure",
+        metavar="NAME",
+        help="Collection/venue name (no geometric meaning; default: 'structure').",
+    )
+    p.add_argument(
+        "--combined-gltf",
+        default=None,
+        metavar="PATH",
+        help="Optional path to write ONE combined glTF/GLB visual assembly of "
+        "the per-room models (e.g. structure.glb). A visual assembly only — no "
+        "aggregate acoustics; rooms are at their own local origin (no inter-room "
+        "pose is inferred). Recorded as 'combined_ref' in the manifest.",
+    )
+    p.add_argument(
+        "--combined-usd",
+        default=None,
+        metavar="PATH",
+        help="Optional path to write ONE combined USD visual assembly of the "
+        "per-room models (e.g. structure.usdz or structure.usd; requires the "
+        "[usd] extra). A visual assembly only — no aggregate acoustics. Recorded "
+        "as 'combined_usd_ref' in the manifest.",
+    )
+    # Reused placement flags — identical semantics to `place` / `collection`.
+    p.add_argument(
+        "--algorithm",
+        choices=["vbap", "dbap", "wfs", "ambisonics"],
+        required=False,
+        default="vbap",
+        help="Placement algorithm applied per room (default: vbap).",
+    )
+    p.add_argument(
+        "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
+    )
+    p.add_argument(
+        "--order",
+        type=int,
+        choices=[1, 2, 3],
+        default=None,
+        metavar="N",
+        help="Ambisonics decode order (1|2|3); required for --algorithm "
+        "ambisonics. EXPERIMENTAL (rig coordinates only; SH decode/route is "
+        "engine-gated and UNCONFIRMED).",
+    )
+    p.add_argument(
+        "--layout-radius",
+        type=float,
+        default=2.0,
+        metavar="R",
+        help="VBAP ring/dome radius in metres (default 2.0).",
+    )
+    p.add_argument(
+        "--el-deg",
+        type=float,
+        default=0.0,
+        metavar="E",
+        help="VBAP elevation in degrees (default 0.0).",
+    )
+    p.add_argument(
+        "--wfs-f-max-hz",
+        type=float,
+        default=8000.0,
+        metavar="F",
+        help="Highest reproduction frequency for WFS spatial-aliasing bound (default 8000.0).",
+    )
+    p.add_argument(
+        "--wfs-spacing-m",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Override per-speaker spacing in metres "
+        "(default: derived from --layout-radius and --n-speakers).",
+    )
+    p.add_argument(
+        "--out-dir",
+        default=".",
+        metavar="DIR",
+        help="Output directory (default: cwd).",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="roomestim",
@@ -530,6 +633,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_run_parser(sub)
     _add_edit_parser(sub)
     _add_collection_parser(sub)
+    _add_structure_parser(sub)
 
     return parser
 
@@ -1166,6 +1270,115 @@ def _cmd_collection(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_structure(args: argparse.Namespace) -> int:
+    """Split a RoomPlan CapturedStructure into a per-room collection (ADR 0050).
+
+    Mirrors ``_cmd_collection``: ``parse_structure`` -> N RoomModel -> per-room
+    ``_run_placement`` (the SAME library path ``place`` uses) -> per-room
+    ``room.<slug>.yaml`` / ``layout.<slug>.yaml`` -> ``RoomCollection`` ->
+    ``collection.yaml``. The per-room split is a HEURISTIC reconstruction; the
+    disclosure note is printed so it is unavoidable.
+    """
+    import os
+
+    from roomestim.adapters.roomplan_structure import parse_structure
+    from roomestim.collection import RoomCollection
+    from roomestim.export.collection_yaml import write_collection_yaml
+    from roomestim.export.layout_yaml import write_layout_yaml
+    from roomestim.export.room_yaml import write_room_yaml
+    from roomestim.model import PlacementResult
+    from roomestim.reconstruct._disclosure import ROOMPLAN_STRUCTURE_SPLIT_NOTE
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rooms = parse_structure(Path(args.in_structure))
+
+    print(f"NOTE: {ROOMPLAN_STRUCTURE_SPLIT_NOTE}", file=sys.stderr)
+    _maybe_print_ambisonics_notes(args)
+
+    placements: list[PlacementResult | None] = []
+    room_refs: list[str] = []
+    layout_refs: list[str | None] = []
+    used_slugs: set[str] = set()
+
+    for room in rooms:
+        # Same library path as _cmd_place / _cmd_collection: run_placement ->
+        # write_layout_yaml. _cmd_place itself is NOT called/edited.
+        result = _run_placement(
+            room,
+            args.algorithm,
+            args.n_speakers,
+            args.layout_radius,
+            args.el_deg,
+            wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
+            wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+            order=getattr(args, "order", None),
+        )
+        assert isinstance(result, PlacementResult)
+
+        slug = _unique_room_slug(room.name, used_slugs)
+        room_ref = f"room.{slug}.yaml"
+        layout_ref = f"layout.{slug}.yaml"
+        write_room_yaml(room, out_dir / room_ref)
+        write_layout_yaml(result, out_dir / layout_ref)
+        print(f"wrote {out_dir / room_ref}")
+        print(f"wrote {out_dir / layout_ref}")
+
+        placements.append(result)
+        room_refs.append(room_ref)
+        layout_refs.append(layout_ref)
+
+    collection = RoomCollection(name=args.name, rooms=rooms, placements=placements)
+
+    # Optional combined visual assembly — REUSES the shipped ADR 0049 collection
+    # writers (no offsets => rooms at their own local origin; honest note below).
+    combined_ref: str | None = None
+    combined_gltf = getattr(args, "combined_gltf", None)
+    if combined_gltf:
+        from roomestim.export.collection_gltf import write_collection_gltf
+
+        combined_path = Path(combined_gltf)
+        fmt: Literal["gltf", "glb"] = (
+            "gltf" if combined_path.suffix.lower() == ".gltf" else "glb"
+        )
+        write_collection_gltf(collection, combined_path, format=fmt)
+        print(f"wrote {combined_path}")
+        combined_ref = os.path.relpath(combined_path, out_dir)
+        print(
+            "note: combined glTF is a visual assembly only; rooms are emitted at "
+            "their local origin (they may overlap). roomestim does not infer "
+            "inter-room pose."
+        )
+
+    combined_usd_ref: str | None = None
+    combined_usd = getattr(args, "combined_usd", None)
+    if combined_usd:
+        from roomestim.export.collection_usd import write_collection_usd
+
+        combined_usd_path = Path(combined_usd)
+        write_collection_usd(collection, combined_usd_path)
+        print(f"wrote {combined_usd_path}")
+        combined_usd_ref = os.path.relpath(combined_usd_path, out_dir)
+        print(
+            "note: combined USD is a visual assembly only; rooms are emitted at "
+            "their local origin (they may overlap). roomestim does not infer "
+            "inter-room pose."
+        )
+
+    manifest_path = out_dir / "collection.yaml"
+    write_collection_yaml(
+        collection,
+        manifest_path,
+        room_refs=room_refs,
+        layout_refs=layout_refs,
+        combined_ref=combined_ref,
+        combined_usd_ref=combined_usd_ref,
+    )
+    print(f"wrote {manifest_path}")
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
@@ -1191,6 +1404,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_edit(args)
         if args.command == "collection":
             return _cmd_collection(args)
+        if args.command == "structure":
+            return _cmd_structure(args)
     except _ExperimentalGate as gate:
         print(f"error: {gate}", file=sys.stderr)
         return 1

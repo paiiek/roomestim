@@ -43,7 +43,7 @@ Space에 그대로 push하면 별도 설정 없이 빌드됩니다.
 ```bash
 pip install -e ".[dev]"
 
-# 5개 서브커맨드: ingest / place / export / run / edit
+# 7개 서브커맨드: ingest / place / export / run / edit / collection / structure
 python -m roomestim run \
     --backend roomplan \
     --input tests/fixtures/lab_room.usdz \
@@ -100,6 +100,44 @@ python -m roomestim run --backend image --experimental \
 안내합니다. export/edit 의 엔진 검증은 `--validate-engine PATH` /
 `--no-engine-validation` 으로 토글합니다 (ADR 0033).
 
+### `structure` 서브커맨드 — Apple CapturedStructure → N개 방 (정직 고지)
+
+`structure` 는 **진짜 Apple RoomPlan `CapturedStructure` export 1개**(다중 방 device
+스캔 JSON)를 받아 `section` 당 1개씩 N개의 단일방 `RoomModel` 로 분해한 뒤, 기존
+`collection` 합성 경로(방별 placement + `room.<name>.yaml`/`layout.<name>.yaml` +
+`collection.yaml` manifest)로 그대로 흘려보냅니다([ADR 0050](docs/adr/0050-roomplan-capturedstructure-splitter.md)).
+
+```bash
+python -m roomestim structure \
+    --in-structure scan.CapturedStructure.json \
+    --algorithm vbap --n-speakers 8 --name venue \
+    --combined-gltf /tmp/out/venue.glb \
+    --out-dir /tmp/out
+```
+
+> **정직 고지 (load-bearing)**: Apple 의 export 는 **element→room 멤버십을 주지
+> 않습니다** — `sections`(=방)는 `label`/`story`/`center` 만 갖고 walls/doors/windows/
+> objects 는 방 외래키 없는 flat 배열입니다. 따라서 roomestim 은 각 벽/가구/문/창을
+> **명시적·문서화된 HEURISTIC**(floor-plane nearest-section-center, story 일치)으로 방에
+> 배정합니다. 결과 per-room 분할은 **RECONSTRUCTION 이지 Apple-authoritative 데이터가
+> 아닙니다**(단일진실원천 `ROOMPLAN_STRUCTURE_SPLIT_NOTE` — CLI 가 stderr 로 출력).
+> per-room footprint 은 **배정된 벽들의 floor-projected convex hull**(재진입 코너를 복원
+> 못 하는 **과대추정**)일 뿐 측정 floor 폴리곤이 아닙니다(export 의 `floors[]` 는 빌딩 전체
+> 1개). ceiling 높이는 배정된 벽 높이의 중앙값으로 **합성**됩니다. **집계 footprint/volume/
+> 결합 RT60 은 의도적으로 없습니다.** 문/창은 `parentIdentifier`(→부모 벽의 방)로 따라가며
+> `wall_index` 를 그 방의 walls-only 프레임으로 **재계산**합니다(ADR 0037). doors/windows
+> 는 Object 로, sofa/table/bed/storage 가구는 free-standing box 로 유지하고 chair/sink/
+> toilet 은 기존 정책대로 무시합니다. `--combined-gltf`/`--combined-usd` 는 독립 방들의
+> **시각적 조립**일 뿐(방-간 pose 추론 없음 → 방들이 원점에서 겹칠 수 있음)이며 결합 음향이
+> 아닙니다.
+>
+> **정확도는 UNVALIDATED 입니다** — multi-room GT 가 없어 분할 정확도를 측정할 수 없습니다.
+> **알려진 실패 모드**(해결 안 함, 정직 문서화): (1) **nested room**(예: 침실 안 욕실)은
+> nearest-center 가 큰 방으로 빨아들임; (2) **동일 라벨 인접 방**(두 bedroom 중 하나가 적은
+> 벽을 받을 수 있음 → <3 벽이면 low-confidence `UserWarning`); (3) **두 방 경계의 등거리
+> 벽**은 deterministic 하게 최소 section index 로 tie-break. rough multi-room pre-scan
+> 용도이며 install-grade 측정이 아닙니다.
+
 ### 출력 편집 — 스피커 nudge + layout round-trip (v0.18+)
 
 자동 배치된 `layout.yaml` 의 스피커 좌표를 다시 읽어 미세 조정한 뒤 되쓰는
@@ -139,6 +177,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.43.0** | 2026-06-17 | (commit) | RoomPlan `CapturedStructure` splitter **Phase S2+S3** (MINOR, additive) — `structure` 서브커맨드가 진짜 Apple multi-room export 를 N개 단일방 `RoomModel` 로 분해하는 입력 경로 완성([ADR 0050](docs/adr/0050-roomplan-capturedstructure-splitter.md)). **S2**: `objects[]` 가구를 nearest-section-center 로 방에 배정(기존 RoomPlan 정책 재사용 — sofa/table/bed/storage 유지, chair/sink/toilet 무시; 실 fixture 13개 중 10개 kept), doors/windows 는 `parentIdentifier`→부모 벽의 방으로 따라가며 `wall_index` 를 그 방의 walls-only 프레임으로 **재계산**(ADR 0037 가드 통과; 실 fixture 4 doors + 4 windows 전부 in-range), `--combined-gltf`/`--combined-usd` 는 출시된 ADR 0049 결합 writer 재사용(시각적 조립일 뿐, 결합 음향 없음). **S3**: `openings[]` 를 벽과 동일 경로로 ingest, degenerate section(<3 벽)은 crash 대신 단일진실원천 `ROOMPLAN_STRUCTURE_SPLIT_NOTE` `UserWarning`+low-confidence footprint, 등거리 벽 tie-break=최소 section index(deterministic), `unidentified` section 은 방으로 보존. **정직 고지**: per-room 분할은 disclosed HEURISTIC RECONSTRUCTION(Apple 은 element→room 멤버십 미제공), per-room footprint 은 wall-hull 과대추정, **집계 footprint/volume/RT60 없음**, 정확도 UNVALIDATED(multi-room GT 없음); 알려진 실패 모드(nested/동일라벨 인접/등거리) README 문서화. **단일방 코드·`roomplan.py`·`collection.py`·기존 exporter/placement 무접촉 → 모든 golden byte-equal**(load-bearing 테스트: per-room layout == standalone `place` 바이트 동일). default 686p/7s · web 86p/3s · ruff·mypy clean. (D108 / [ADR 0050](docs/adr/0050-roomplan-capturedstructure-splitter.md)). |
 | **v0.42.0** | 2026-06-17 | (commit) | multi-room `RoomCollection` **결합 USD export**(glTF parity, MINOR additive) — `collection --combined-usd PATH`: 신규 `export/collection_usd.py` 가 `export/usd._room_to_usd_stage` 빌더를 재사용해 방별 Xform+translate(=user offset, Y-up·metersPerUnit 1.0 frame)로 단일 USD 스테이지 조립, manifest 에 ref 기록. **glTF 와 동일 정직범위: 독립 방들의 시각적 조립일 뿐 — geometry/footprint merge·결합 RT60·aggregate 음향 없음.** offset 은 user-supplied only(추론 안함). 스키마 v0_1 유지(optional key); flag 부재⇒이전 출력 byte-equal; 단일방 코드·`write_usdz`/`_room_to_usd_stage` 무접촉⇒golden byte-equal. pxr 부재 시 skip. code-review APPROVE. default 666p/7s · web 86p/3s · ruff·mypy(56) clean. (D107 / [ADR 0049](docs/adr/0049-multi-room-roomcollection-composition.md)). |
 | **v0.41.0** | 2026-06-17 | (commit) | multi-room `RoomCollection` **Phase 2+3** — per-room offset + 결합 glTF export (MINOR, additive) — `collection` 서브커맨드에 `--offsets X,Y,Z ...`(방 수와 일치, **user-supplied only — roomestim 은 방-간 pose 를 추론하지 않는다**, NaN/inf 거부, 부재⇒identity) + `--combined-gltf PATH`(신규 `export/collection_gltf.py` 가 `_room_to_trimesh_scene` 재사용·방별 offset 을 순수 translation 으로 적용·단일 .glb/.gltf 방출, manifest 에 `combined_ref` 기록). **결합 export 는 독립 방들의 *시각적 조립*일 뿐 — footprint union·결합 volume/RT60·aggregate 음향 주장 없음**(offset 없으면 방들이 원점에 겹침을 정직 고지). 스키마는 optional `offset`/`combined_ref` 추가로 **v0_1 유지**(기존 Phase-1 manifest 유효). **offset 부재⇒Phase-1 byte-equal**(테스트 증명); 단일방 코드·`write_gltf` 무접촉⇒golden byte-equal. USD 결합 export 는 DEFER([usd] extra-gate). OMC planner-spec→executor(opus)→code-review(opus, APPROVE-WITH-FIXES: offset finite 체크 1건 적용)→verifier. default 660p/7s · web 86p/3s · ruff·mypy clean. (D106 / [ADR 0049](docs/adr/0049-multi-room-roomcollection-composition.md)). |
 | **v0.40.0** | 2026-06-17 | (commit) | multi-room `RoomCollection` **합성(composition) 레이어 Phase 1** (MINOR, additive) — 신규 `roomestim/collection.py` `RoomCollection`(`name`, `rooms`, `placements`) + `collection` CLI 서브커맨드: `--in-rooms A.yaml B.yaml ...`(N≥2 단일방 room.yaml)를 받아 **각 방을 독립적으로** 배치하고 `layout.<room>.yaml` per-room + `collection.yaml` manifest 를 쓴다. **정직 범위 고지: roomestim 은 multi-room 을 *추론하지 않는다* — 컬렉션은 N개의 명시적 단일방 입력의 순서있는 번들이다.** footprint union·결합 volume/RT60·방-간 pose 추론 **없음**(ADR0047 가짜숫자 트랩 회피); aggregate 음향 주장 없음. Phase 1=manifest only(결합 glTF/USD 와 명시적 offset 은 Phase 2/3 DEFER). 신규 의존 0(jsonschema 재사용). **단일방 코드 경로 무접촉 → 모든 단일방 golden/round-trip byte-equal by construction**(load-bearing 테스트: collection per-room layout == standalone `place` 바이트 동일). (D105 / [ADR 0049](docs/adr/0049-multi-room-roomcollection-composition.md)). |

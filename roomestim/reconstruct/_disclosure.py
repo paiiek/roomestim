@@ -106,6 +106,31 @@ POLYGON_ISM_GEOMETRY_NOTE: str = (
     "Status-update 2026-06-12 / C2)."
 )
 
+# RoomPlan CapturedStructure per-room split disclosure (ADR 0050). A real
+# multi-room ``CapturedStructure`` export gives NO element->room foreign key:
+# ``sections`` (= rooms) carry only ``{label, story, center}`` and walls/objects
+# are flat arrays. The splitter therefore assigns each wall to a section by a
+# HEURISTIC (floor-plane nearest-section-center, story-matched), so the per-room
+# split is a RECONSTRUCTION, not Apple-authoritative membership. Geometry
+# provenance stays "measured" (LiDAR); this note carries the membership-heuristic
+# honesty. Single source of truth — reference, do not retype.
+ROOMPLAN_STRUCTURE_SPLIT_NOTE: str = (
+    "The per-room split of a RoomPlan CapturedStructure is a HEURISTIC "
+    "RECONSTRUCTION, not Apple-authoritative data: the export gives NO "
+    "element->room membership (sections carry only label/story/center, and "
+    "walls/doors/windows/objects are flat arrays). roomestim assigns each wall "
+    "to the story-matched section whose center is nearest in the floor plane "
+    "(x, z); this can mis-partition nested, adjacent, or same-label rooms and "
+    "there is NO ground truth to measure the error. Each per-room footprint is "
+    "the floor-projected CONVEX HULL of that room's assigned walls (an "
+    "OVER-ESTIMATE that does not recover re-entrant corners), NOT a measured "
+    "floor polygon — the export's single floors[] entry is building-wide. "
+    "Ceiling height is SYNTHESIZED as the median assigned wall height (RoomPlan "
+    "captures no ceiling). There is intentionally NO aggregate footprint, "
+    "combined volume, or combined RT60. Do NOT treat the split as accurate "
+    "multi-room recovery."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
     "RT60_MODEL_NAME",
@@ -113,4 +138,5 @@ __all__ = [
     "IMAGE_CAM_H_SCALE_NOTE",
     "POLYGON_ISM_GEOMETRY_NOTE",
     "ROOMPLAN_MULTI_FLOOR_NOTE",
+    "ROOMPLAN_STRUCTURE_SPLIT_NOTE",
 ]
