@@ -68,6 +68,20 @@ Canonical gate (MANDATORY every code step): `/home/seung/miniforge3/bin/python -
   Gate GREEN 614p/7s · web 86p/3s · ruff · mypy clean (doc-only, 0 regression).
   Tracked diff = README.md (MED-3) + this plan. Research note + nr_wall_repro.py gitignored on-disk.
   Commit: (this commit). → push → CAND-2.
-- **CURRENT STEP: CAND-2 (PyPI publish prep) — NOT yet started.** Next action = executor builds wheel/sdist,
-  twine check, TestPyPI upload if creds, install-smoke; STOP before real pypi.org.
-- CAND-3: PENDING.
+- **CAND-2: ✅ DONE (autonomous portion) 2026-06-17.** executor(sonnet) + independent main-agent re-verify.
+  Results (report `.omc/research/pypi-publish-dryrun.md`, gitignored): `python -m build` PASS (wheel 255KB +
+  sdist 420KB; only non-fatal SPDX-license deprecation warnings, deadline 2027-02-18). `twine check` PASS
+  both artifacts. **proto-bundling fix (v0.37.1) CONFIRMED in artifact**: all 3 schemas
+  (`roomestim/proto/room_schema{,.draft,.v0_2.draft}.json`) present in BOTH wheel + sdist; fresh throwaway
+  venv (`/tmp`, repo unimportable) install-from-wheel → `import roomestim`=0.38.0, `roomestim --version`=0.38.0,
+  `_proto_dir()` resolves to `site-packages/roomestim/proto` (NOT repo) with all 3 schemas loadable. Main
+  agent independently re-ran the wheel-content list + fresh-venv smoke → identical PASS.
+  **TestPyPI: SKIPPED** — no `~/.pypirc`, no `TWINE_*`/`PYPI_*` env (no credentials).
+  **VERDICT: roomestim is INSTALL-GRADE and publish-ready.** Repo change = 0 (artifacts + report gitignored);
+  no commit beyond this RESUME update. No code/version touched → CAND-1 gate (614p/7s) still valid.
+  **★ USER-GATED REMAINDER:** the actual `pypi.org` publish is irreversible + namespace-claiming +
+  outward-facing → REQUIRES user go-ahead + PyPI credentials. NOT done autonomously by design. Non-blocking
+  future nit: switch `pyproject.toml` `project.license` to SPDX string before 2027-02-18.
+- **CURRENT STEP: CAND-3 (ambisonics layout, ADR 0041) — NOT yet started.** Next action = planner(opus)
+  → executor(opus) → code-review → verifier; real code feature (resolve dead enum + OQ-38 round-trip);
+  full gate GREEN + golden round-trip + version bump.
