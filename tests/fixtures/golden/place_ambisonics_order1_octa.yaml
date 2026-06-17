@@ -1,0 +1,50 @@
+# WARNING: schema validation skipped (--no-engine-validation)
+# This file has NOT been validated against the spatial_engine schema.
+# Use with caution; engine compatibility is the caller's responsibility.
+version: '1.0'
+name: ambisonics_rig
+regularity_hint: IRREGULAR
+speakers:
+- id: 1
+  channel: 1
+  az_deg: 90.0
+  el_deg: 0.0
+  dist_m: 2.0
+  x_aim_az_deg: -90.0
+  x_aim_el_deg: -0.0
+- id: 2
+  channel: 2
+  az_deg: -90.0
+  el_deg: 0.0
+  dist_m: 2.0
+  x_aim_az_deg: 90.0
+  x_aim_el_deg: -0.0
+- id: 3
+  channel: 3
+  az_deg: 0.0
+  el_deg: 90.0
+  dist_m: 2.0
+  x_aim_az_deg: -180.0
+  x_aim_el_deg: -90.0
+- id: 4
+  channel: 4
+  az_deg: 0.0
+  el_deg: -90.0
+  dist_m: 2.0
+  x_aim_az_deg: -180.0
+  x_aim_el_deg: 90.0
+- id: 5
+  channel: 5
+  az_deg: 0.0
+  el_deg: 0.0
+  dist_m: 2.0
+  x_aim_az_deg: -180.0
+  x_aim_el_deg: -0.0
+- id: 6
+  channel: 6
+  az_deg: 180.0
+  el_deg: 0.0
+  dist_m: 2.0
+  x_aim_az_deg: -0.0
+  x_aim_el_deg: -0.0
+x_target_algorithm: AMBISONICS

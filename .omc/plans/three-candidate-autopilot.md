@@ -82,6 +82,20 @@ Canonical gate (MANDATORY every code step): `/home/seung/miniforge3/bin/python -
   **★ USER-GATED REMAINDER:** the actual `pypi.org` publish is irreversible + namespace-claiming +
   outward-facing → REQUIRES user go-ahead + PyPI credentials. NOT done autonomously by design. Non-blocking
   future nit: switch `pyproject.toml` `project.license` to SPDX string before 2027-02-18.
-- **CURRENT STEP: CAND-3 (ambisonics layout, ADR 0041) — NOT yet started.** Next action = planner(opus)
-  → executor(opus) → code-review → verifier; real code feature (resolve dead enum + OQ-38 round-trip);
-  full gate GREEN + golden round-trip + version bump.
+- **CAND-3: ✅ DONE 2026-06-17 — v0.39.0 SHIPPED (experimental).** planner(opus) BUILD verdict →
+  executor(opus) → code-review(opus) ACCEPT-WITH-FIXES (0 CRIT/HIGH, 1 MED, 5 LOW) + verifier(opus)
+  VERIFIED PASS (7/7 fresh evidence). Plan = `.omc/plans/cand3-ambisonics-impl.md`.
+  SHIPPED: `roomestim/place/ambisonics.py` `place_ambisonics(order∈{1,2,3})` → closed-form platonic rig
+  (octa-6/ico-12/dode-20, n≥(N+1)², numpy-only, **0 new deps**); dispatch + CLI `--algorithm ambisonics
+  --order` + warn-on-ignored-knobs; **load-bearing honest disclosure** `AMBISONICS_RIG_DISCLOSURE` printed
+  every ambisonics run (rig coords only; SH decode/route = engine; end-to-end UNCONFIRMED per ADR 0041
+  §D-3a point 1 — gate-respecting via §D-3a point-2 coordinate-generation carve-out). PR4 t-design DEFER.
+  Review fixes applied: README:238 stale "stub" row→EXPERIMENTAL (verifier MINOR), MED-1 isotropy wording
+  (order-1 necessary condition, not full N≥2 decoder-stability), LOW-1 round-trip byte fixed-point assert,
+  LOW-2 regularity_hint round-trip assert. LOW-3/4/5 = documented-acceptable trade-offs (kept).
+  Gate GREEN: default **640p/7s** (614+26 new), web 86p/3s, ruff clean, mypy clean (51 files). VBAP/DBAP/WFS
+  goldens byte-equal. v0.39.0 (pyproject+__init__). ADR 0041 Status-update + decisions D104.
+  Commit: (this commit) → push.
+- **★★ ALL 3 CANDIDATES COMPLETE.** CAND-1 (3DSES walls, doc `a7208f6`), CAND-2 (PyPI prep, `6da8227` —
+  real publish USER-GATED on creds+go), CAND-3 (ambisonics v0.39.0, this commit). Autonomous code-only +
+  data-in-hand queue drained again. Remaining levers = user-gated (PyPI publish) or external-data/large-refactor.

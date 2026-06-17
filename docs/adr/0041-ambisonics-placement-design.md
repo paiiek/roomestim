@@ -1,9 +1,12 @@
 # ADR 0041 — Ambisonics 배치 알고리즘 설계 (B5, draft)
 
-**Status**: Partially-Accepted (v0.33.0, 2026-06-08) — **PR1 SHIPPED** (OQ-38
-`x_target_algorithm` round-trip, D102; §Status-update-v0.33.0). **PR2-4 (ambisonics
-placement producer) DEFERRED** — gate=§D-3a engine 식별·라우팅 합의 or require.md
-ambisonics mandatory 승격. 원 draft(2026-05-29)는 설계 합의 선행 기록.
+**Status**: Partially-Accepted — **PR1 SHIPPED** (v0.33.0, OQ-38
+`x_target_algorithm` round-trip, D102; §Status-update-v0.33.0). **PR2+PR3 SHIPPED
+EXPERIMENTAL** (v0.39.0, 2026-06-17, D104; §Status-update-2026-06-17) under the §D-3a
+point-2 carve-out (roomestim-side rig COORDINATE generation only; end-to-end decode/route
+UNCONFIRMED). **PR4 (t-design) DEFERRED**. The §D-3a point-1 end-to-end gate (engine
+식별·라우팅 합의 or require.md ambisonics mandatory 승격) remains the trigger to remove the
+"experimental" label. 원 draft(2026-05-29)는 설계 합의 선행 기록.
 **REVISED 2026-05-29** — critic 리뷰(ACCEPT-WITH-RESERVATIONS; 0 CRITICAL, 3 MAJOR)
 반영: require.md precondition 명시(§Pre-conditions), OQ-38 자기참조 트리거 → cadence+D26
 재근거(§Context), engine 식별·라우팅 pre-implementation gate 신설(§D-3a), PR1에 collapse
@@ -331,3 +334,46 @@ this date.
 **North-star note**: Ambisonics rig geometry is product-peripheral (acoustics/placement
 lowest priority per roomestim north star). This DEFER is not a gap — it is the correct
 outcome until the engine-side contract is established.
+
+---
+
+## Status-update (2026-06-17, CAND-3 — PR2+PR3 SHIPPED experimental)
+
+**v0.39.0 (D104).** PR2 (platonic rig geometry) + PR3 (dispatch/CLI wiring) ship as an
+EXPERIMENTAL, opt-in, honestly-disclosed COORDINATE-generation slice. PR4 (t-design)
+stays DEFERRED.
+
+**Why §D-3a point-2 legitimately applies (gate-respecting).** §D-3a has two points.
+Point 1 (engine identifies/routes the rig to the SH decoder) is the END-TO-END gate and
+remains UNMET — `grep -ni ambison spatial_engine/require.md` still returns 0 hits and there
+is no engine-team routing agreement. Point 2 EXPLICITLY permits roomestim-side rig
+**coordinate generation** to proceed provided the end-to-end decoding uncertainty is
+disclosed. We shipped ONLY coordinate generation (pure, closed-form, exactly verifiable
+math) and made the "decode/route is engine-gated and UNCONFIRMED" statement load-bearing and
+unavoidable: a single-source-of-truth constant `AMBISONICS_RIG_DISCLOSURE`
+(`roomestim/place/ambisonics.py`) printed to stderr on every `place`/`run --algorithm
+ambisonics` invocation, plus README + this ADR. No fake capability: roomestim emits rig
+COORDINATES; it does NOT SH-encode/decode, does NOT compute the decode matrix, does NOT
+select a decoder type, and does NOT assert the engine will consume the rig.
+
+**Design choices recorded.**
+- **order → rig (closed-form, no external table):** 1 → octahedron (n=6, n≥4), 2 →
+  icosahedron (n=12, n≥9), 3 → dodecahedron (n=20, n≥16); each n ≥ (N+1)². Cube-8 is a
+  documented future alternative for order 1; v1 ships octahedron-6 only (deterministic n,
+  sidesteps the n_speakers-inference OQ).
+- **regularity_hint = IRREGULAR** (R10 min 1). Risk: an engine that branches IRREGULAR to
+  VBAP-weighting would render the rig with the WRONG algorithm — exactly why the disclosure
+  is load-bearing and the slice is labelled experimental.
+- **Verification = numpy-only second-moment isotropy proxy**, NOT a scipy SH condition
+  number. scipy renamed `sph_harm` → `sph_harm_y` in 1.15+, making the SH-matrix
+  `np.linalg.cond` path version-fragile; the second-moment matrix M = VᵀV/n = (1/3)·I (a
+  spherical-2-design property, verified exact: max|M−I/3| ≤ 5.6e-17, cond ≈ 1.0) is an
+  equivalent decoder-stability proxy for these symmetric rigs with zero new dependency.
+  **New-dep count = 0** (numpy is already core).
+
+**Promotion trigger to remove "experimental"** (unchanged, = §D-3a point 1):
+`spatial_engine/require.md` promotes Ambisonics to mandatory, OR engine-team agreement that
+`x_target_algorithm == "AMBISONICS"` routes to the SH decoder (`/sys/ambi_order`). Until
+then the experimental label and the UNCONFIRMED disclosure stand. PR4 t-design remains
+DEFERRED (external coordinate table + license/source = new OQ; order-3 dodecahedron-20 is
+sufficient for the experimental slice).

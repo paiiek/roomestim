@@ -122,13 +122,24 @@ def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
     p.add_argument("--in-room", required=True, metavar="PATH", help="room.yaml path.")
     p.add_argument(
         "--algorithm",
-        choices=["vbap", "dbap", "wfs"],
+        choices=["vbap", "dbap", "wfs", "ambisonics"],
         required=False,
         default="vbap",
         help="Placement algorithm (default: vbap).",
     )
     p.add_argument(
         "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
+    )
+    p.add_argument(
+        "--order",
+        type=int,
+        choices=[1, 2, 3],
+        default=None,
+        metavar="N",
+        help="Ambisonics decode order (1|2|3); required for --algorithm "
+        "ambisonics. order->rig: 1=octahedron(6), 2=icosahedron(12), "
+        "3=dodecahedron(20). EXPERIMENTAL (rig coordinates only; SH decode/route "
+        "is engine-gated and UNCONFIRMED).",
     )
     p.add_argument(
         "--layout-radius",
@@ -245,13 +256,24 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
         "--algorithm",
-        choices=["vbap", "dbap", "wfs"],
+        choices=["vbap", "dbap", "wfs", "ambisonics"],
         required=False,
         default="vbap",
         help="Placement algorithm (default: vbap).",
     )
     p.add_argument(
         "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
+    )
+    p.add_argument(
+        "--order",
+        type=int,
+        choices=[1, 2, 3],
+        default=None,
+        metavar="N",
+        help="Ambisonics decode order (1|2|3); required for --algorithm "
+        "ambisonics. order->rig: 1=octahedron(6), 2=icosahedron(12), "
+        "3=dodecahedron(20). EXPERIMENTAL (rig coordinates only; SH decode/route "
+        "is engine-gated and UNCONFIRMED).",
     )
     p.add_argument(
         "--layout-radius",
@@ -529,6 +551,29 @@ def _maybe_print_low_ceiling_notice(room: RoomModel) -> None:
         )
 
 
+def _maybe_print_ambisonics_notes(args: argparse.Namespace) -> None:
+    """Warn + disclose for ``--algorithm ambisonics`` (ADR 0041 §D-3a point 2).
+
+    (a) WARN (NOT silent, D-5) when VBAP-only knobs (--el-deg / --n-speakers)
+        were supplied — they are ignored for ambisonics (rig geometry is fixed
+        by --order). (b) ALWAYS print the load-bearing AMBISONICS_RIG_DISCLOSURE
+        so the engine-gated/UNCONFIRMED end-to-end status is unavoidable.
+    """
+    if getattr(args, "algorithm", None) != "ambisonics":
+        return
+    from roomestim.place.ambisonics import AMBISONICS_RIG_DISCLOSURE
+
+    el_deg = getattr(args, "el_deg", 0.0)
+    n_speakers = getattr(args, "n_speakers", 8)
+    if el_deg != 0.0 or n_speakers != 8:
+        print(
+            "WARNING: --el-deg/--n-speakers are ignored for ambisonics; rig "
+            "geometry is fixed by --order.",
+            file=sys.stderr,
+        )
+    print(f"NOTE: {AMBISONICS_RIG_DISCLOSURE}", file=sys.stderr)
+
+
 # --------------------------------------------------------------------------- #
 # Placement dispatch
 # --------------------------------------------------------------------------- #
@@ -542,6 +587,7 @@ def _run_placement(
     el_deg: float,
     wfs_f_max_hz: float = 8000.0,
     wfs_spacing_m: float | None = None,
+    order: int | None = None,
 ) -> PlacementResult:
     """Delegate to roomestim.place.dispatch.run_placement."""
     from roomestim.place.dispatch import run_placement
@@ -549,6 +595,7 @@ def _run_placement(
     result = run_placement(
         room, algorithm, n_speakers, layout_radius, el_deg,
         wfs_f_max_hz=wfs_f_max_hz, wfs_spacing_m=wfs_spacing_m,
+        order=order,
     )
     # OQ-54 / ADR 0046: carry the room's capture provenance onto the placement so
     # the layout.yaml artifact reflects the geometry it was derived from. Single
@@ -593,6 +640,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     room = read_room_yaml(args.in_room)
+    _maybe_print_ambisonics_notes(args)
     result = _run_placement(
         room,
         args.algorithm,
@@ -601,6 +649,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
         args.el_deg,
         wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
         wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+        order=getattr(args, "order", None),
     )
     assert isinstance(result, PlacementResult)
 
@@ -741,6 +790,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         octave_band=octave_band,
     )
 
+    _maybe_print_ambisonics_notes(args)
     result = _run_placement(
         room,
         args.algorithm,
@@ -749,6 +799,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         args.el_deg,
         wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
         wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+        order=getattr(args, "order", None),
     )
     assert isinstance(result, PlacementResult)
 

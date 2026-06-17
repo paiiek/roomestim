@@ -19,6 +19,7 @@ def run_placement(
     el_deg: float,
     wfs_f_max_hz: float = 8000.0,
     wfs_spacing_m: float | None = None,
+    order: int | None = None,
 ) -> PlacementResult:
     """Dispatch to the right placement function and return a PlacementResult.
 
@@ -26,8 +27,11 @@ def run_placement(
     room's actual wall/ceiling surfaces and listener area. ``vbap`` produces a
     fixed-radius ring and ``wfs`` synthesizes its baseline from the layout
     radius — both are independent of room geometry by construction (the room
-    argument is unused for those two paths). Use ``dbap`` for geometry-aware
-    placement.
+    argument is unused for those two paths). ``ambisonics`` is likewise
+    geometry-blind like ``vbap`` (the room argument is unused; the rig is a
+    fixed regular platonic solid sized by ``order``), AND its end-to-end SH
+    decode/route is engine-gated and UNCONFIRMED (see
+    ``AMBISONICS_RIG_DISCLOSURE``). Use ``dbap`` for geometry-aware placement.
     """
     if algorithm == "vbap":
         from roomestim.place.vbap import place_vbap_ring
@@ -97,5 +101,16 @@ def run_placement(
                     f"Y = ceil(baseline_len/(c/(2*f_max))) + 1 = {min_safe_n})."
                 ) from exc
             raise
+
+    if algorithm == "ambisonics":
+        if order is None:
+            raise ValueError(
+                "ambisonics placement requires an Ambisonics decode order; "
+                "pass --order {1,2,3} (1=octahedron(6), 2=icosahedron(12), "
+                "3=dodecahedron(20))."
+            )
+        from roomestim.place.ambisonics import place_ambisonics
+
+        return place_ambisonics(order, radius_m=layout_radius_m)
 
     raise ValueError(f"unknown algorithm: {algorithm!r}")

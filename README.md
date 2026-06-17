@@ -139,6 +139,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.39.0** | 2026-06-17 | (commit) | ambisonics 배치 알고리즘 (MINOR, additive, EXPERIMENTAL) — 신규 `place/ambisonics.py` `place_ambisonics(order)`: platonic closed-form 리그(1=octahedron6/2=icosahedron12/3=dodecahedron20, n≥(N+1)²), numpy-only, **신규 의존 0**. `--algorithm ambisonics --order {1,2,3}` (place/run). **정직 고지(load-bearing `AMBISONICS_RIG_DISCLOSURE`): roomestim 은 리그 좌표만 방출 — SH 인코딩/디코딩·decoder 선택은 engine 책임이며 end-to-end 라우팅 계약(ADR 0041 §D-3a point 1)은 미확정/UNCONFIRMED.** VBAP/DBAP/WFS golden byte-equal. PR4 t-design DEFER. (D104 / [ADR 0041](docs/adr/0041-ambisonics-placement-design.md)). |
 | **v0.38.0** | 2026-06-16 | (commit) | `place`/`run` `--algorithm` 기본값 추가 (MINOR, backward-compatible new capability) — `--algorithm` 을 생략하면 이제 오류 대신 `vbap` 으로 기본 동작한다(사용자 승인 2026-06-16). `vbap` 은 벽·천장 표면 없이 항상 동작하기 때문에 기본값으로 선택; `dbap` 은 `place/dispatch.py` 가 surface(벽·천장) 1개 이상을 요구하므로 기하 없는 입력에서 crash 하여 기본값으로 부적합. **정직 고지: 이 기본값은 geometry-blind 다 — 기하-인지 배치가 목적이면 명시적으로 `--algorithm dbap` 을 지정해야 한다.** 명시적 `--algorithm vbap\|dbap\|wfs` 호출은 동작 불변. (D103). |
 | **v0.37.1** | 2026-06-16 | (commit) | proto-bundling packaging fix (PATCH, no checkout behavior change) — relocated the room.yaml JSON schemas from repo-root `proto/` into in-package `roomestim/proto/` (`git mv`, byte-identical contents) and pointed `_proto_dir()` at `parents[1]/"proto"` so an installed wheel now ships (via the existing `[tool.setuptools.package-data]` glob) AND resolves the schemas, fixing self-validation/emit of room.yaml in an installed copy. Checkout golden round-trips unchanged. Regression guard: `tests/test_proto_packaging.py`. (ADR 0007 Honest-limitation → FIXED). |
 | **v0.37.0** | 2026-06-12 | (commit) | floater-robust auto-select footprint (MINOR, additive, opt-in) — new `--floor-reconstruction auto`: coarse-grid (0.25 m) convex-hull area-inflation signal (φ≥1.10) switches to the occupancy extractor ONLY when a DISCONNECTED floater is detected, else stays convex (clean input byte-equal by construction). NOT default · NOT a bleed/re-entrant fix · threshold synthetic-fixture-validated (Redwood +22%→+5% cited). Single source `AUTO_FLOOR_RECON_NOTE`. (C1 / [ADR 0048](docs/adr/0048-auto-floater-footprint-select.md)). |
@@ -234,7 +235,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 | `vbap` | Vector-Based Amplitude Panning | Pulkki 1997 | 4–16 | **무관 (by construction)** — 고정 반경 링; 청취자 원점 기준 좌표만 생성 | 가장 표준; 3-스피커 트라이앵글로 가상 음원을 패닝; sweet-spot 의존도 높음 |
 | `dbap` | Distance-Based Amplitude Panning | Lossius 2009 | 4–24 | **인지 (유일)** — mount surface(벽·천장) + listener_area 를 실제로 사용 | 비대칭 / 불규칙 스피커 배치 허용; sweet-spot 자유롭지만 sharp localization 약함 |
 | `wfs` | Wave Field Synthesis | Berkhout 1988 | 8–16+ | **무관** — 합성 baseline(반경에서 유도)을 사용, 방 벽 형상 미반영 | 균등 간격 직선·곡선 어레이; wave front 재구성; 가장 정확하지만 하드웨어 요구가 큼 |
-| `ambisonics` | (stub) | — | — | **미구현 (stub)** | v0.3+ 일정에서 보류 중 |
+| `ambisonics` | Ambisonics 디코더 리그 | Gerzon 1973 | 6 / 12 / 20 | **무관 (by construction)** — order 가 결정하는 platonic 리그; 청취자 원점 기준 좌표만 | **EXPERIMENTAL (v0.39.0)** — platonic 리그 좌표만 방출(`--order {1,2,3}`); SH 인코딩/디코딩·decoder 선택은 engine 책임이고 end-to-end 라우팅 계약(ADR 0041 §D-3a point 1)은 **미확정(UNCONFIRMED)** |
 
 알고리즘 우선순위와 채택 배경은 [ADR 0003](docs/adr/0003-placement-algorithm-priority.md) 참조.
 
@@ -245,7 +246,11 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 (참고: v0.38.0(사용자 승인 2026-06-16)부터 `--algorithm` 의 기본값은 `vbap` 입니다 — `vbap` 은 벽·천장
 표면 없이 항상 동작하기 때문입니다(고정 반경 링). **이 기본값은 위에서 밝힌 대로 방 기하와 무관(geometry-blind)
 합니다 — 기본값을 그대로 쓰면 기하-인지 배치가 되지 않으며, 기하-인지 배치가 목적이면 명시적으로
-`--algorithm dbap` 을 지정해야 합니다.**) Ambisonics 는 stub 상태로 v0.3+ 일정에서 보류 중입니다.
+`--algorithm dbap` 을 지정해야 합니다.**) Ambisonics 는 v0.39.0 부터 **EXPERIMENTAL** 로
+사용 가능합니다(`--algorithm ambisonics --order {1,2,3}`): platonic closed-form 리그 좌표
+(1=octahedron6/2=icosahedron12/3=dodecahedron20)만 방출하며, **SH 인코딩/디코딩·decoder 선택은
+engine 책임이고 end-to-end 라우팅 계약(ADR 0041 §D-3a point 1)은 미확정(UNCONFIRMED)** 입니다 —
+실행 시 stderr 로 load-bearing 고지(`AMBISONICS_RIG_DISCLOSURE`)가 항상 출력됩니다. PR4 t-design 은 보류(DEFER).
 
 ### `--check-angles` — 기하 레이아웃 각도 점검 (Atmos 스타일)
 
