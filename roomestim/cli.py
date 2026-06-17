@@ -403,6 +403,90 @@ def _add_edit_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -
     )
 
 
+def _add_collection_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Additive `collection` subcommand (ADR 0049, Phase 1).
+
+    Composes N >= 2 explicit single-room ``room.yaml`` inputs into an ordered
+    bundle: per room it runs the SAME library functions ``place`` uses and writes
+    one ``room.<name>.yaml`` + ``layout.<name>.yaml``, plus a ``collection.yaml``
+    manifest. roomestim does NOT infer multi-room from one capture — the bundle
+    is N explicit inputs, with NO inter-room pose and NO aggregate acoustics.
+    """
+    p = sub.add_parser(
+        "collection",
+        help="Compose N single-room room.yaml inputs into a collection.yaml bundle.",
+    )
+    p.add_argument(
+        "--in-rooms",
+        required=True,
+        nargs="+",
+        metavar="PATH",
+        help="Two or more room.yaml paths (each a genuine single-room capture).",
+    )
+    p.add_argument(
+        "--name",
+        default="collection",
+        metavar="NAME",
+        help="Collection/venue name (no geometric meaning; default: 'collection').",
+    )
+    # Reused placement flags — identical semantics to `place`.
+    p.add_argument(
+        "--algorithm",
+        choices=["vbap", "dbap", "wfs", "ambisonics"],
+        required=False,
+        default="vbap",
+        help="Placement algorithm applied per room (default: vbap).",
+    )
+    p.add_argument(
+        "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
+    )
+    p.add_argument(
+        "--order",
+        type=int,
+        choices=[1, 2, 3],
+        default=None,
+        metavar="N",
+        help="Ambisonics decode order (1|2|3); required for --algorithm "
+        "ambisonics. EXPERIMENTAL (rig coordinates only; SH decode/route is "
+        "engine-gated and UNCONFIRMED).",
+    )
+    p.add_argument(
+        "--layout-radius",
+        type=float,
+        default=2.0,
+        metavar="R",
+        help="VBAP ring/dome radius in metres (default 2.0).",
+    )
+    p.add_argument(
+        "--el-deg",
+        type=float,
+        default=0.0,
+        metavar="E",
+        help="VBAP elevation in degrees (default 0.0).",
+    )
+    p.add_argument(
+        "--wfs-f-max-hz",
+        type=float,
+        default=8000.0,
+        metavar="F",
+        help="Highest reproduction frequency for WFS spatial-aliasing bound (default 8000.0).",
+    )
+    p.add_argument(
+        "--wfs-spacing-m",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Override per-speaker spacing in metres "
+        "(default: derived from --layout-radius and --n-speakers).",
+    )
+    p.add_argument(
+        "--out-dir",
+        default=".",
+        metavar="DIR",
+        help="Output directory (default: cwd).",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="roomestim",
@@ -416,6 +500,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_export_parser(sub)
     _add_run_parser(sub)
     _add_edit_parser(sub)
+    _add_collection_parser(sub)
 
     return parser
 
@@ -877,6 +962,93 @@ def _cmd_edit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _unique_room_slug(name: str, used_slugs: set[str]) -> str:
+    """Return a filesystem-safe, collision-free slug for ``name`` (Risk #4).
+
+    Sanitizes characters outside ``[A-Za-z0-9._-]`` to ``_`` (avoids path
+    separators leaking into per-room filenames), then deterministically
+    index-suffixes (``-1``, ``-2``, ...) until the slug is unused. ``used_slugs``
+    is mutated to record the returned slug.
+    """
+    import re
+
+    base = re.sub(r"[^A-Za-z0-9._-]", "_", name) or "room"
+    candidate = base
+    i = 0
+    while candidate in used_slugs:
+        i += 1
+        candidate = f"{base}-{i}"
+    used_slugs.add(candidate)
+    return candidate
+
+
+def _cmd_collection(args: argparse.Namespace) -> int:
+    from roomestim.collection import RoomCollection
+    from roomestim.export.collection_yaml import write_collection_yaml
+    from roomestim.export.layout_yaml import write_layout_yaml
+    from roomestim.export.room_yaml import write_room_yaml
+    from roomestim.io.room_yaml_reader import read_room_yaml
+    from roomestim.model import PlacementResult
+
+    in_rooms: list[str] = args.in_rooms
+    if len(in_rooms) < 2:
+        raise ValueError(
+            "collection requires at least 2 --in-rooms inputs "
+            f"(got {len(in_rooms)}); a collection is an ordered bundle of N "
+            "explicit single-room captures."
+        )
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    _maybe_print_ambisonics_notes(args)
+
+    rooms: list[RoomModel] = []
+    placements: list[PlacementResult | None] = []
+    room_refs: list[str] = []
+    layout_refs: list[str | None] = []
+    used_slugs: set[str] = set()
+
+    for in_room in in_rooms:
+        room = read_room_yaml(in_room)
+        # Same library path as _cmd_place: read_room_yaml -> run_placement ->
+        # write_layout_yaml. _cmd_place itself is NOT called/edited.
+        result = _run_placement(
+            room,
+            args.algorithm,
+            args.n_speakers,
+            args.layout_radius,
+            args.el_deg,
+            wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
+            wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+            order=getattr(args, "order", None),
+        )
+        assert isinstance(result, PlacementResult)
+
+        slug = _unique_room_slug(room.name, used_slugs)
+        room_ref = f"room.{slug}.yaml"
+        layout_ref = f"layout.{slug}.yaml"
+        write_room_yaml(room, out_dir / room_ref)
+        write_layout_yaml(result, out_dir / layout_ref)
+        print(f"wrote {out_dir / room_ref}")
+        print(f"wrote {out_dir / layout_ref}")
+        _maybe_print_estimated_notice(room)
+        _maybe_print_low_ceiling_notice(room)
+
+        rooms.append(room)
+        placements.append(result)
+        room_refs.append(room_ref)
+        layout_refs.append(layout_ref)
+
+    collection = RoomCollection(name=args.name, rooms=rooms, placements=placements)
+    manifest_path = out_dir / "collection.yaml"
+    write_collection_yaml(
+        collection, manifest_path, room_refs=room_refs, layout_refs=layout_refs
+    )
+    print(f"wrote {manifest_path}")
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
@@ -900,6 +1072,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_run(args)
         if args.command == "edit":
             return _cmd_edit(args)
+        if args.command == "collection":
+            return _cmd_collection(args)
     except _ExperimentalGate as gate:
         print(f"error: {gate}", file=sys.stderr)
         return 1

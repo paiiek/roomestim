@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://roomestim/proto/collection_schema.v0_1.draft.json",
+  "title": "RoomCollection manifest (DRAFT v0.1, additive composition layer — ADR 0049)",
+  "description": "Manifest for an ordered bundle of N independent single-room captures. Refs are RELATIVE to the manifest's own directory. Carries NO inter-room pose and NO aggregate acoustics (per-room only); roomestim does not infer multi-room from one capture.",
+  "type": "object",
+  "required": ["version", "name", "rooms"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "type": "string", "const": "0.1-draft" },
+    "name": { "type": "string", "minLength": 1 },
+    "schema": { "type": "string", "format": "uri" },
+    "rooms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "room_ref", "layout_ref"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "room_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Path to the per-room room.yaml, RELATIVE to the manifest directory."
+          },
+          "layout_ref": {
+            "description": "Path to the per-room layout.yaml, RELATIVE to the manifest directory; null when the room has no placement.",
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              { "type": "null" }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
