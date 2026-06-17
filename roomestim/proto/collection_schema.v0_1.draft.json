@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://roomestim/proto/collection_schema.v0_1.draft.json",
   "title": "RoomCollection manifest (DRAFT v0.1, additive composition layer — ADR 0049)",
-  "description": "Manifest for an ordered bundle of N independent single-room captures. Refs are RELATIVE to the manifest's own directory. Carries NO inter-room pose and NO aggregate acoustics (per-room only); roomestim does not infer multi-room from one capture.",
+  "description": "Manifest for an ordered bundle of N independent single-room captures. Refs are RELATIVE to the manifest's own directory. Per-room 'offset' (optional) is a USER-SUPPLIED translation into a shared building frame — roomestim never infers inter-room pose; absent ⇒ identity. Carries NO aggregate acoustics (per-room only); roomestim does not infer multi-room from one capture.",
   "type": "object",
   "required": ["version", "name", "rooms"],
   "additionalProperties": false,
@@ -10,6 +10,11 @@
     "version": { "type": "string", "const": "0.1-draft" },
     "name": { "type": "string", "minLength": 1 },
     "schema": { "type": "string", "format": "uri" },
+    "combined_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional path (RELATIVE to the manifest directory) to a combined glTF/GLB visual assembly of the rooms at their user-supplied offsets. A visual assembly only — no aggregate acoustics."
+    },
     "rooms": {
       "type": "array",
       "minItems": 1,
@@ -30,6 +35,13 @@
               { "type": "string", "minLength": 1 },
               { "type": "null" }
             ]
+          },
+          "offset": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": { "type": "number" },
+            "description": "Optional USER-SUPPLIED translation [x, y, z] in metres into a shared building frame. Absent ⇒ identity (no shift). roomestim never infers this."
           }
         }
       }

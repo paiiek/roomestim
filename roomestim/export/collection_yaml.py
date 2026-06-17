@@ -51,6 +51,7 @@ def collection_to_dict(
     *,
     room_refs: list[str],
     layout_refs: list[str | None],
+    combined_ref: str | None = None,
 ) -> dict[str, Any]:
     """Return a YAML-serializable manifest dict for ``collection``.
 
@@ -65,10 +66,16 @@ def collection_to_dict(
         Parallel-indexed relative paths of each room's ``layout.yaml``, or
         ``None`` for a room with no placement. Length must equal
         ``len(collection.rooms)``.
+    combined_ref:
+        Optional relative path (to the manifest dir) of a combined glTF/GLB
+        visual assembly. Emitted only when not ``None``.
 
     The entry ``name`` is taken from each ``RoomModel.name`` (the refs are the
     on-disk filenames the caller actually wrote). Refs MUST be relative to the
     manifest directory — absolute refs are rejected so no machine path leaks.
+    A per-room ``offset`` (from ``collection.offsets``) is emitted only when it
+    is non-``None`` — an all-``None`` offsets list yields a manifest
+    byte-identical to the offset-free path.
     """
     n = len(collection.rooms)
     if len(room_refs) != n or len(layout_refs) != n:
@@ -79,7 +86,9 @@ def collection_to_dict(
         )
 
     rooms_block: list[dict[str, Any]] = []
-    for room, room_ref, layout_ref in zip(collection.rooms, room_refs, layout_refs):
+    for room, room_ref, layout_ref, offset in zip(
+        collection.rooms, room_refs, layout_refs, collection.offsets
+    ):
         if Path(room_ref).is_absolute():
             raise ValueError(
                 f"collection manifest room_ref must be relative to the manifest "
@@ -90,15 +99,28 @@ def collection_to_dict(
                 f"collection manifest layout_ref must be relative to the manifest "
                 f"directory, got absolute path: {layout_ref!r}"
             )
-        rooms_block.append(
-            {"name": room.name, "room_ref": room_ref, "layout_ref": layout_ref}
-        )
+        entry: dict[str, Any] = {
+            "name": room.name,
+            "room_ref": room_ref,
+            "layout_ref": layout_ref,
+        }
+        if offset is not None:
+            entry["offset"] = [float(c) for c in offset]
+        rooms_block.append(entry)
 
-    return {
+    manifest: dict[str, Any] = {
         "version": _SCHEMA_VERSION,
         "name": collection.name,
         "rooms": rooms_block,
     }
+    if combined_ref is not None:
+        if Path(combined_ref).is_absolute():
+            raise ValueError(
+                f"collection manifest combined_ref must be relative to the "
+                f"manifest directory, got absolute path: {combined_ref!r}"
+            )
+        manifest["combined_ref"] = combined_ref
+    return manifest
 
 
 def write_collection_yaml(
@@ -107,6 +129,7 @@ def write_collection_yaml(
     *,
     room_refs: list[str],
     layout_refs: list[str | None],
+    combined_ref: str | None = None,
 ) -> None:
     """Serialize ``collection`` to ``out_path`` as a validated manifest YAML.
 
@@ -117,7 +140,10 @@ def write_collection_yaml(
       3. Write via ``yaml.safe_dump(..., sort_keys=False)``.
     """
     data = collection_to_dict(
-        collection, room_refs=room_refs, layout_refs=layout_refs
+        collection,
+        room_refs=room_refs,
+        layout_refs=layout_refs,
+        combined_ref=combined_ref,
     )
     Draft202012Validator(_load_schema()).validate(data)
     out_path = Path(out_path)

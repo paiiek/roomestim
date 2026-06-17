@@ -17,7 +17,7 @@ import yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 
-from roomestim.collection import RoomCollection
+from roomestim.collection import Offset, RoomCollection
 from roomestim.io.placement_yaml_reader import read_placement_yaml
 from roomestim.io.room_yaml_reader import read_room_yaml
 from roomestim.model import PlacementResult
@@ -86,6 +86,7 @@ def read_collection_yaml(path: Path | str) -> RoomCollection:
     name = str(data["name"])
     rooms = []
     placements: list[PlacementResult | None] = []
+    offsets: list[Offset | None] = []
     for entry in data["rooms"]:
         room_path = _resolve_ref(
             str(entry["room_ref"]), manifest_dir=manifest_dir, name=name
@@ -99,8 +100,15 @@ def read_collection_yaml(path: Path | str) -> RoomCollection:
                 str(layout_ref), manifest_dir=manifest_dir, name=name
             )
             placements.append(read_placement_yaml(layout_path))
+        offset = entry.get("offset")
+        if offset is None:
+            offsets.append(None)
+        else:
+            offsets.append((float(offset[0]), float(offset[1]), float(offset[2])))
 
-    return RoomCollection(name=name, rooms=rooms, placements=placements)
+    return RoomCollection(
+        name=name, rooms=rooms, placements=placements, offsets=offsets
+    )
 
 
 __all__ = ["read_collection_yaml"]

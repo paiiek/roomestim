@@ -12,6 +12,7 @@ edit    -- nudge one speaker in a layout.yaml; re-validate; write + diff
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -428,6 +429,24 @@ def _add_collection_parser(sub: argparse._SubParsersAction[argparse.ArgumentPars
         default="collection",
         metavar="NAME",
         help="Collection/venue name (no geometric meaning; default: 'collection').",
+    )
+    p.add_argument(
+        "--offsets",
+        nargs="*",
+        default=None,
+        metavar="X,Y,Z",
+        help="Optional USER-SUPPLIED per-room translations in metres, parallel "
+        "to --in-rooms (one 'X,Y,Z' per room). roomestim NEVER infers inter-room "
+        "pose; absent ⇒ identity (rooms at their own local origin).",
+    )
+    p.add_argument(
+        "--combined-gltf",
+        default=None,
+        metavar="PATH",
+        help="Optional path to write ONE combined glTF/GLB visual assembly of "
+        "the rooms at their offsets (e.g. collection.glb). A visual assembly "
+        "only — no aggregate acoustics. Recorded as 'combined_ref' in the "
+        "manifest (relative to the manifest directory).",
     )
     # Reused placement flags — identical semantics to `place`.
     p.add_argument(
@@ -982,7 +1001,48 @@ def _unique_room_slug(name: str, used_slugs: set[str]) -> str:
     return candidate
 
 
+def _parse_offsets(
+    offsets_arg: list[str] | None, n_rooms: int
+) -> list[tuple[float, float, float] | None]:
+    """Parse the optional ``--offsets`` flag into a parallel-indexed list.
+
+    Each token is ``"X,Y,Z"`` (metres). ``None`` (flag absent) ⇒ all-identity.
+    The count must match the number of rooms; offsets are USER-SUPPLIED only —
+    roomestim never infers inter-room pose.
+    """
+    if offsets_arg is None:
+        return [None] * n_rooms
+    if len(offsets_arg) != n_rooms:
+        raise ValueError(
+            f"--offsets must have one 'X,Y,Z' per room: got {len(offsets_arg)} "
+            f"offsets for {n_rooms} --in-rooms."
+        )
+    parsed: list[tuple[float, float, float] | None] = []
+    for tok in offsets_arg:
+        parts = tok.split(",")
+        if len(parts) != 3:
+            raise ValueError(
+                f"--offsets entry must be 'X,Y,Z' (3 comma-separated metres), "
+                f"got {tok!r}."
+            )
+        try:
+            x, y, z = (float(parts[0]), float(parts[1]), float(parts[2]))
+        except ValueError as exc:
+            raise ValueError(
+                f"--offsets entry {tok!r} has a non-numeric component."
+            ) from exc
+        if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
+            raise ValueError(
+                f"--offsets entry {tok!r} has a non-finite (NaN/inf) component; "
+                "offsets must be finite metres."
+            )
+        parsed.append((x, y, z))
+    return parsed
+
+
 def _cmd_collection(args: argparse.Namespace) -> int:
+    import os
+
     from roomestim.collection import RoomCollection
     from roomestim.export.collection_yaml import write_collection_yaml
     from roomestim.export.layout_yaml import write_layout_yaml
@@ -997,6 +1057,8 @@ def _cmd_collection(args: argparse.Namespace) -> int:
             f"(got {len(in_rooms)}); a collection is an ordered bundle of N "
             "explicit single-room captures."
         )
+
+    offsets = _parse_offsets(getattr(args, "offsets", None), len(in_rooms))
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1040,10 +1102,37 @@ def _cmd_collection(args: argparse.Namespace) -> int:
         room_refs.append(room_ref)
         layout_refs.append(layout_ref)
 
-    collection = RoomCollection(name=args.name, rooms=rooms, placements=placements)
+    collection = RoomCollection(
+        name=args.name, rooms=rooms, placements=placements, offsets=offsets
+    )
+
+    combined_ref: str | None = None
+    combined_gltf = getattr(args, "combined_gltf", None)
+    if combined_gltf:
+        from roomestim.export.collection_gltf import write_collection_gltf
+
+        combined_path = Path(combined_gltf)
+        fmt: Literal["gltf", "glb"] = (
+            "gltf" if combined_path.suffix.lower() == ".gltf" else "glb"
+        )
+        write_collection_gltf(collection, combined_path, format=fmt)
+        print(f"wrote {combined_path}")
+        # Record relative to the manifest dir (no absolute path leaks).
+        combined_ref = os.path.relpath(combined_path, out_dir)
+        if any(o is None for o in offsets):
+            print(
+                "note: combined glTF is a visual assembly only; rooms without a "
+                "user-supplied --offset are emitted at their local origin "
+                "(they may overlap). roomestim does not infer inter-room pose."
+            )
+
     manifest_path = out_dir / "collection.yaml"
     write_collection_yaml(
-        collection, manifest_path, room_refs=room_refs, layout_refs=layout_refs
+        collection,
+        manifest_path,
+        room_refs=room_refs,
+        layout_refs=layout_refs,
+        combined_ref=combined_ref,
     )
     print(f"wrote {manifest_path}")
     return 0
