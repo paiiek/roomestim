@@ -52,6 +52,7 @@ def collection_to_dict(
     room_refs: list[str],
     layout_refs: list[str | None],
     combined_ref: str | None = None,
+    combined_usd_ref: str | None = None,
 ) -> dict[str, Any]:
     """Return a YAML-serializable manifest dict for ``collection``.
 
@@ -69,6 +70,9 @@ def collection_to_dict(
     combined_ref:
         Optional relative path (to the manifest dir) of a combined glTF/GLB
         visual assembly. Emitted only when not ``None``.
+    combined_usd_ref:
+        Optional relative path (to the manifest dir) of a combined USD visual
+        assembly. Emitted only when not ``None``.
 
     The entry ``name`` is taken from each ``RoomModel.name`` (the refs are the
     on-disk filenames the caller actually wrote). Refs MUST be relative to the
@@ -120,6 +124,13 @@ def collection_to_dict(
                 f"manifest directory, got absolute path: {combined_ref!r}"
             )
         manifest["combined_ref"] = combined_ref
+    if combined_usd_ref is not None:
+        if Path(combined_usd_ref).is_absolute():
+            raise ValueError(
+                f"collection manifest combined_usd_ref must be relative to the "
+                f"manifest directory, got absolute path: {combined_usd_ref!r}"
+            )
+        manifest["combined_usd_ref"] = combined_usd_ref
     return manifest
 
 
@@ -130,6 +141,7 @@ def write_collection_yaml(
     room_refs: list[str],
     layout_refs: list[str | None],
     combined_ref: str | None = None,
+    combined_usd_ref: str | None = None,
 ) -> None:
     """Serialize ``collection`` to ``out_path`` as a validated manifest YAML.
 
@@ -144,6 +156,7 @@ def write_collection_yaml(
         room_refs=room_refs,
         layout_refs=layout_refs,
         combined_ref=combined_ref,
+        combined_usd_ref=combined_usd_ref,
     )
     Draft202012Validator(_load_schema()).validate(data)
     out_path = Path(out_path)

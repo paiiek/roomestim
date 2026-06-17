@@ -448,6 +448,16 @@ def _add_collection_parser(sub: argparse._SubParsersAction[argparse.ArgumentPars
         "only — no aggregate acoustics. Recorded as 'combined_ref' in the "
         "manifest (relative to the manifest directory).",
     )
+    p.add_argument(
+        "--combined-usd",
+        default=None,
+        metavar="PATH",
+        help="Optional path to write ONE combined USD visual assembly of the "
+        "rooms at their offsets (e.g. collection.usdz or collection.usd; "
+        "requires the [usd] extra). A visual assembly only — no aggregate "
+        "acoustics. Recorded as 'combined_usd_ref' in the manifest (relative to "
+        "the manifest directory).",
+    )
     # Reused placement flags — identical semantics to `place`.
     p.add_argument(
         "--algorithm",
@@ -1126,6 +1136,23 @@ def _cmd_collection(args: argparse.Namespace) -> int:
                 "(they may overlap). roomestim does not infer inter-room pose."
             )
 
+    combined_usd_ref: str | None = None
+    combined_usd = getattr(args, "combined_usd", None)
+    if combined_usd:
+        from roomestim.export.collection_usd import write_collection_usd
+
+        combined_usd_path = Path(combined_usd)
+        write_collection_usd(collection, combined_usd_path)
+        print(f"wrote {combined_usd_path}")
+        # Record relative to the manifest dir (no absolute path leaks).
+        combined_usd_ref = os.path.relpath(combined_usd_path, out_dir)
+        if any(o is None for o in offsets):
+            print(
+                "note: combined USD is a visual assembly only; rooms without a "
+                "user-supplied --offset are emitted at their local origin "
+                "(they may overlap). roomestim does not infer inter-room pose."
+            )
+
     manifest_path = out_dir / "collection.yaml"
     write_collection_yaml(
         collection,
@@ -1133,6 +1160,7 @@ def _cmd_collection(args: argparse.Namespace) -> int:
         room_refs=room_refs,
         layout_refs=layout_refs,
         combined_ref=combined_ref,
+        combined_usd_ref=combined_usd_ref,
     )
     print(f"wrote {manifest_path}")
     return 0
