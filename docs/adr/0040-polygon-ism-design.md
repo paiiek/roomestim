@@ -277,3 +277,89 @@ from `urochester-rt60-validation.md`; dEchorate measured T30 prior-recorded from
   cuboid); the **acoustic magnitude stays DEFERRED**.
 - **Follow-ups (OQ):** non-shoebox measured RT60 GT corpus (still unfound); per-material α GT (would
   dissolve the U-Rochester confound); pyroomacoustics/EDC RT60-fit reliability on sparse ISM RIR.
+
+---
+
+## Status-update (2026-06-19, MP-RIR — non-rect visibility + axis-aligned scale/TOA validated; slanted-edge mirror math still UNCONFIRMED; RT60 still DEFERRED, doc-only)
+
+**The "no non-shoebox measured GT" blocker is RESOLVED. On the measured non-rect room we validate (a)
+geometric scale / path-length identity and (b) the visibility-pruning path, plus one clean axis-aligned
+wall — but the distinctive slanted-edge (tilted-line) mirror arithmetic is tested and INCONCLUSIVE, so it
+is NOT claimed validated. The RT60 cascade stays DEFERRED — now on a material/height-GT gap, not the
+corpus gap.** (An earlier draft over-claimed "non-rect mirror geometry validated"; an independent
+honesty-critic pass forced this downgrade.) Predictor / ISM / Eyring / materials /
+`polygon_image_source.py` / `_disclosure.py` all **byte-equal**; no version bump; no code touched.
+
+### Corpus acquired (the unblock)
+A dense measured-RIR corpus of a **non-rectangular** room landed on disk (`data/rir_dataset/`,
+gitignored 27 GB): **MP-RIR** — "Multi-Purpose Room Impulse Response Dataset Measured on a 3D Spatial
+Grid", Fraunhofer IIS (Friede, Tuna, Knauff, Prinn, Ersinadim, Walther; AES 156th Conv., Madrid 2024,
+paper #10702), **Zenodo 11148712, DOI 10.5281/zenodo.11148712, CC-BY-4.0**
+(identity + license PRIMARY-SOURCE confirmed via the Zenodo API + file byte-match; an
+agent's contrary "Zhao-UTS / CC-BY-NC" claim was refuted). Footprint = trapezoid, vertices
+(0,0)(0.002,7.32)(4.93,7.31)(6.49,0), area 41.75 m², interior angles [90.0, 89.8, **102.2, 77.9**]°
+(two corners off-90° → truly non-rect). 8 sources × 1074 xy grid × 8 mic heights (0.70–1.75 m),
+fs 48 kHz. Measured broadband RT60 (Schroeder T30) ≈ 0.80–0.89 s (session-P0 throwaway, 5 mics;
+context-only, NOT a validated per-position RT60). This is the first non-shoebox measured corpus called
+for by the 2026-06-08 / 06-12 follow-up OQ.
+
+### LANDED in evidence (geometry only; in-the-data, fake-number-free)
+Measured-TOA evidence for `polygon_image_source.py` on this non-rect room (offset-free peak-to-peak;
+reproducible script `.omc/research/mp_rir_toa_validate.py`; full evidence note
+`.omc/research/mp-rir-nonshoebox-toa-validation.md`). **An independent honesty-critic pass forced a
+material downgrade of an earlier over-claim** — what is actually validated is narrower than "non-rect
+mirror geometry":
+- **Direct-arrival self-consistency**: storage offset = T_system+T_guard = 6247 samples EXACTLY
+  (primary-source-backed: Zenodo README defines `T_guard` = guard pre-pad, `T_system` = system delay →
+  direct at `T_system+T_guard+round(dist/c·fs)`); direct-path residual median **5.1 cm** = timing noise
+  floor. Source/mic absolute positions are consistent with measured direct TOA.
+- **Geometric SCALE + path-length identity validated, robustly**: a single sound speed fit through origin
+  gives c = **344–345 m/s and is STABLE across window-anchor c0 ∈ {330,343,355}** (recovered 344.2 /
+  345.0 / 345.3) → not a window-circularity artifact. **This certifies overall scale/TOA, NOT per-wall
+  shape** (a single c stays physical even with a 26 cm individual-wall residual). The aggregate is
+  weighted-dominated by the one far, well-separated wall (edge3, large extra-distance); the biased
+  near-walls carry little weight — see the per-wall split in the evidence note.
+- **Visibility / pruning on a non-rect footprint exercised for real**: the only genuinely slanted edge
+  (edge2, 12° off-axis) is correctly **pruned** for a left-side source (foot off the finite segment,
+  t=−0.102) and correctly **valid** for right-side sources (S4/S7/S8) — real geometry-aware non-shoebox
+  behaviour (a shoebox keeps all four). Re-confirms the documented `valid`-flag limit (source-only foot →
+  necessary-not-sufficient).
+- **One axis-aligned wall (edge3, 0.00°) matches cleanly**: per-wall c=341.7 m/s, residual 7 cm, ~0 bias.
+- **HONEST NEGATIVE — the slanted-edge mirror arithmetic is NOT validated.** edge2 is the *only* edge that
+  exercises the tilted-line reflection math; the other three are ≤0.17° off-axis (= shoebox-equivalent
+  mirroring). Directly testing edge2 via right-side sources is **INCONCLUSIVE**: per-source c scatters
+  308–368 m/s, ~26 cm residual — the far slanted-wall reflection is not cleanly resolvable by
+  peak-matching in this dense RIR (neither confirmed nor refuted). Per-wall residuals of 12–26 cm on
+  edge0/edge1/floor are an **upper bound on geometry error this method cannot attribute** (true offset vs
+  peak-pick bias), bounded by the ±0.51 m search window — NOT asserted as either pure method noise or pure
+  geometry error.
+- **Net for ADR 0030 Reverse-criterion item 3**: the geometry foundation gains a measured non-rect
+  **scale/TOA + visibility** check (not a full non-rect mirror validation). Still GEOMETRY ONLY: no RT60 /
+  absorption / energy; ceiling reflection untested (height unknown); slanted-mirror math, 2nd-order+, and
+  receiver-aware visibility all still untested against measurement.
+
+### RT60 cascade — STILL DEFERRED (gap shifted: corpus → materials)
+- The corpus blocker (criterion iv of the 2026-06-12 decision rule: "any non-shoebox measured RT60
+  GT") is now **met** — MP-RIR provides measured non-shoebox RT60. BUT criterion (iii) "improves a
+  **material-confound-FREE** metric" is still **NOT met**: MP-RIR publishes **NO per-surface material /
+  absorption GT** and **no ceiling height** (primary-source confirmed: the Zenodo deposit is 10 data
+  files with no README/dimensions; the only companion is the paywalled AES 156th paper #10702, whose
+  public abstract/blog omit height/RT60/materials — possibly only a *qualitative* room description; the
+  room is "complex-shaped … diversified wall properties and structures", i.e. possibly not even a single
+  flat ceiling, further undercutting a prismatic-extrusion RT60 model here).
+  So any polygon-ISM-vs-Eyring-vs-measured RT60 comparison would inherit
+  the exact U-Rochester **material-confound** documented 2026-06-12 (the bias sign flips with the
+  assumed materials) → an absolute or even directional RT60 accuracy claim would be a soft fake number.
+- **Decision: RT60 cascade + predictor wiring remain DEFERRED.** No `predict_rt60_default` change, no
+  `PredictorName` addition, no pyroomacoustics core import. The honest statement is now sharper: the
+  geometry is validated on non-rect; the acoustic magnitude is blocked on **material/height GT**, not on
+  corpus availability.
+- A future cycle MAY, once MP-RIR's ceiling height is found, do a **labelled** inverse-consistency
+  sanity check (measured RT60 + geometry + height → effective Sabine α plausibility, 0<α<1) — that is a
+  consistency check, NOT a prediction-accuracy validation, and must be labelled as such.
+
+### Follow-ups (OQ, updated)
+- non-shoebox measured RT60 GT corpus → **FOUND (MP-RIR, FLAIR; both CC-BY-4.0)**; the open gap is now
+  **per-surface material/absorption GT + ceiling height** for these rooms.
+- receiver-aware specular visibility (current `valid` is source-only) — would let wall2-class
+  reflections be tested.

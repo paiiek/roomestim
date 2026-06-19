@@ -10,6 +10,10 @@ dist/
 build/
 *.egg-info/
 
+# Measured RIR corpora (multi-GB; manual upload, NEVER commit — e.g. DiffRIR
+# Complex room ~27GB at data/rir_dataset/, backup-GT probes at data/backup_gt_probe/)
+/data/
+
 # Real-room scan fixtures (large; manual download)
 tests/fixtures/lab_real.usdz
 tests/fixtures/lab_real_*.json
