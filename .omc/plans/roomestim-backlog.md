@@ -144,3 +144,32 @@ Resolves dead enum + OQ-38 round-trip. Code-only but product-peripheral.
   - Still-open external-data levers: known-extrinsic footprint dataset (unblocks ① + ⑥ validation),
     a reachable multi-room measured-RT60 set (BUT mirror or alternative), real RoomPlan parametric
     export (④). Tier-3/4 code-only items (⑦ ambisonics) remain available anytime.
+
+- **2026-06-22 RECONCILIATION (autopilot candidate-triage, baseline v0.43.0):** this backlog was
+  authored at v0.31.0; since then the queue has been worked down to exhaustion. Re-checked every lever
+  against current `main` (`6e86863`, default 686p/7s GREEN · ruff clean · mypy 57 files clean):
+  - ⑥ alpha-shape/concave footprint = **SHIPPED** (`reconstruct/floor_polygon.py`: `shapely.concave_hull`
+    + occupancy extractor + `auto` convex-inflation auto-select; ADR 0042 done).
+  - ⑦ ambisonics layout = **SHIPPED** v0.39.0 (`place/ambisonics.py`; ADR 0041).
+  - ⑧ multi-room RoomCollection = **SHIPPED** v0.40.0→v0.43.0 (composition container + per-room offset
+    + combined glTF/USD + real CapturedStructure splitter; ADR 0049/0050 — sidestepped the ADR0047 refactor).
+  - ② RT60 error bar = **DONE** (dEchorate honest error bar, doc).
+  - ③ polygon-ISM RT60 cascade = **DEFERRED, data-blocked**: MP-RIR (only new non-shoebox measured GT)
+    has NO ceiling-height / material GT → RT60 magnitude is a material-confound fake-number trap
+    (`diffrir-nonshoebox-validation.md` P2/P4). Geometry/TOA portion already validated + just committed
+    (`6e86863`, ADR 0040 §Status-update edge2 method-backed negative).
+  - ④ RoomPlan parametric ingest = **moot/deferred** (needs real-device export sample; geometry-only
+    `.usdz` already ingested).
+  - ⑤ furniture absorption, cam_h prior, material inference, per-corner uncertainty = **fake-number
+    traps** (absorption/material/calibration GT = 0).
+  - ⑩ PyPI publish = **install-grade DONE**; actual publish is **user-gated** (creds + approval).
+  - North-star frontier = **multi-view VGGT fusion A1** (`project_multiview_fusion_a1`): convex_band
+    12.7cm median / 7-of-10 ≤15cm (first sub-install-grade) but n=10 + convex-room artifact + flyer/scale
+    caveats, real general solution = TSDF multi-session (large). **At user decision gate** (a vs b).
+  - **CONCLUSION: no fresh-shippable, data-independent, non-user-gated candidate exists.** Every value-
+    additive lever now needs external GT we don't have, user credentials, or a user direction decision.
+    Manufacturing low-value off-north-star work (e.g. RIR auralization Phase B/C, explicitly low-priority
+    means) would violate the compass + NO-FAKE rule. Autopilot stops here per its explicit stop-condition.
+    **Next action is a user decision**, not more autonomous code: (a) green-light multi-view A1 toward
+    TSDF/general fusion, (b) approve PyPI publish (provide creds), or (c) supply an external GT lever
+    (known-extrinsic footprint dataset / non-shoebox material+ceiling RT60 set / real RoomPlan export).
