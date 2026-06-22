@@ -363,3 +363,41 @@ mirror geometry":
   **per-surface material/absorption GT + ceiling height** for these rooms.
 - receiver-aware specular visibility (current `valid` is source-only) — would let wall2-class
   reflections be tested.
+
+## Status-update (2026-06-21, MP-RIR edge2 — stronger estimator + validated control; slanted-mirror still UNRESOLVABLE, negative now method-backed; doc-only, byte-equal)
+
+**The edge2 (slanted ~12°) result is settled as a *method-backed* HONEST NEGATIVE, up from the
+2026-06-19 "INCONCLUSIVE by peak-matching".** A stronger estimator that cleanly resolves an
+axis-aligned control still cannot resolve edge2 → the slanted-edge mirror arithmetic is genuinely
+*not resolvable in this measured data*, NOT a weak-estimator artifact. It remains **neither confirmed
+nor refuted** as math; what is now confident is that MP-RIR cannot adjudicate it. No code touched;
+`polygon_image_source.py` and all predictors **byte-equal**; no version bump. Reproducible script:
+`.omc/research/mp_rir_edge2_matched.py`.
+
+### Stronger estimator (vs the 06-19 peak-matching)
+- **Matched-filter TOA**: cross-correlate the measured *direct* pulse (template, −10/+38 samples)
+  against the RIR inside the predicted reflection window → sub-sample, rise-time/overlap robust.
+- **Isolation gate**: keep only (source, mic) pairs where edge2's predicted arrival is ≥ **1.2 ms**
+  from the direct AND from every other first-order reflection, so the window unambiguously holds edge2.
+- **Confidence gate**: require normalized cross-correlation ≥ **0.55**.
+
+### Result — edge2 still does not resolve, but the matches ARE confident
+- edge2 pooled (right-side sources S4/S7/S8): n=210, c_fit = **324 m/s**, median|res| = **37.8 cm**,
+  rms 41.9 cm; per-source c scatters **314 / 356 / 427 m/s**. Crucially **mean corr = 0.71–0.80** — the
+  matched peaks are *confident*, yet they do not fit a consistent slanted-line mirror across mics. So
+  the failure is geometric consistency, not a noisy/absent peak.
+
+### CONTROL — the same pipeline DOES resolve an axis-aligned wall (this is what makes the negative meaningful)
+- Axis-aligned wall3 via S1, identical matched-filter+isolation pipeline: n=65, c_fit = **343.6 m/s**
+  (≈ physical speed of sound), median|res| = **7.4 cm**, signed +2.5 cm. The method cleanly recovers an
+  axis-aligned reflection at near-physical c with sub-10 cm residual.
+- **Therefore**: a *validated* axis-aligned control sits right next to a *failing* slanted edge under
+  one and the same estimator. The earlier hedge ("could be the weak peak-matcher") is removed — the
+  slanted-mirror math is unresolvable **from this dataset** (plausibly short specular zone / lower SNR /
+  non-specular tilted wall), which is a stronger, higher-confidence negative than 06-19.
+
+### Net (unchanged in direction, sharper in confidence)
+Validated on MP-RIR: scale/TOA identity, source-side visibility pruning, **and now (matched-filter)
+two independent axis-aligned reflections** (edge3 0.00° @7 cm on 06-19; wall3 @7.4 cm here). Still NOT
+validated: the distinctive slanted-line mirror arithmetic, 2nd-order+, receiver-aware visibility, and
+all RT60/absorption/energy (still DEFERRED on material/height GT, per 06-19). No predictor change.
