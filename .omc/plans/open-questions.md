@@ -1193,3 +1193,8 @@ ADR 0045 §Status-update-2026-06-05c / D89. Allocated 2026-06-05.
 - [ ] provenance literal for heuristically-split rooms: keep "measured" (LiDAR geometry is real) + carry membership-heuristic in disclosure/warning, OR add a new literal? — load-bearing honesty: "reconstructed" already means depth-free image inference, so reusing it would be inaccurate; planner recommends keeping "measured" + disclosure. Critic/architect to confirm.
 - [ ] degenerate section (<3 walls, observed: one same-label bedroom gets 0 walls): emit low-confidence room + warning, or drop with disclosure? — affects whether N RoomModels always == N sections.
 - [ ] subcommand name "structure" vs "split-structure"/"collection-structure" — naming preference; planner chose "structure".
+
+## robust-footprint-and-ceiling-confidence-fix - 2026-06-22
+- [ ] Ceiling-confidence plausibility lower bound: ship 1.8 m or align to 2.0 m (the `test_roomplan_structure_split` plausible-band lower edge)? — determines which low-but-real ceilings get demoted high→low; both pass all existing fixtures.
+- [ ] Should `floor_reconstruction="auto"` later route to `robust` on a noisy-boundary signal? — out of scope here; needs a noise-detection signal + validation.
+- [ ] Primitive B (through-opening / room-segmentation footprint leakage) remains design-only — needs a commercial-OK room-mapping scan + co-registered GT to validate before shipping.

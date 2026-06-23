@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import label, sum as ndimage_sum  # type: ignore[import-untyped]
+from scipy.spatial import cKDTree  # type: ignore[import-untyped]
 from shapely import concave_hull
 from shapely.geometry import MultiPoint, MultiPolygon
 from shapely.geometry import Polygon as ShapelyPolygon
@@ -37,6 +38,7 @@ __all__ = [
     "disconnected_floater_phi",
     "floor_polygon_from_mesh",
     "floor_polygon_from_mesh_occupancy",
+    "floor_polygon_robust",
 ]
 
 # Concave-hull tightness. ``ratio=1.0`` is the convex hull; ``ratio→0.0``
@@ -73,6 +75,22 @@ _OCC_CELL_M = 0.05
 # threshold only needs to strip the sparsest noise. Operators with a clean,
 # dense scan may pass ``min_count=5`` as a function kwarg.
 _OCC_MIN_COUNT = 3
+
+# Robust boundary-trim parameters (the ``"robust"`` floor mode).
+#
+# Density-percentile boundary trim BEFORE the concave hull. SCRREAM n=1 vertex-
+# noise validation (``scrream-gt/scrream_seg_frontend_proto.py``) showed Gaussian
+# vertex noise inflates the concave footprint monotonically (+19.4% @ 5 cm, +39%
+# @ 10 cm); dropping the top ``_ROBUST_DROP_PCT`` % of points by sparse k-NN mean
+# distance (the boundary "flyers") roughly HALVES that over-read (+8.3% @ 5 cm,
+# +12% @ 10 cm) and is UNCHANGED on clean (σ=0) input. ``_ROBUST_BAND_M`` is the
+# bottom-band thickness (metres above the 1st-percentile floor) the trim runs on;
+# ``_ROBUST_KNN_K`` is the k-NN neighbour count whose mean distance ranks point
+# sparseness. These are the proto's validated values; the figures are n=1 SCRREAM
+# noise-sweep specific and are NOT an accuracy guarantee on real room scans.
+_ROBUST_BAND_M = 0.15
+_ROBUST_KNN_K = 12
+_ROBUST_DROP_PCT = 8.0
 
 # ``auto`` floater-detection signal parameters (the ``"auto"`` floor mode).
 #
@@ -325,6 +343,108 @@ def floor_polygon_from_mesh_occupancy(
     x = rows * cell + float(origin[0]) + 0.5 * cell
     z = cols * cell + float(origin[1]) + 0.5 * cell
     synth = np.column_stack([x, np.zeros_like(x), z])
+    return floor_polygon_from_mesh(synth, ratio=ratio)
+
+
+def floor_polygon_robust(
+    mesh_vertices: np.ndarray,
+    *,
+    band_m: float = _ROBUST_BAND_M,
+    k: int = _ROBUST_KNN_K,
+    drop_pct: float = _ROBUST_DROP_PCT,
+    ratio: float = _DEFAULT_RATIO,
+) -> list[Point2]:
+    """Reconstruct a 2D floor polygon via density-percentile boundary trim.
+
+    A noise-robust front-end to :func:`floor_polygon_from_mesh`. Faithfully ports
+    the validated SCRREAM prototype pipeline
+    (``scrream-gt/scrream_seg_frontend_proto.py``): take the bottom ``band_m``
+    floor band, drop the top ``drop_pct`` % of band points by sparse k-NN mean
+    distance (the boundary "flyers" that vertex noise sprays outside the true
+    footprint), and hand the survivors back to the concave path. Gaussian vertex
+    noise inflates the raw concave footprint monotonically (validated n=1 SCRREAM:
+    +19.4% @ 5 cm, +39% @ 10 cm); the trim roughly HALVES that over-read
+    (+8.3% @ 5 cm, +12% @ 10 cm) and leaves clean (σ=0) input unchanged. These
+    figures are noise-sweep-specific (n=1) and are NOT an accuracy guarantee on
+    real room scans.
+
+    The vertices are assumed ALREADY Y-up-normalized (the
+    :mod:`roomestim.adapters.mesh` convention runs ``_normalize_to_y_up`` before
+    floor reconstruction), so the vertical is index 1 and the floor plane is
+    ``(x, z) = (index 0, index 2)``; the up axis is NOT re-detected here.
+
+    Parameters
+    ----------
+    mesh_vertices:
+        ``(N, 3)`` array of mesh vertex positions in listener-frame metres.
+    band_m:
+        Thickness (metres) of the bottom floor band trimmed, measured above the
+        1st-percentile floor height. Defaults to :data:`_ROBUST_BAND_M` (0.15).
+        Must be ``> 0``.
+    k:
+        k-NN neighbour count whose mean distance ranks point sparseness. Defaults
+        to :data:`_ROBUST_KNN_K` (12). Must be ``>= 1``.
+    drop_pct:
+        Percentage of the sparsest band points (highest k-NN mean distance) to
+        drop. Defaults to :data:`_ROBUST_DROP_PCT` (8.0). Must be in ``(0, 100)``.
+    ratio:
+        Concave-hull tightness in ``(0, 1]`` forwarded to
+        :func:`floor_polygon_from_mesh`. Defaults to :data:`_DEFAULT_RATIO`.
+
+    Returns
+    -------
+    list[Point2]
+        CCW floor polygon (``(x, z)`` vertices, closing duplicate stripped).
+
+    Raises
+    ------
+    ValueError
+        If ``mesh_vertices`` is not ``(N, 3)`` or non-finite; if ``band_m <= 0``,
+        ``k < 1``, or ``drop_pct`` is outside ``(0, 100)`` (including NaN); or any
+        degeneracy raised by the delegated :func:`floor_polygon_from_mesh`. The
+        :data:`MeshAdapter` caller converts the degeneracy case into a convex-hull
+        fallback with a warning.
+
+    Notes
+    -----
+    **Deterministic.** No RNG anywhere: :class:`scipy.spatial.cKDTree.query` and
+    :func:`numpy.percentile` are deterministic, and the ``<=`` keep threshold
+    includes ties deterministically, so the same input always yields the same
+    polygon.
+    """
+    vertices = np.asarray(mesh_vertices, dtype=float)
+    if vertices.ndim != 2 or vertices.shape[1] != 3:
+        raise ValueError(
+            f"robust: expected (N, 3) vertex array, got shape {vertices.shape}"
+        )
+    if not np.isfinite(vertices).all():
+        raise ValueError("robust: non-finite vertex coordinates")
+    if not (np.isfinite(band_m) and band_m > 0.0):
+        raise ValueError(f"robust: band_m must be > 0, got {band_m}")
+    if not (np.isfinite(k) and k >= 1):
+        raise ValueError(f"robust: k must be >= 1, got {k}")
+    if not (np.isfinite(drop_pct) and 0.0 < drop_pct < 100.0):
+        raise ValueError(f"robust: drop_pct must be in (0, 100), got {drop_pct}")
+
+    # Floor band: the bottom ``band_m`` above the 1st-percentile floor height
+    # (Y-up convention; up axis already normalized upstream). Project to (x, z).
+    fy = float(np.percentile(vertices[:, 1], 1.0))
+    band = vertices[vertices[:, 1] <= fy + band_m]
+    xz = band[:, [0, 2]]
+
+    # Density trim (verbatim port of the validated proto ``density_trim``): drop
+    # points whose k-NN mean distance is in the top ``drop_pct`` (sparse flyers).
+    if len(xz) <= k + 1:
+        kept = xz
+    else:
+        tree = cKDTree(xz)
+        d, _ = tree.query(xz, k=k + 1)
+        md = d[:, 1:].mean(1)
+        kept = xz[md <= np.percentile(md, 100 - drop_pct)]
+
+    # Reuse the concave path (inherits every guard, simplify, is_simple_polygon,
+    # canonicalize_ccw) by re-synthesizing a Y-up (N, 3) cloud at floor level.
+    synth = np.column_stack([kept[:, 0], np.zeros(len(kept)), kept[:, 1]])
     return floor_polygon_from_mesh(synth, ratio=ratio)
 
 

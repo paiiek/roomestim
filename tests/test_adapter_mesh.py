@@ -364,6 +364,131 @@ def test_mesh_adapter_invalid_env_value_raises(
 
 
 # --------------------------------------------------------------------------- #
+# robust floor reconstruction (density-percentile boundary trim)
+# --------------------------------------------------------------------------- #
+#
+# Validated n=1 SCRREAM noise sweep (scrream-gt/scrream_seg_frontend_proto.py):
+# vertex noise inflates the concave footprint monotonically and the boundary
+# trim roughly HALVES that over-read while leaving clean input unchanged. The
+# tests assert DIRECTIONS/inequalities, never the n=1-specific percentages.
+
+
+def _robust_floor_band_vertices(*, sigma: float = 0.0) -> "object":
+    """Y-up (N, 3) floor-band cloud of a 4 m x 3 m rectangle (GT area 12 m²).
+
+    Dense interior grid + a reinforced perimeter ring (mimicking a real floor-
+    wall junction, so a clean boundary survives the trim). With ``sigma > 0`` a
+    seeded Gaussian XZ spray pushes boundary points outward, inflating the raw
+    concave hull — the over-read the density trim targets.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    xs = np.linspace(0.0, 4.0, 81)
+    zs = np.linspace(0.0, 3.0, 61)
+    gx, gz = np.meshgrid(xs, zs)
+    interior = np.column_stack([gx.ravel(), gz.ravel()])
+    t = np.linspace(0.0, 4.0, 400)
+    s = np.linspace(0.0, 3.0, 300)
+    edges = np.vstack(
+        [
+            np.column_stack([t, np.zeros_like(t)]),
+            np.column_stack([t, np.full_like(t, 3.0)]),
+            np.column_stack([np.zeros_like(s), s]),
+            np.column_stack([np.full_like(s, 4.0), s]),
+        ]
+    )
+    xz = np.vstack([interior, edges, edges])
+    if sigma > 0.0:
+        xz = xz + rng.normal(0.0, sigma, xz.shape)
+    return np.column_stack([xz[:, 0], np.zeros(len(xz)), xz[:, 1]])
+
+
+def _poly_area(poly: "object") -> float:
+    return float(ShapelyPolygon([(p.x, p.z) for p in poly]).area)  # type: ignore[attr-defined]
+
+
+def test_floor_robust_reduces_noise_overestimate() -> None:
+    """Robust trim shrinks the noise-inflated footprint toward the clean GT.
+
+    Asserts only DIRECTION (the validated n=1 8.3% figure is NOT hard-coded):
+    on a noisy cloud the robust footprint is strictly smaller than the raw
+    concave footprint AND materially closer to the clean GT area (12 m²).
+    """
+    from roomestim.reconstruct.floor_polygon import (
+        floor_polygon_from_mesh,
+        floor_polygon_robust,
+    )
+
+    gt_area = 12.0  # the clean 4 m x 3 m rectangle
+    noisy = _robust_floor_band_vertices(sigma=0.05)
+    concave_area = _poly_area(floor_polygon_from_mesh(noisy))
+    robust_area = _poly_area(floor_polygon_robust(noisy))
+
+    # Both over-read on noisy input; robust over-reads strictly less.
+    assert robust_area < concave_area
+    # ...and lands materially closer to truth than the raw concave hull.
+    assert abs(robust_area - gt_area) < abs(concave_area - gt_area)
+
+
+def test_floor_robust_matches_concave_on_clean_dense_input() -> None:
+    """On clean dense input the trim is harmless: robust area ≈ concave area."""
+    from roomestim.reconstruct.floor_polygon import (
+        floor_polygon_from_mesh,
+        floor_polygon_robust,
+    )
+
+    clean = _robust_floor_band_vertices(sigma=0.0)
+    concave_area = _poly_area(floor_polygon_from_mesh(clean))
+    robust_area = _poly_area(floor_polygon_robust(clean))
+    assert robust_area == pytest.approx(concave_area, rel=0.01)
+
+
+def test_floor_robust_deterministic() -> None:
+    """Same input → bit-for-bit identical polygon (no RNG, no order sensitivity)."""
+    from roomestim.reconstruct.floor_polygon import floor_polygon_robust
+
+    verts = _robust_floor_band_vertices(sigma=0.05)
+    poly_a = floor_polygon_robust(verts)
+    poly_b = floor_polygon_robust(verts)
+    assert [(p.x, p.z) for p in poly_a] == [(p.x, p.z) for p in poly_b]
+
+
+def test_floor_robust_falls_back_on_degenerate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Robust degeneracy falls back to convex with a UserWarning.
+
+    Mirrors the concave/occupancy fallback tests: the robust reconstruction is
+    monkeypatched to raise ``ValueError`` so the MeshAdapter caller's try/except
+    converts it into a convex-hull fallback with a ``UserWarning``.
+    """
+    import roomestim.adapters.mesh as mesh_mod
+
+    def _boom(_vertices: object) -> object:
+        raise ValueError("synthetic robust degeneracy")
+
+    monkeypatch.setattr(mesh_mod, "floor_polygon_robust", _boom)
+
+    with pytest.warns(UserWarning, match="falling back to convex"):
+        room = MeshAdapter(floor_reconstruction="robust").parse(
+            FIXTURE_DIR / "lab_room.obj"
+        )
+    assert isinstance(room, RoomModel)
+    # Fallback yields the convex shoebox floor (4 vertices).
+    assert len(room.floor_polygon) == 4
+
+
+def test_mesh_adapter_robust_env_value_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``robust`` is a now-VALID env value (no ValueError at construction)."""
+    monkeypatch.setenv("ROOMESTIM_MESH_FLOOR_RECON", "robust")
+    adapter = MeshAdapter()
+    assert adapter._floor_reconstruction == "robust"
+
+
+# --------------------------------------------------------------------------- #
 # Phase 0 (commercialization plan 0a) — gravity / up-axis normalization
 # --------------------------------------------------------------------------- #
 
@@ -1458,6 +1583,82 @@ def test_mesh_adapter_ceiling_confidence_low_on_tabletop_mispick(tmp_path: Path)
     assert room.ceiling_confidence == "low"
 
 
+def _write_collapsed_ceiling_ply(path: Path) -> None:
+    """Write a room whose ceiling COLLAPSES to an implausibly low dense plane.
+
+    Dense floor (y=0) + four dense walls + a dense full-footprint horizontal
+    plane at y=1.3 (no real ceiling above it). ``_robust_floor_ceiling_y`` picks
+    the 1.3 m plane as the ceiling, UNDER-reporting the height to ~1.27 m — the
+    validated collapse failure mode (n=1 SCRREAM: 1.34 m vs true 2.58 m at
+    extreme noise). Because the wrong plane spans the WHOLE footprint, coverage
+    reads ~1.0 (high) — so coverage alone would falsely report 'high'; only the
+    plane-plausibility gate catches it.
+    """
+    import numpy as np
+    import trimesh
+
+    rng = np.random.default_rng(7)
+    fx = fz = 4.0
+    collapse_y = 1.3
+    floor = np.column_stack(
+        [rng.uniform(0, fx, 6000), np.zeros(6000), rng.uniform(0, fz, 6000)]
+    )
+    plane = np.column_stack(
+        [rng.uniform(0, fx, 6000), np.full(6000, collapse_y), rng.uniform(0, fz, 6000)]
+    )
+    per = 2000
+    walls = [
+        np.column_stack(
+            [rng.uniform(0, fx, per), rng.uniform(0, collapse_y, per), np.zeros(per)]
+        ),
+        np.column_stack(
+            [rng.uniform(0, fx, per), rng.uniform(0, collapse_y, per), np.full(per, fz)]
+        ),
+        np.column_stack(
+            [np.zeros(per), rng.uniform(0, collapse_y, per), rng.uniform(0, fz, per)]
+        ),
+        np.column_stack(
+            [np.full(per, fx), rng.uniform(0, collapse_y, per), rng.uniform(0, fz, per)]
+        ),
+    ]
+    verts = np.vstack([floor, plane, *walls])
+    n_keep = (verts.shape[0] // 3) * 3
+    verts = verts[:n_keep]
+    faces = np.arange(n_keep).reshape(-1, 3)
+    trimesh.Trimesh(vertices=verts, faces=faces, process=False).export(path)
+
+
+def test_mesh_adapter_ceiling_confidence_low_on_collapsed_ceiling(
+    tmp_path: Path,
+) -> None:
+    """A COLLAPSED ceiling (implausibly low) is demoted to 'low' despite high coverage.
+
+    The collapsed plane spans the whole footprint, so coverage reads ~1.0 (which
+    alone would say 'high'); the plane-plausibility gate (height < 1.8 m) must
+    demote it to 'low'. ``ceiling_height_m`` is NOT modified by the annotation —
+    it stays the collapsed value.
+    """
+    ply = tmp_path / "collapsed_ceiling.ply"
+    _write_collapsed_ceiling_ply(ply)
+
+    room = MeshAdapter(up_axis="y").parse(ply)
+
+    # The annotation did NOT change the height: it is the collapsed value.
+    assert room.ceiling_height_m < 1.8, (
+        f"fixture sanity: expected a collapsed height (<1.8 m), got "
+        f"{room.ceiling_height_m:.3f} m"
+    )
+    # Coverage is high (the wrong plane spans the footprint) yet confidence is
+    # demoted by the plausibility gate.
+    assert room.ceiling_coverage is not None
+    assert room.ceiling_coverage >= 0.50, (
+        f"fixture sanity: collapsed plane should span the footprint "
+        f"(coverage {room.ceiling_coverage} unexpectedly < 0.50)"
+    )
+    assert room.ceiling_confidence != "high"
+    assert room.ceiling_confidence == "low"
+
+
 def test_ceiling_coverage_failsafe_returns_none_on_degenerate() -> None:
     """``_ceiling_coverage`` never raises; degenerate input → None → 'unknown'.
 
@@ -1479,6 +1680,13 @@ def test_ceiling_coverage_failsafe_returns_none_on_degenerate() -> None:
     assert MeshAdapter._classify_ceiling_confidence(1.0) == "high"
     assert MeshAdapter._classify_ceiling_confidence(0.0) == "low"
     assert MeshAdapter._classify_ceiling_confidence(0.5) == "high"  # boundary inclusive
+
+    # Plane-plausibility gate (optional second arg). A plausible height keeps the
+    # coverage verdict; a collapsed height demotes 'high' -> 'low'; a None height
+    # skips the gate (back-compat — the four assertions above are unchanged).
+    assert MeshAdapter._classify_ceiling_confidence(1.0, 2.5) == "high"
+    assert MeshAdapter._classify_ceiling_confidence(1.0, 1.0) == "low"
+    assert MeshAdapter._classify_ceiling_confidence(1.0) == "high"
 
 
 # --------------------------------------------------------------------------- #

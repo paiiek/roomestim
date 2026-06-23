@@ -354,6 +354,52 @@ def test_cli_occupancy_notice_ignored_for_non_mesh_backend(
     assert "occupancy is ignored for --backend roomplan" in captured.err
 
 
+def test_cli_floor_reconstruction_robust_ingests_mesh(tmp_path: Path) -> None:
+    """`--floor-reconstruction robust` on a mesh backend ingests and recovers a footprint."""
+    obj_path = tmp_path / "dense_l.obj"
+    _write_dense_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "robust"]
+    )
+    assert rc == 0
+    room = read_room_yaml(tmp_path / "room.yaml")
+    # The robust trim keeps the re-entrant corner → >=6 vertices (an L has 6).
+    assert len(room.floor_polygon) >= 6
+
+
+def test_cli_robust_notice_for_mesh_backend(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Robust on a mesh backend emits the ROBUSTNESS / n=1 / NOT-guarantee NOTE."""
+    obj_path = tmp_path / "dense_l.obj"
+    _write_dense_l_prism_obj(obj_path)
+
+    rc = main(
+        ["ingest", "--backend", "polycam", "--input", str(obj_path),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "robust"]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "ROBUSTNESS lever" in captured.err
+    assert "UNVALIDATED" in captured.err
+    assert "n=1" in captured.err
+
+
+def test_cli_robust_notice_ignored_for_non_mesh_backend(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Robust with a non-mesh backend (roomplan) emits an honest 'ignored' NOTE."""
+    rc = main(
+        ["ingest", "--backend", "roomplan", "--input", str(_FIXTURE_JSON),
+         "--out-dir", str(tmp_path), "--floor-reconstruction", "robust"]
+    )
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "robust is ignored for --backend roomplan" in captured.err
+
+
 def test_cli_env_var_honored_when_flag_unset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

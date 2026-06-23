@@ -45,6 +45,7 @@ from roomestim.reconstruct.floor_polygon import (
     auto_should_use_occupancy,
     floor_polygon_from_mesh,
     floor_polygon_from_mesh_occupancy,
+    floor_polygon_robust,
 )
 from roomestim.reconstruct.listener_area import default_listener_area
 from roomestim.reconstruct.walls import walls_from_floor_polygon
@@ -56,7 +57,7 @@ __all__ = ["AUTO_FLOOR_RECON_NOTE", "MeshAdapter"]
 
 _SUPPORTED_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply", ".usdz"})
 
-FloorReconstruction = Literal["convex", "concave", "occupancy", "auto"]
+FloorReconstruction = Literal["convex", "concave", "occupancy", "auto", "robust"]
 
 # Explicit up-axis override. ``"auto"`` (default) runs the gravity-axis
 # detector; ``"x"`` / ``"y"`` / ``"z"`` force a known axis when the caller has
@@ -190,6 +191,18 @@ _CEILING_COVERAGE_CELL_M = 0.25     # XZ grid resolution (25 cm cells)
 _CEILING_COVERAGE_BAND_M = 0.10     # half-width of the ceiling band: ceiling_y +/- 10 cm
 _CEILING_COVERAGE_MIN = 0.50        # coverage >= 0.50 -> "high", else "low" (HEURISTIC)
 
+# Ceiling plane-plausibility floor (metres). At extreme vertex noise the robust
+# ceiling height can COLLAPSE to an implausible value (validated n=1 SCRREAM:
+# 1.34 m vs true 2.58 m) while still reading high coverage — a wrong-but-dense
+# low plane spans the footprint. ``ceiling_confidence="high"`` must therefore
+# also require a plausible height. 1.8 m sits safely below every legitimate
+# fixture (the shoebox is 2.5 m; real ARKit robust ceilings reach down to
+# ~2.24 m) while catching the validated 1.34 m collapse. This is a conservative
+# HEURISTIC, NOT calibrated (consistent with CEILING_CONFIDENCE_HEURISTIC_NOTE);
+# the upper bound is already enforced loud by _MAX_CEILING_HEIGHT_M, so this only
+# adds a lower plausibility floor — it can ONLY demote "high" -> "low".
+_CEILING_PLAUSIBLE_MIN_M = 1.8
+
 
 class MeshAdapter:
     """``CaptureAdapter`` implementation for generic mesh exports.
@@ -218,7 +231,14 @@ class MeshAdapter:
         component) so ``"auto"`` resolves to the SAME convex call → byte-equal by
         construction. It is NOT a through-opening-bleed fix and NOT a re-entrant/
         notch-recovery capability (connected geometry never triggers it); see
-        :data:`AUTO_FLOOR_RECON_NOTE`. The ``"concave"``/``"occupancy"`` modes
+        :data:`AUTO_FLOOR_RECON_NOTE`. ``"robust"`` is the Primitive-A density-
+        percentile boundary trim (:func:`floor_polygon_robust`): it drops the top
+        ``drop_pct`` % sparsest-kNN boundary "flyers" of the floor band before the
+        concave hull, halving the vertex-noise over-estimate (validated n=1
+        SCRREAM: +19.4%→+8.3% @ 5 cm, +39%→+12% @ 10 cm; unchanged on clean
+        input). It is the noise-robust opt-in only — NOT a through-opening/bleed
+        fix and NOT an accuracy guarantee on real room scans. The
+        ``"concave"``/``"occupancy"``/``"robust"`` modes
         (and the occupancy branch ``"auto"`` may pick) fall back to the convex
         hull (with a :class:`UserWarning`) when reconstruction degenerates. When
         left at its sentinel default the
@@ -263,7 +283,7 @@ class MeshAdapter:
             if explicit not in modes:
                 raise ValueError(
                     f"MeshAdapter: floor_reconstruction must be 'convex', "
-                    f"'concave', 'occupancy', or 'auto', got {explicit!r}."
+                    f"'concave', 'occupancy', 'auto', or 'robust', got {explicit!r}."
                 )
             return explicit
         env_value = os.environ.get(_FLOOR_RECON_ENV)
@@ -273,7 +293,7 @@ class MeshAdapter:
         if normalized not in modes:
             raise ValueError(
                 f"MeshAdapter: {_FLOOR_RECON_ENV}={env_value!r} is invalid; "
-                f"expected 'convex', 'concave', 'occupancy', or 'auto'."
+                f"expected 'convex', 'concave', 'occupancy', 'auto', or 'robust'."
             )
         return cast(FloorReconstruction, normalized)
 
@@ -529,18 +549,34 @@ class MeshAdapter:
     @staticmethod
     def _classify_ceiling_confidence(
         coverage: float | None,
+        ceiling_height_m: float | None = None,
     ) -> CeilingConfidence:
-        """Map a ``ceiling_coverage`` fraction to the HEURISTIC confidence label.
+        """Map ``ceiling_coverage`` (+ height) to the HEURISTIC confidence label.
 
-        ``None`` (not measured) -> ``"unknown"``; ``coverage >=
-        _CEILING_COVERAGE_MIN`` -> ``"high"``; else ``"low"``. The 0.50 threshold
-        is a conservative geometric rule of thumb validated only on synthetic
-        fixtures — NOT calibrated against measured data (see
-        CEILING_CONFIDENCE_HEURISTIC_NOTE).
+        ``None`` coverage (not measured) -> ``"unknown"``. Otherwise ``"high"``
+        requires BOTH ``coverage >= _CEILING_COVERAGE_MIN`` AND a plausible
+        height (``ceiling_height_m is None`` — gate skipped, back-compat — OR
+        ``_CEILING_PLAUSIBLE_MIN_M <= ceiling_height_m <= _MAX_CEILING_HEIGHT_M``);
+        anything else is ``"low"``.
+
+        The plausibility gate exists because a wrong-but-dense COLLAPSED ceiling
+        plane (validated n=1 SCRREAM: 1.34 m vs true 2.58 m at extreme noise)
+        still reads high coverage, so coverage alone falsely reports ``"high"``.
+        The gate only ever DEMOTES ``"high"`` -> ``"low"`` (never the reverse),
+        keeping the conservative/honest framing. The 0.50 coverage threshold and
+        the 1.8 m plausibility floor are conservative geometric rules of thumb
+        validated only on synthetic fixtures — NOT calibrated against measured
+        data (see CEILING_CONFIDENCE_HEURISTIC_NOTE). ``ceiling_height_m`` is read
+        only; this never changes the extracted height.
         """
         if coverage is None:
             return "unknown"
-        return "high" if coverage >= _CEILING_COVERAGE_MIN else "low"
+        plausible_height = ceiling_height_m is None or (
+            _CEILING_PLAUSIBLE_MIN_M <= ceiling_height_m <= _MAX_CEILING_HEIGHT_M
+        )
+        if coverage >= _CEILING_COVERAGE_MIN and plausible_height:
+            return "high"
+        return "low"
 
     @classmethod
     def _detect_up_axis(cls, vertices: np.ndarray) -> int:
@@ -905,7 +941,9 @@ class MeshAdapter:
         # still-dense bin). ceiling_coverage is an honest geometric measurement;
         # ceiling_confidence is a HEURISTIC label, NOT a calibrated probability.
         ceiling_coverage = self._ceiling_coverage(vertices, ceiling_y)
-        ceiling_confidence = self._classify_ceiling_confidence(ceiling_coverage)
+        ceiling_confidence = self._classify_ceiling_confidence(
+            ceiling_coverage, ceiling_height_m
+        )
         if ceiling_height_m <= 0.0:
             raise ValueError(
                 f"MeshAdapter: degenerate mesh height "
@@ -942,12 +980,12 @@ class MeshAdapter:
             recon = (
                 "occupancy" if auto_should_use_occupancy(vertices) else "convex"
             )
-        if recon in ("concave", "occupancy"):
-            extractor = (
-                floor_polygon_from_mesh
-                if recon == "concave"
-                else floor_polygon_from_mesh_occupancy
-            )
+        if recon in ("concave", "occupancy", "robust"):
+            extractor = {
+                "concave": floor_polygon_from_mesh,
+                "occupancy": floor_polygon_from_mesh_occupancy,
+                "robust": floor_polygon_robust,
+            }[recon]
             try:
                 floor_polygon_2d = extractor(vertices)
             except ValueError as exc:

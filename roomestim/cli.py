@@ -77,17 +77,20 @@ def _add_floor_reconstruction_arg(p: argparse.ArgumentParser) -> None:
     """
     p.add_argument(
         "--floor-reconstruction",
-        choices=["convex", "concave", "occupancy", "auto"],
+        choices=["convex", "concave", "occupancy", "auto", "robust"],
         default=None,
         help="Mesh footprint extraction: 'convex' (safe over-estimate), "
         "'concave' (recovers re-entrant corners; UNVALIDATED accuracy — no "
         "footprint ground truth, ADR 0042), 'occupancy' (density + "
         "connected-component footprint; rejects sparse floaters in noisy RGB-D "
         "reconstructions — robustness lever, n=1 Redwood evidence, NOT an "
-        "accuracy guarantee), or 'auto' (convex-preserving: switches to "
+        "accuracy guarantee), 'auto' (convex-preserving: switches to "
         "occupancy ONLY when a coarse-grid signal detects a DISCONNECTED "
         "floater, else byte-equal to convex; opt-in, synthetic-fixture-"
-        "validated, NOT a bleed/notch fix, ADR 0048). Default: convex; honors "
+        "validated, NOT a bleed/notch fix, ADR 0048), or 'robust' (density-"
+        "percentile boundary trim before the concave hull; halves the vertex-"
+        "noise over-estimate, validated n=1 SCRREAM, +19.4%%->+8.3%% @ 5 cm; "
+        "UNVALIDATED on real room scans). Default: convex; honors "
         "ROOMESTIM_MESH_FLOOR_RECON env var when unset.",
     )
 
@@ -657,7 +660,7 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
     if backend == "roomplan":
         from roomestim.adapters.roomplan import RoomPlanAdapter
 
-        if floor_reconstruction in ("concave", "occupancy", "auto"):
+        if floor_reconstruction in ("concave", "occupancy", "auto", "robust"):
             print(
                 f"NOTE: --floor-reconstruction {floor_reconstruction} is ignored "
                 f"for --backend {backend} (mesh-only; the RoomPlan footprint "
@@ -686,13 +689,21 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
             from roomestim.adapters.mesh import AUTO_FLOOR_RECON_NOTE
 
             print(f"NOTE: {AUTO_FLOOR_RECON_NOTE}", file=sys.stderr)
+        elif floor_reconstruction == "robust":
+            print(
+                "NOTE: robust footprint is a ROBUSTNESS lever (density-percentile "
+                "boundary trim halves the vertex-noise over-estimate); accuracy is "
+                "UNVALIDATED on real room scans — single-sweep (n=1) SCRREAM "
+                "evidence, NOT an accuracy guarantee.",
+                file=sys.stderr,
+            )
         from roomestim.adapters.mesh import FloorReconstruction
 
         return PolycamAdapter(
             floor_reconstruction=cast("FloorReconstruction | None", floor_reconstruction)
         )
     if backend == "image":
-        if floor_reconstruction in ("concave", "occupancy", "auto"):
+        if floor_reconstruction in ("concave", "occupancy", "auto", "robust"):
             print(
                 f"NOTE: --floor-reconstruction {floor_reconstruction} is ignored "
                 f"for --backend {backend} (mesh-only; the image backend is its "
