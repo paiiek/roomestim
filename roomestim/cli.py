@@ -21,7 +21,7 @@ from roomestim import __version__
 
 if TYPE_CHECKING:
     from roomestim.adapters.base import CaptureAdapter, ScaleAnchor
-    from roomestim.model import PlacementResult, RoomModel
+    from roomestim.model import PlacementResult, Point2, RoomModel
     from roomestim.place.coverage_grid import (
         CoverageGridResult,
         GridType,
@@ -162,6 +162,15 @@ def _add_coverage_args(p: argparse.ArgumentParser) -> None:
         choices=["square", "hex"],
         default="square",
         help="Lattice type for --algorithm coverage (default: square).",
+    )
+    p.add_argument(
+        "--coverage-grid-res-m",
+        type=float,
+        default=0.5,
+        metavar="M",
+        help="Ear-plane sampling resolution (m) for the --algorithm coverage B2 "
+        "geometric coverage-circle overlap check (default 0.5). Geometry only, NO "
+        "SPL/acoustic claim — see COVERAGE_OVERLAP_NOTE.",
     )
 
 
@@ -910,10 +919,18 @@ def _run_coverage(
     return cov, result
 
 
-def _emit_coverage_grid(cov: "CoverageGridResult", out_dir: Path) -> None:
+def _emit_coverage_grid(
+    cov: "CoverageGridResult",
+    out_dir: Path,
+    floor_polygon: list["Point2"] | None = None,
+    grid_res_m: float = 0.5,
+) -> None:
     """Print the coverage-grid lines + write the ``layout.coverage.json`` sidecar.
 
-    Geometry only; see ``COVERAGE_GRID_NOTE``. Parallels ``_emit_layout_angle_check``
+    Geometry only for the grid itself (see ``COVERAGE_GRID_NOTE``). When
+    ``floor_polygon`` is supplied, the B2 geometric coverage-circle overlap check
+    (``COVERAGE_OVERLAP_NOTE``; NO SPL/acoustic claim) is appended under the
+    sidecar's ``"overlap"`` key and printed. Parallels ``_emit_layout_angle_check``
     / the ``layout.angles.json`` sidecar.
     """
     import json
@@ -922,10 +939,22 @@ def _emit_coverage_grid(cov: "CoverageGridResult", out_dir: Path) -> None:
 
     for line in format_coverage_lines(cov):
         print(line)
+    payload = coverage_to_dict(cov)
+    if floor_polygon is not None:
+        from roomestim.place.coverage_overlap import (
+            coverage_overlap_to_dict,
+            format_coverage_overlap_lines,
+            score_coverage_overlap,
+        )
+
+        score = score_coverage_overlap(
+            cov, floor_polygon, grid_resolution_m=grid_res_m
+        )
+        payload["overlap"] = coverage_overlap_to_dict(score)
+        for line in format_coverage_overlap_lines(score):
+            print(line)
     sidecar = out_dir / "layout.coverage.json"
-    sidecar.write_text(
-        json.dumps(coverage_to_dict(cov), indent=2) + "\n", encoding="utf-8"
-    )
+    sidecar.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {sidecar}")
 
 
@@ -986,7 +1015,12 @@ def _cmd_place(args: argparse.Namespace) -> int:
     write_layout_yaml(result, out_path)
     print(f"wrote {out_path}")
     if coverage_result is not None:
-        _emit_coverage_grid(coverage_result, out_dir)
+        _emit_coverage_grid(
+            coverage_result,
+            out_dir,
+            floor_polygon=room.floor_polygon,
+            grid_res_m=getattr(args, "coverage_grid_res_m", 0.5),
+        )
     if getattr(args, "check_angles", False):
         _emit_layout_angle_check(result, room, out_dir)
     _maybe_print_estimated_notice(room)
@@ -1156,7 +1190,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
     print(f"wrote {room_out}")
     print(f"wrote {layout_out}")
     if coverage_result is not None:
-        _emit_coverage_grid(coverage_result, out_dir)
+        _emit_coverage_grid(
+            coverage_result,
+            out_dir,
+            floor_polygon=room.floor_polygon,
+            grid_res_m=getattr(args, "coverage_grid_res_m", 0.5),
+        )
     _maybe_print_estimated_notice(room)
     _maybe_print_low_ceiling_notice(room)
     return 0

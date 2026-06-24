@@ -69,7 +69,18 @@ RESUME POINTER. 진실원천 = `.omc/research/usable-tech-SYNTHESIS-2026-06-23.m
 
 ---
 
-## ★RESUME POINTER (다음 세션) — 2026-06-24 갱신 #3 (B1 PUSHED + A1 DONE)
+## ★RESUME POINTER (다음 세션) — 2026-06-24 갱신 #4 (B1 PUSHED + A1 + B2 DONE, B3 정직 DEFER)
+
+- **v0.45.0(B1) PUSHED `a12d64c`. v0.46.0(A1) PUSHED `670a304`.**
+- **B2 = DONE (v0.47.0, MINOR additive).** B1 이 보류한 "±3 dB 균일도 검증"을 **절대 SPL 발명 없이** B1 의 coverage-원 기하 검증으로 닫음.
+  - 신규 `roomestim/place/coverage_overlap.py` `score_coverage_overlap`: 청취평면 footprint 격자 샘플링 → 각 점 coverage-원(반경=B1 `coverage_radius_m`) 포함 개수 → `fraction_covered`(≥1, 갭)·`fraction_overlap_2plus`(≥2)·`worst_point_xz`. `--algorithm coverage` 가 `layout.coverage.json` 의 신규 `overlap` 키 + `--coverage-grid-res-m`(기본 0.5). `coverage_to_dict` byte-equal.
+  - ★설계 pivot 실증: 원안 direct-SPL 분산은 **근접장 피크 지배로 비견고 + 절대 SPL GT 부재**(구현 후 기각) → coverage-원 오버랩(B1 spacing 이 유도된 양)으로 정직 전환. ★실측 발견: B1 의 1-D AVIXA spacing 은 **2-D 에 대각 갭**(square/background 기본 8×6 m 방 ~51% 만 커버, r 1.20<셀반대각 1.44 m). 단일진실원천 `COVERAGE_OVERLAP_NOTE`(SPL 무주장). ADR 0053.
+  - 게이트 GREEN: default **727p/7s**(715→+12 `tests/test_coverage_overlap.py`), web 86p/3s, ruff·mypy(--strict 59) clean, CLI E2E OK. 독립 code-review APPROVE(3 LOW non-blocking 반영: 문구완화 "AVIXA target"→"≥2-circle share", perf/worst_point docstring 노트).
+- **B3 = 정직한 scoped DEFER (구현 안 함).** B3(spaudiopy/DBAP decode matrix for proposed coords)는 **roomestim 아키텍처 경계 위반**: roomestim 은 layout 기하만 방출하고 **decode/gain matrix·SH 인코딩은 엔진 책임**(ambisonics 모듈이 명시: "does NOT compute decode matrix... 엔진 책임, end-to-end contract UNCONFIRMED" — ADR 0041 §D-3a). B3 를 지으면 동일 UNCONFIRMED 계약을 요구 + 엔진 책임 중복. DBAP placement(v0.39.0)·coverage grid 좌표는 이미 layout.yaml 로 엔진에 흐름. ⇒ 가짜 계약으로 out-of-scope 기능 짓지 않음(NO FAKE CONTRACT). 재오픈 조건=엔진 라우팅 계약 확정 시.
+- **다음 후보**: (Track A) A3 blind-rt60 [audio] extra(측정 RT60 백엔드, GT 덜 필요) / A2 polygon RT60(FLAIR 라이선스 확인 선행, GT-gated). (Track B 소진: B1✓ B2✓ B3=scoped DEFER). 또는 북극성 frontier(VGGT+GTSAM, 별도 스파이크).
+- 베이스라인 **727p/7s @ v0.47.0**. 게이트=`/home/seung/miniforge3/bin/python -m pytest`.
+
+### (이전) 2026-06-24 갱신 #3 (B1 PUSHED + A1 DONE)
 
 - **v0.45.0 (B1) = PUSHED** to origin/main (`a12d64c`, user 승인).
 - **A1 = DONE & COMMITTED (v0.46.0, MINOR additive).** dEchorate(Zenodo 5562386, CC-BY-4.0 둘다 검증) 측정 GT로 shipped shoebox RT60 엔진 2차 독립검증.
