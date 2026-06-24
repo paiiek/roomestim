@@ -143,9 +143,32 @@ ROOMPLAN_STRUCTURE_SPLIT_NOTE: str = (
     "multi-room recovery."
 )
 
+# Measured (blind) RT60 disclosure ([audio] extra, B-track A3). Unlike the
+# geometric RT60 MODEL (Sabine / Eyring / ISM), a blind RT60 estimate is a
+# MEASUREMENT derived from a recorded signal — but the blind estimator (Ratnam
+# et al. maximum-likelihood decay model, via the `blind-rt60` package) carries
+# its OWN error, which roomestim has NOT yet validated in-repo against a measured
+# corpus (ACE benchmark deferred). It is a single BROADBAND value, not per-octave-
+# band. Single source of truth — reference, do not retype.
+MEASURED_RT60_NOTE: str = (
+    "Measured (blind) RT60 is estimated from a recorded audio signal by the "
+    "`blind-rt60` package (Ratnam et al. maximum-likelihood reverberation-decay "
+    "model) — it is a MEASUREMENT, not the geometric Sabine/Eyring/ISM model, so "
+    "it reflects the actual room + furnishings rather than assumed materials. "
+    "HOWEVER the blind estimator has its OWN error that roomestim has NOT yet "
+    "quantified in-repo (an ACE-corpus accuracy benchmark is deferred), so treat "
+    "the value as an indicative measurement, not a calibrated reference. It is a "
+    "single "
+    "BROADBAND RT60 (seconds), NOT per-octave-band, and its accuracy depends on "
+    "the recording (a clean impulsive excitation — a clap or balloon pop — in a "
+    "quiet room is best; steady background noise degrades it). Requires the "
+    "optional `roomestim[audio]` extra (blind-rt60 + soundfile)."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
     "RT60_MODEL_NAME",
+    "MEASURED_RT60_NOTE",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",
     "IMAGE_CAM_H_SCALE_NOTE",
     "POLYGON_ISM_GEOMETRY_NOTE",

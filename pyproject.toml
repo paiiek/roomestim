@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.48.0"
+version = "0.49.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -62,6 +62,14 @@ web = [
     "soundfile>=0.12",
 ]
 viz = ["matplotlib>=3.7"]
+audio = [
+    # A3: measured (blind) RT60 from a recording. blind-rt60 (MIT, PyPI v0.1.1;
+    # Ratnam et al. ML decay model) + soundfile for file I/O. NEVER imported at
+    # `import roomestim` time (roomestim/reconstruct/measured_rt60.py lazy-imports
+    # both inside its functions) so the core boundary stays dependency-light.
+    "blind-rt60>=0.1.1",
+    "soundfile>=0.12",
+]
 usd = ["usd-core>=24.0; python_version >= '3.10'"]
 mesh-export = ["usd-core>=24.0; python_version >= '3.10'"]
 colmap = ["pycolmap>=0.6"]
@@ -132,4 +140,12 @@ ignore_errors = true
 # missing-stub noise whether or not usd-core is installed in the type-check env.
 [[tool.mypy.overrides]]
 module = "pxr.*"
+ignore_missing_imports = true
+
+# blind-rt60 + soundfile ([audio] extra) ship no type stubs / py.typed marker.
+# Both are lazily imported behind a friendly ImportError in
+# roomestim/reconstruct/measured_rt60.py, so silence the missing-stub noise
+# whether or not the extra is installed in the type-check env.
+[[tool.mypy.overrides]]
+module = ["blind_rt60.*", "soundfile.*"]
 ignore_missing_imports = true

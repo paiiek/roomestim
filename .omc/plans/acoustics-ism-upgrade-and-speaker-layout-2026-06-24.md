@@ -77,7 +77,9 @@ RESUME POINTER. 진실원천 = `.omc/research/usable-tech-SYNTHESIS-2026-06-23.m
   - (1) `place_coverage_grid` additive `spacing_scale`(default 1.0=byte-equal, `(0,1]`). (2) 신규 `place/coverage_complete.py` `place_coverage_grid_to_target`: B2 overlap 오라클을 목표(default 0.9)까지 spacing ×0.9 조밀화, 수렴/cap honest, `CoverageTargetResult`. (3) CLI `--coverage-target` + 미지정 시 <85% stderr 경고. ADR 0054.
   - 실증: meeting 6×5 54%(4spk)→97%(12spk) MET, retail 66%→95%. `COVERAGE_COMPLETE_NOTE`(SPL 무주장). 게이트 default **755p/7s**(+13), 내 모듈 ruff·mypy clean.
   - ⚠️ 워킹트리에 **다른 동시 세션의 untracked WIP**(`roomestim/adapters/multiview.py`·`roomestim/geom/surface_distance.py`·`tests/test_aconsumer_multiview.py`·`.omc/autopilot/spec-aconsumer-multiview.md`, "A-consumer multiview" 기능) 존재 — 그 파일에 mypy strict 2 에러(내 것 아님). 내 커밋은 내 파일만 스테이징, 그들 파일 무접촉.
-- **다음 = A3 blind-rt60 `[audio]` extra** (user 승인 순서). 폰 녹음→측정 RT60 백엔드(blind_rt60 MIT + soundfile) + Acta Acustica 2025 closed-form 보정. ACE corpus(CC-BY-ND, Zenodo 6257551)로 정확도 벤치. core 무변경 옵셔널 extra. 설계 = plan Track A3.
+- **A3 진행중 (blind-rt60 `[audio]` extra).** ★feasibility 1차출처 검증: `blind-rt60` PyPI v0.1.1 **License MIT 확인**(plan 주장 정확), 블라인드 RT60(Ratnam et al. ML), deps=scipy/numpy/matplotlib(전부 보유). soundfile 0.9.0 로컬有(web extra >=0.12).
+  - **증분 1 = DONE (v0.49.0, library-only, code-review 대기→커밋예정)**: `[audio]` extra + `reconstruct/measured_rt60.py`(`measure_rt60_from_audio`/`_from_signal`→`MeasuredRT60`, lazy import, subprocess 로 core dep-light lock) + `MEASURED_RT60_NOTE` 단일진실원천 + mypy override + `tests/test_measured_rt60.py`(importorskip, 정확도 단언 X). 합성 0.5s→0.48s 스모크 OK. ★CLI 미배선(cli.py 동시세션 경합 회피). default 764p/7s, mypy(63)·ruff clean, ADR 0055.
+  - **증분 2(defer)**: Acta Acustica 2025 closed-form 보정(geo prior→측정 RT60 제약 투영) + ACE corpus(CC-BY-ND, Zenodo 6257551) 정확도 벤치(외부 다운로드 의존).
 - 베이스라인 **755p/7s @ v0.48.0**.
 
 ### (이전) 갱신 #4 (B1 PUSHED + A1 + B2 DONE, B3 정직 DEFER)
