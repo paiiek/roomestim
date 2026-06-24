@@ -22,6 +22,11 @@ from roomestim import __version__
 if TYPE_CHECKING:
     from roomestim.adapters.base import CaptureAdapter, ScaleAnchor
     from roomestim.model import PlacementResult, RoomModel
+    from roomestim.place.coverage_grid import (
+        CoverageGridResult,
+        GridType,
+        OverlapMode,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -121,15 +126,55 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
     _add_image_backend_args(p)
 
 
+def _add_coverage_args(p: argparse.ArgumentParser) -> None:
+    """Shared `--algorithm coverage` (B1) flags for `place` + `run`.
+
+    Only meaningful for ``--algorithm coverage`` (room-aware AVIXA-style ceiling
+    grid; geometry only, NO acoustic/SPL claim — see ``COVERAGE_GRID_NOTE``).
+    Defaults reproduce the standard ceiling-grid geometry, so adding these flags
+    leaves every other algorithm's behaviour unchanged.
+    """
+    p.add_argument(
+        "--ceiling-dispersion-deg",
+        type=float,
+        default=90.0,
+        metavar="DEG",
+        help="Nominal datasheet loudspeaker dispersion angle for --algorithm "
+        "coverage (default 90.0). Effective dispersion = 0.75 * nominal.",
+    )
+    p.add_argument(
+        "--ear-height-m",
+        type=float,
+        default=None,
+        metavar="M",
+        help="Ear/listening-plane height for --algorithm coverage "
+        "(default: room.listener_area.height_m).",
+    )
+    p.add_argument(
+        "--overlap-mode",
+        choices=["background", "speech"],
+        default="background",
+        help="Coverage-circle overlap for --algorithm coverage: background "
+        "(15%%) or speech (23%%). Default background.",
+    )
+    p.add_argument(
+        "--grid",
+        choices=["square", "hex"],
+        default="square",
+        help="Lattice type for --algorithm coverage (default: square).",
+    )
+
+
 def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = sub.add_parser("place", help="Run speaker placement; write layout.yaml.")
     p.add_argument("--in-room", required=True, metavar="PATH", help="room.yaml path.")
     p.add_argument(
         "--algorithm",
-        choices=["vbap", "dbap", "wfs", "ambisonics"],
+        choices=["vbap", "dbap", "wfs", "ambisonics", "coverage"],
         required=False,
         default="vbap",
-        help="Placement algorithm (default: vbap).",
+        help="Placement algorithm (default: vbap). 'coverage' is the room-aware "
+        "AVIXA-style ceiling coverage grid (geometry only, NO acoustic/SPL claim).",
     )
     p.add_argument(
         "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
@@ -180,6 +225,7 @@ def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
         metavar="DIR",
         help="Output directory (default: cwd).",
     )
+    _add_coverage_args(p)
     p.add_argument(
         "--check-angles",
         action="store_true",
@@ -260,10 +306,11 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
         "--algorithm",
-        choices=["vbap", "dbap", "wfs", "ambisonics"],
+        choices=["vbap", "dbap", "wfs", "ambisonics", "coverage"],
         required=False,
         default="vbap",
-        help="Placement algorithm (default: vbap).",
+        help="Placement algorithm (default: vbap). 'coverage' is the room-aware "
+        "AVIXA-style ceiling coverage grid (geometry only, NO acoustic/SPL claim).",
     )
     p.add_argument(
         "--n-speakers", type=int, default=8, metavar="N", help="Number of speakers."
@@ -320,6 +367,7 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=False,
         help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
+    _add_coverage_args(p)
     _add_floor_reconstruction_arg(p)
     _add_image_backend_args(p)
     # FIX-4 / D77: engine validation toggle (D42 / ADR 0033), at parity with
@@ -833,6 +881,54 @@ def _run_placement(
     return result
 
 
+def _run_coverage(
+    room: RoomModel, args: argparse.Namespace
+) -> tuple["CoverageGridResult", PlacementResult]:
+    """B1 coverage-grid placement: return ``(coverage_result, wrapped_placement)``.
+
+    The CLI computes the :class:`CoverageGridResult` directly (rather than via
+    ``run_placement``) so the rich coverage metadata is available for the
+    ``layout.coverage.json`` sidecar without recomputing. The wrapped
+    :class:`PlacementResult` is what ``layout.yaml`` is written from; its
+    ``geometry_provenance`` is stamped from the room exactly like
+    :func:`_run_placement`.
+    """
+    from roomestim.place.coverage_grid import (
+        coverage_result_to_placement,
+        place_coverage_grid_for_room,
+    )
+
+    cov = place_coverage_grid_for_room(
+        room,
+        ear_height_m=getattr(args, "ear_height_m", None),
+        nominal_dispersion_deg=getattr(args, "ceiling_dispersion_deg", 90.0),
+        overlap_mode=cast("OverlapMode", getattr(args, "overlap_mode", "background")),
+        grid_type=cast("GridType", getattr(args, "grid", "square")),
+    )
+    result = coverage_result_to_placement(cov)
+    result.geometry_provenance = room.provenance
+    return cov, result
+
+
+def _emit_coverage_grid(cov: "CoverageGridResult", out_dir: Path) -> None:
+    """Print the coverage-grid lines + write the ``layout.coverage.json`` sidecar.
+
+    Geometry only; see ``COVERAGE_GRID_NOTE``. Parallels ``_emit_layout_angle_check``
+    / the ``layout.angles.json`` sidecar.
+    """
+    import json
+
+    from roomestim.place.coverage_grid import coverage_to_dict, format_coverage_lines
+
+    for line in format_coverage_lines(cov):
+        print(line)
+    sidecar = out_dir / "layout.coverage.json"
+    sidecar.write_text(
+        json.dumps(coverage_to_dict(cov), indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"wrote {sidecar}")
+
+
 # --------------------------------------------------------------------------- #
 # Sub-command implementations
 # --------------------------------------------------------------------------- #
@@ -870,21 +966,27 @@ def _cmd_place(args: argparse.Namespace) -> int:
 
     room = read_room_yaml(args.in_room)
     _maybe_print_ambisonics_notes(args)
-    result = _run_placement(
-        room,
-        args.algorithm,
-        args.n_speakers,
-        args.layout_radius,
-        args.el_deg,
-        wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
-        wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
-        order=getattr(args, "order", None),
-    )
+    coverage_result: CoverageGridResult | None = None
+    if args.algorithm == "coverage":
+        coverage_result, result = _run_coverage(room, args)
+    else:
+        result = _run_placement(
+            room,
+            args.algorithm,
+            args.n_speakers,
+            args.layout_radius,
+            args.el_deg,
+            wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
+            wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+            order=getattr(args, "order", None),
+        )
     assert isinstance(result, PlacementResult)
 
     out_path = out_dir / "layout.yaml"
     write_layout_yaml(result, out_path)
     print(f"wrote {out_path}")
+    if coverage_result is not None:
+        _emit_coverage_grid(coverage_result, out_dir)
     if getattr(args, "check_angles", False):
         _emit_layout_angle_check(result, room, out_dir)
     _maybe_print_estimated_notice(room)
@@ -1020,16 +1122,20 @@ def _cmd_run(args: argparse.Namespace) -> int:
     )
 
     _maybe_print_ambisonics_notes(args)
-    result = _run_placement(
-        room,
-        args.algorithm,
-        args.n_speakers,
-        args.layout_radius,
-        args.el_deg,
-        wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
-        wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
-        order=getattr(args, "order", None),
-    )
+    coverage_result: CoverageGridResult | None = None
+    if args.algorithm == "coverage":
+        coverage_result, result = _run_coverage(room, args)
+    else:
+        result = _run_placement(
+            room,
+            args.algorithm,
+            args.n_speakers,
+            args.layout_radius,
+            args.el_deg,
+            wfs_f_max_hz=getattr(args, "wfs_f_max_hz", 8000.0),
+            wfs_spacing_m=getattr(args, "wfs_spacing_m", None),
+            order=getattr(args, "order", None),
+        )
     assert isinstance(result, PlacementResult)
 
     room_out = out_dir / "room.yaml"
@@ -1049,6 +1155,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
     print(f"wrote {room_out}")
     print(f"wrote {layout_out}")
+    if coverage_result is not None:
+        _emit_coverage_grid(coverage_result, out_dir)
     _maybe_print_estimated_notice(room)
     _maybe_print_low_ceiling_notice(room)
     return 0

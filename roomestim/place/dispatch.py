@@ -20,19 +20,56 @@ def run_placement(
     wfs_f_max_hz: float = 8000.0,
     wfs_spacing_m: float | None = None,
     order: int | None = None,
+    coverage_dispersion_deg: float | None = None,
+    coverage_ear_height_m: float | None = None,
+    coverage_overlap_mode: str = "background",
+    coverage_grid_type: str = "square",
 ) -> PlacementResult:
     """Dispatch to the right placement function and return a PlacementResult.
 
-    Room-geometry awareness (honest disclosure): only ``dbap`` consumes the
-    room's actual wall/ceiling surfaces and listener area. ``vbap`` produces a
-    fixed-radius ring and ``wfs`` synthesizes its baseline from the layout
-    radius — both are independent of room geometry by construction (the room
-    argument is unused for those two paths). ``ambisonics`` is likewise
-    geometry-blind like ``vbap`` (the room argument is unused; the rig is a
-    fixed regular platonic solid sized by ``order``), AND its end-to-end SH
-    decode/route is engine-gated and UNCONFIRMED (see
-    ``AMBISONICS_RIG_DISCLOSURE``). Use ``dbap`` for geometry-aware placement.
+    Room-geometry awareness (honest disclosure): ``dbap`` and ``coverage`` are
+    the room-geometry-aware paths. ``dbap`` consumes the room's actual
+    wall/ceiling surfaces + listener area; ``coverage`` consumes the floor
+    polygon + ceiling height + ear height to lay an AVIXA-style ceiling grid
+    (geometric only, NO acoustic/SPL claim — see ``COVERAGE_GRID_NOTE``).
+    ``vbap`` produces a fixed-radius ring and ``wfs`` synthesizes its baseline
+    from the layout radius — both are independent of room geometry by
+    construction (the room argument is unused for those two paths).
+    ``ambisonics`` is likewise geometry-blind like ``vbap`` (the room argument
+    is unused; the rig is a fixed regular platonic solid sized by ``order``),
+    AND its end-to-end SH decode/route is engine-gated and UNCONFIRMED (see
+    ``AMBISONICS_RIG_DISCLOSURE``). Use ``dbap`` or ``coverage`` for
+    geometry-aware placement.
+
+    The four ``coverage_*`` keyword arguments are only consumed by the
+    ``coverage`` branch and default to the placement's standard behaviour, so
+    every existing caller (room-blind vbap/wfs/ambisonics, dbap) is byte-equal.
     """
+    if algorithm == "coverage":
+        from typing import cast
+
+        from roomestim.place.coverage_grid import (
+            DEFAULT_NOMINAL_DISPERSION_DEG,
+            GridType,
+            OverlapMode,
+            coverage_result_to_placement,
+            place_coverage_grid_for_room,
+        )
+
+        dispersion = (
+            DEFAULT_NOMINAL_DISPERSION_DEG
+            if coverage_dispersion_deg is None
+            else coverage_dispersion_deg
+        )
+        result = place_coverage_grid_for_room(
+            room,
+            ear_height_m=coverage_ear_height_m,
+            nominal_dispersion_deg=dispersion,
+            overlap_mode=cast(OverlapMode, coverage_overlap_mode),
+            grid_type=cast(GridType, coverage_grid_type),
+        )
+        return coverage_result_to_placement(result)
+
     if algorithm == "vbap":
         from roomestim.place.vbap import place_vbap_ring
 

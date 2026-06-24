@@ -1198,3 +1198,10 @@ ADR 0045 §Status-update-2026-06-05c / D89. Allocated 2026-06-05.
 - [ ] Ceiling-confidence plausibility lower bound: ship 1.8 m or align to 2.0 m (the `test_roomplan_structure_split` plausible-band lower edge)? — determines which low-but-real ceilings get demoted high→low; both pass all existing fixtures.
 - [ ] Should `floor_reconstruction="auto"` later route to `robust` on a noisy-boundary signal? — out of scope here; needs a noise-detection signal + validation.
 - [ ] Primitive B (through-opening / room-segmentation footprint leakage) remains design-only — needs a commercial-OK room-mapping scan + co-registered GT to validate before shipping.
+
+## B1 Coverage-Grid (v0.45.0) - 2026-06-24
+- [ ] Placement-yaml reader: does it validate `x_target_algorithm` against a closed label set? — If yes, the new `COVERAGE_GRID` label needs an additive reader extension; if it round-trips the raw string, no change. Executor must verify before assuming byte-equal round-trip.
+- [ ] Default nominal dispersion = 90° is a generic full-range ceiling cone assumption — confirm this is the right product default vs requiring the installer to always pass a datasheet value.
+- [ ] Speech overlap fraction fixed at 0.23 (midpoint of AVIXA 20-25%) — confirm whether to expose the exact fraction as a CLI override or keep the two named modes only.
+- [ ] Inclusion rule is centroid-in-polygon (not circle-area-overlap). For concave notches the coverage circle may overhang a wall — confirm this honest-but-simple rule is acceptable for B1, or whether a coverage-fraction threshold is wanted (leans toward B2/SPL territory).
+- [ ] No cap on n_speakers for small-spacing/large rooms — confirm a count cap is intentionally out of scope (a cap is a cost/acoustic judgement, deferred).

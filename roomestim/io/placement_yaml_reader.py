@@ -18,7 +18,13 @@ from roomestim.model import PlacedSpeaker, PlacementResult, Point3
 #: :class:`roomestim.place.algorithm.TargetAlgorithm`. Used to validate the
 #: ``x_target_algorithm`` extension key on read, mirroring the ``_parse_provenance``
 #: guardrail.
-_TARGET_ALGORITHM_VALUES: tuple[str, ...] = ("VBAP", "DBAP", "WFS", "AMBISONICS")
+_TARGET_ALGORITHM_VALUES: tuple[str, ...] = (
+    "VBAP",
+    "DBAP",
+    "WFS",
+    "AMBISONICS",
+    "COVERAGE_GRID",
+)
 
 
 def _point3_from_speaker(d: dict[str, Any]) -> Point3:

@@ -17,3 +17,6 @@ class TargetAlgorithm(str, Enum):
     DBAP = "DBAP"
     WFS = "WFS"
     AMBISONICS = "AMBISONICS"
+    #: B1 — room-aware AVIXA-style distributed-ceiling coverage grid (geometric
+    #: only, NO acoustic/SPL claim; see ``roomestim.place.coverage_grid``).
+    COVERAGE_GRID = "COVERAGE_GRID"
