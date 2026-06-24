@@ -172,6 +172,17 @@ def _add_coverage_args(p: argparse.ArgumentParser) -> None:
         "geometric coverage-circle overlap check (default 0.5). Geometry only, NO "
         "SPL/acoustic claim — see COVERAGE_OVERLAP_NOTE.",
     )
+    p.add_argument(
+        "--coverage-target",
+        type=float,
+        default=None,
+        metavar="FRAC",
+        help="B4: densify the --algorithm coverage grid until the MEASURED "
+        "geometric coverage (fraction of floor within >=1 coverage circle) "
+        "reaches FRAC (e.g. 0.9), or a speaker cap is hit (reported honestly). "
+        "Closes the 2-D diagonal gaps the 1-D AVIXA spacing leaves. Omitted = "
+        "AVIXA nominal spacing (may under-cover). Geometry only, NO SPL claim.",
+    )
 
 
 def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -907,16 +918,44 @@ def _run_coverage(
         place_coverage_grid_for_room,
     )
 
-    cov = place_coverage_grid_for_room(
-        room,
-        ear_height_m=getattr(args, "ear_height_m", None),
-        nominal_dispersion_deg=getattr(args, "ceiling_dispersion_deg", 90.0),
-        overlap_mode=cast("OverlapMode", getattr(args, "overlap_mode", "background")),
-        grid_type=cast("GridType", getattr(args, "grid", "square")),
-    )
+    target = getattr(args, "coverage_target", None)
+    if target is not None:
+        # B4: densify to a MEASURED coverage target (closes the 2-D gaps the
+        # 1-D AVIXA spacing leaves). Uses the B2 overlap oracle internally.
+        from roomestim.place.coverage_complete import place_coverage_grid_to_target
+
+        ear = (
+            room.listener_area.height_m
+            if getattr(args, "ear_height_m", None) is None
+            else args.ear_height_m
+        )
+        tr = place_coverage_grid_to_target(
+            floor_polygon=room.floor_polygon,
+            ceiling_height_m=room.ceiling_height_m,
+            ear_height_m=ear,
+            nominal_dispersion_deg=getattr(args, "ceiling_dispersion_deg", 90.0),
+            overlap_mode=cast("OverlapMode", getattr(args, "overlap_mode", "background")),
+            grid_type=cast("GridType", getattr(args, "grid", "square")),
+            target_coverage=target,
+            grid_resolution_m=getattr(args, "coverage_grid_res_m", 0.5),
+        )
+        cov = tr.grid
+    else:
+        cov = place_coverage_grid_for_room(
+            room,
+            ear_height_m=getattr(args, "ear_height_m", None),
+            nominal_dispersion_deg=getattr(args, "ceiling_dispersion_deg", 90.0),
+            overlap_mode=cast("OverlapMode", getattr(args, "overlap_mode", "background")),
+            grid_type=cast("GridType", getattr(args, "grid", "square")),
+        )
     result = coverage_result_to_placement(cov)
     result.geometry_provenance = room.provenance
     return cov, result
+
+
+#: Realised-coverage threshold below which `_emit_coverage_grid` advises the
+#: B4 `--coverage-target` densifier (only when no target was requested).
+_COVERAGE_WARN_THRESHOLD: float = 0.85
 
 
 def _emit_coverage_grid(
@@ -924,14 +963,18 @@ def _emit_coverage_grid(
     out_dir: Path,
     floor_polygon: list["Point2"] | None = None,
     grid_res_m: float = 0.5,
+    coverage_target: float | None = None,
 ) -> None:
     """Print the coverage-grid lines + write the ``layout.coverage.json`` sidecar.
 
     Geometry only for the grid itself (see ``COVERAGE_GRID_NOTE``). When
     ``floor_polygon`` is supplied, the B2 geometric coverage-circle overlap check
     (``COVERAGE_OVERLAP_NOTE``; NO SPL/acoustic claim) is appended under the
-    sidecar's ``"overlap"`` key and printed. Parallels ``_emit_layout_angle_check``
-    / the ``layout.angles.json`` sidecar.
+    sidecar's ``"overlap"`` key and printed. When ``coverage_target`` is set (B4),
+    a ``target`` block records the requested vs achieved coverage + convergence;
+    when it is NOT set and realised coverage is low, a stderr NOTE advises the
+    ``--coverage-target`` densifier. Parallels ``_emit_layout_angle_check`` / the
+    ``layout.angles.json`` sidecar.
     """
     import json
 
@@ -950,9 +993,34 @@ def _emit_coverage_grid(
         score = score_coverage_overlap(
             cov, floor_polygon, grid_resolution_m=grid_res_m
         )
-        payload["overlap"] = coverage_overlap_to_dict(score)
+        overlap_dict = coverage_overlap_to_dict(score)
+        if coverage_target is not None:
+            converged = score.fraction_covered >= coverage_target
+            overlap_dict["target"] = {
+                "requested": coverage_target,
+                "achieved": round(score.fraction_covered, 4),
+                "converged": converged,
+            }
+        payload["overlap"] = overlap_dict
         for line in format_coverage_overlap_lines(score):
             print(line)
+        if coverage_target is not None:
+            converged = score.fraction_covered >= coverage_target
+            print(
+                f"  coverage target {coverage_target:.0%}: "
+                f"{'MET' if converged else 'NOT MET (speaker cap)'} "
+                f"at {score.fraction_covered:.0%} covered, {cov.n_speakers} speakers"
+            )
+        elif score.fraction_covered < _COVERAGE_WARN_THRESHOLD:
+            print(
+                "NOTE: this geometric grid covers only "
+                f"{score.fraction_covered:.0%} of the floor (>=1 coverage circle) — "
+                "the AVIXA 1-D spacing leaves 2-D diagonal gaps. Pass "
+                "--coverage-target 0.9 to densify the grid to a measured coverage "
+                "target, or try --grid hex / --overlap-mode speech. (Geometric "
+                "coverage only, NO SPL claim.)",
+                file=sys.stderr,
+            )
     sidecar = out_dir / "layout.coverage.json"
     sidecar.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {sidecar}")
@@ -1020,6 +1088,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
             out_dir,
             floor_polygon=room.floor_polygon,
             grid_res_m=getattr(args, "coverage_grid_res_m", 0.5),
+            coverage_target=getattr(args, "coverage_target", None),
         )
     if getattr(args, "check_angles", False):
         _emit_layout_angle_check(result, room, out_dir)
@@ -1195,6 +1264,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             out_dir,
             floor_polygon=room.floor_polygon,
             grid_res_m=getattr(args, "coverage_grid_res_m", 0.5),
+            coverage_target=getattr(args, "coverage_target", None),
         )
     _maybe_print_estimated_notice(room)
     _maybe_print_low_ceiling_notice(room)

@@ -242,6 +242,7 @@ def place_coverage_grid(
     grid_type: GridType = "square",
     layout_name: str = "coverage_grid",
     edge_inclusion_tol_m: float = 1e-9,
+    spacing_scale: float = 1.0,
 ) -> CoverageGridResult:
     """Compute the geometric ceiling coverage grid (see module docstring + NOTE).
 
@@ -250,6 +251,13 @@ def place_coverage_grid(
     height/dispersion, a dispersion outside ``(0, 180)``, or
     ``ceiling_height_m <= ear_height_m`` (no coverage geometry — the ceiling must
     be above the ear plane; this single guard also covers a missing/zero ceiling).
+
+    ``spacing_scale`` (default 1.0 → byte-equal with the AVIXA spacing) multiplies
+    the center-to-center spacing; values < 1.0 DENSIFY the grid (closing the 2-D
+    diagonal gaps the 1-D AVIXA overlap leaves). It is the lever
+    :func:`place_coverage_grid_to_target` (B4) tightens to hit a measured coverage
+    target. Must be finite and in ``(0, 1]`` — densify only, never sparsen below
+    the AVIXA nominal.
     """
     # --- Step 1: validate inputs (fail loud BEFORE any geometry) ----------- #
     if len(floor_polygon) < 3:
@@ -282,13 +290,18 @@ def place_coverage_grid(
         raise ValueError(
             f"grid_type must be 'square' or 'hex', got {grid_type!r}"
         )
+    assert_finite(spacing_scale, field="spacing_scale")
+    if not (0.0 < spacing_scale <= 1.0):
+        raise ValueError(
+            f"spacing_scale must be in (0, 1] (densify only), got {spacing_scale}"
+        )
 
     # --- Step 2: coverage geometry ---------------------------------------- #
     eff_deg = nominal_dispersion_deg * EFFECTIVE_DISPERSION_FACTOR
     radius_m = (ceiling_height_m - ear_height_m) * math.tan(math.radians(eff_deg / 2.0))
     diameter_m = 2.0 * radius_m
     overlap = OVERLAP_FRACTION[overlap_mode]
-    spacing_m = 2.0 * radius_m * (1.0 - overlap)
+    spacing_m = 2.0 * radius_m * (1.0 - overlap) * spacing_scale
     # Valid inputs (ceiling>ear, 0<disp<180, overlap in {0.15,0.23}) => spacing>0.
     if spacing_m <= 0.0:
         raise ValueError(

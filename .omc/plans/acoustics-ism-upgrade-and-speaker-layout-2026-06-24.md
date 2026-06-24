@@ -69,7 +69,18 @@ RESUME POINTER. 진실원천 = `.omc/research/usable-tech-SYNTHESIS-2026-06-23.m
 
 ---
 
-## ★RESUME POINTER (다음 세션) — 2026-06-24 갱신 #4 (B1 PUSHED + A1 + B2 DONE, B3 정직 DEFER)
+## ★RESUME POINTER (다음 세션) — 2026-06-24 갱신 #5 (B4 DONE, 성능평가 기반, 다음=A3)
+
+- **v0.45(B1)·v0.46(A1)·v0.47(B2) 전부 PUSHED.** user: 성능평가 후 "B4→A3 순차".
+- **★성능평가(현실 B2B 방 5종×grid×overlap)**: B1 nominal coverage grid 실측 바닥 커버리지 = **평균 69~75%·최저 53%**(1-D AVIXA spacing 의 2-D 대각 갭). A1 음향은 이미 검증(Spearman 0.90)·북극성 아님 → 북극성 출력(레이아웃) 약점부터 해결 결정.
+- **B4 = DONE (v0.48.0, MINOR additive), 커밋 직전 code-review 대기.** B1 의 under-cover 를 측정 수렴으로 정직 해결.
+  - (1) `place_coverage_grid` additive `spacing_scale`(default 1.0=byte-equal, `(0,1]`). (2) 신규 `place/coverage_complete.py` `place_coverage_grid_to_target`: B2 overlap 오라클을 목표(default 0.9)까지 spacing ×0.9 조밀화, 수렴/cap honest, `CoverageTargetResult`. (3) CLI `--coverage-target` + 미지정 시 <85% stderr 경고. ADR 0054.
+  - 실증: meeting 6×5 54%(4spk)→97%(12spk) MET, retail 66%→95%. `COVERAGE_COMPLETE_NOTE`(SPL 무주장). 게이트 default **755p/7s**(+13), 내 모듈 ruff·mypy clean.
+  - ⚠️ 워킹트리에 **다른 동시 세션의 untracked WIP**(`roomestim/adapters/multiview.py`·`roomestim/geom/surface_distance.py`·`tests/test_aconsumer_multiview.py`·`.omc/autopilot/spec-aconsumer-multiview.md`, "A-consumer multiview" 기능) 존재 — 그 파일에 mypy strict 2 에러(내 것 아님). 내 커밋은 내 파일만 스테이징, 그들 파일 무접촉.
+- **다음 = A3 blind-rt60 `[audio]` extra** (user 승인 순서). 폰 녹음→측정 RT60 백엔드(blind_rt60 MIT + soundfile) + Acta Acustica 2025 closed-form 보정. ACE corpus(CC-BY-ND, Zenodo 6257551)로 정확도 벤치. core 무변경 옵셔널 extra. 설계 = plan Track A3.
+- 베이스라인 **755p/7s @ v0.48.0**.
+
+### (이전) 갱신 #4 (B1 PUSHED + A1 + B2 DONE, B3 정직 DEFER)
 
 - **v0.45.0(B1) PUSHED `a12d64c`. v0.46.0(A1) PUSHED `670a304`.**
 - **B2 = DONE (v0.47.0, MINOR additive).** B1 이 보류한 "±3 dB 균일도 검증"을 **절대 SPL 발명 없이** B1 의 coverage-원 기하 검증으로 닫음.
