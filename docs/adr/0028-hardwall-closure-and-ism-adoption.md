@@ -565,3 +565,45 @@ working as designed.
 
 **Out-of-scope at v0.15.0**: per-wall α decomposition for mixed-material walls
 (OQ-30 NEW); polygon ISM for non-shoebox rooms (OQ-23, still deferred).
+
+## §Status-update (2026-06-24) — A1: shoebox ISM/Sabine validated vs dEchorate measured GT (NO-GO absolute / GO trend)
+
+Second independent MEASURED validation of the shipped shoebox RT60 engine,
+added as an OUT-OF-GATE eval harness (engine code BYTE-EQUAL / UNCHANGED).
+Corroborates and extends the U-Rochester finding already cited in
+`roomestim/reconstruct/_disclosure.py`.
+
+- **Dataset**: dEchorate (Di Carlo et al. 2021, EURASIP JASMP, DOI
+  10.1186/s13636-021-00229-0; Zenodo 5562386, CC-BY-4.0 — both verified). Cuboid
+  6×6×2.4 m, 10 binary absorption configs, measured RT60 per octave band
+  (paper Table 5: only 500/1000/2000/4000 Hz — no 125/250). c = 346.98 m/s. GT
+  did NOT require the 84 GB download (RT60 tabulated in-paper).
+- **Harness**: `tests/eval/rt60_validation.py` (no `test_` funcs → NOT collected
+  by the default gate; `__main__` entrypoint only). GT transcribed-and-cited in
+  `tests/eval/data/dechorate_gt.yaml` (500/1000 Hz rows match the paper
+  checksum; full provenance in `.omc/research/_data/dechorate_gt.yaml`).
+  ROUTE-RAW: per-facet binary config → literature absorption analogs → fed
+  DIRECTLY into `image_source_rt60_per_band` (bypasses the material catalog),
+  with inline Sabine/Eyring (same 0.161 constant as `materials.py`). Output:
+  `.omc/research/_data/rt60_validation_results.md`.
+- **Result (n = 40 config×band)**: diffuse-field Sabine/Eyring track measured
+  RT60 ORDERING strongly (Spearman ρ ≈ 0.90, Pearson 0.97) across 0.14–0.81 s.
+  ABSOLUTE accuracy NOT established: ISM over-predicts reflective configs
+  (MAPE ≈ 103 %, dynamic range ≈ 11× too wide), Sabine under-predicts
+  (MAPE ≈ 28 %) with literature alpha. Pre-committed go/no-go (design §3.5)
+  verdict = **NO-GO for an absolute band**; trend/relative validity is now
+  measurement-backed. (Independently reproduced by a code-reviewer pass:
+  APPROVE, every cited figure matched exactly; 2 LOW resolved.)
+- **Root cause = alpha-input gap** (the design's predicted dominant risk):
+  dEchorate ships material NAMES, not per-surface alpha. Sensitivity sweep —
+  absorbent α×[0.8,1.2] swings MAPE 45 pts; even raising the reflective-α floor
+  to 0.10 only drops ISM MAPE 103 %→58 %. Absolute error is dominated by
+  absorption-input uncertainty → tight absolute band stays DEFERRED.
+- **Disclosure**: `RT60_DISCLOSURE` (single source of truth) gains a
+  measurement-backed dEchorate sentence block (trend-valid, absolute-DEFER,
+  named uncertainty). Substring contract (model / not a validated acoustic
+  measurement / 1.4 / guidance / bidirectional) preserved → `test_rt60_disclosure`
+  green. Gates unchanged: default 715p/7s, web 86p/3s, ruff/mypy clean.
+- **DEFER unchanged**: ARNI second-pass sensitivity (50 GB, no per-panel alpha —
+  cite JASA 2022 calibration instead); non-shoebox polygon RT60 (ADR 0040, no
+  non-shoebox measured GT).

@@ -69,11 +69,21 @@ RESUME POINTER. 진실원천 = `.omc/research/usable-tech-SYNTHESIS-2026-06-23.m
 
 ---
 
-## ★RESUME POINTER (다음 세션) — 2026-06-24 갱신
-- **user 승인: A1 + B1 부터 실행** (AskUserQuestion 응답 "A1 + B1 부터(추천)"). 실행은 OMC.
-- **현재 phase: A1·B1 설계/스카우팅 에이전트 dispatch 완료, 산출물 회수 중.** 아직 코드 무변경.
-  - B1 planner(opus) agentId=`af29d8f212b5bd88e` — 스피커 grid 구현스펙. **결정 D-1~D-4 대기 상태로 종료**(스펙 본문 미회수 → SendMessage로 회수 필요).
-  - A1 scientist(opus) agentId=`a9039cb43e5bd621d` — 검증하니스 타당성+설계. "complete"로 종료(리포트 본문 미회수 → SendMessage로 회수 필요).
-- **즉시 다음 액션**: 두 agentId에 SendMessage로 ① B1 스펙 + D-1~D-4 결정사항 ② A1 dEchorate/ARNI 다운로드 go/no-go + 엔진 API맵 + 하니스 설계 회수 → executor 착수.
-- 결정 갈림 잔존: A2 polygon RT60 노출 = FLAIR(Zenodo 17037517) 라이선스 확인 의존(아직 미확인).
-- 베이스라인 695p/7s @ v0.44.0. 게이트=`/home/seung/miniforge3/bin/python -m pytest`.
+## ★RESUME POINTER (다음 세션) — 2026-06-24 갱신 #3 (B1 PUSHED + A1 DONE)
+
+- **v0.45.0 (B1) = PUSHED** to origin/main (`a12d64c`, user 승인).
+- **A1 = DONE & COMMITTED (v0.46.0, MINOR additive).** dEchorate(Zenodo 5562386, CC-BY-4.0 둘다 검증) 측정 GT로 shipped shoebox RT60 엔진 2차 독립검증.
+  - 하니스 `tests/eval/rt60_validation.py`(out-of-gate, no `test_` funcs) + committable GT `tests/eval/data/dechorate_gt.yaml`(transcribed+cited, 500/1000Hz 체크섬 일치). 전체 provenance+results = `.omc/research/_data/`(gitignored). 엔진 코드 BYTE-EQUAL.
+  - **결과(n=40)**: diffuse-field Sabine/Eyring가 측정 RT60 ORDERING 강하게 추적(Spearman ρ≈0.90, Pearson 0.97, 0.14–0.81s). 절대정확도 미확립: ISM 반사방 과대예측(MAPE~103%, DR~11× 과대), Sabine 과소예측(MAPE~28%). 사전확정 go/no-go(§3.5) = **NO-GO 절대band / GO trend**. 근본원인=alpha-input gap(dEchorate 재질명만, alpha無; 반사α 0.10까지 올려도 ISM 58%). ARNI/polygon DEFER 유지.
+  - disclosure(`_disclosure.py` RT60_DISCLOSURE 단일진실원천)에 측정기반 dEchorate 문장블록 추가(trend-valid+absolute-DEFER+named uncertainty), substring 계약 보존. ADR 0028 §Status-update(2026-06-24) 기록.
+  - 게이트 GREEN: default **715p/7s**, web 86p/3s, ruff/mypy clean. 독립 code-review APPROVE(2 LOW 해소: 하니스 mypy 정리 + Zenodo ID 검증).
+- **다음 = B2/B3 스피커 레이아웃 확장**(Track B 권고순서 B1→B3→B2; B1 SHIPPED). B2=SPL 커버리지 스코어링(pyroomacoustics direct-SPL grid, AVIXA ±3dB), B3=비정형 렌더(spaudiopy/DBAP, 기존 v0.39.0 리그 재사용). 둘 다 additive/MINOR, 기존 방 polygon+B1 그리드 소비.
+
+### (이전) 2026-06-24 갱신 #2 (B1 SHIPPED)
+- **B1 = DONE & SHIPPED v0.45.0** (local commit `a12d64c`, ★NOT pushed — push를 auto-mode classifier가 차단, user 명시승인 필요). 이전 세션 design agent(af29.../a903...)는 cross-session 회수 불가 → fresh 재dispatch(디스크 Write 계약)로 복구.
+  - 스펙: `.omc/plans/b1-coverage-grid-design-2026-06-24.md`. 구현: `roomestim/place/coverage_grid.py`(shapely+math, numpy조차 불요) + `--algorithm coverage` (place/run) + `layout.coverage.json` 사이드카 + ADR `docs/adr/0052-coverage-grid.md`.
+  - room-aware AVIXA 천장 커버리지 그리드(square/hex, half-spacing 인셋, centroid-in-polygon 클립, tiny-room representative_point 폴백). COVERAGE_GRID_NOTE 단일진실원천, SPL/±3dB 무주장(B2 defer), NO FAKE NUMBERS. 기존 VBAP/DBAP/WFS/ambisonics 리그(room-independent)와 별개. additive byte-equal.
+  - 게이트 GREEN: default **715p/7s**(695→+20), web 86p/3s, mypy --strict clean(58), ruff clean, CLI E2E OK. planner→executor(opus)→code-review(opus) APPROVE×2 + main 독립 게이트/코드리드/E2E.
+- **A1 = 설계완료, 미실행.** 스카우팅 리포트 `.omc/research/a1-rt60-validation-harness-design-2026-06-24.md`. 권고: dEchorate(Zenodo 5562386, CC-BY) FIRST — make-or-break PASS(RT60 Table 5 in-paper, 6x6x2.4 shoebox, bands=roomestim 1:1, 84GB 다운로드 불요), ROUTE-RAW on `image_source_rt60_per_band`. ARNI(6985104) 2nd=sensitivity(per-panel alpha 부재·50GB). go/no-go 사전확정(§3.5): 현실 likely=GREY tier(trend/relative validity, 절대정확도 DEFER). 최대리스크=alpha-input gap(둘 다 per-surface alpha 미동봉).
+- **즉시 다음 액션 후보**: (1) user가 push 승인 → origin/main; (2) A1 실행(dEchorate harness, out-of-gate eval, 셔링엔진 무변경, 디스클로저 문구만 측정기반 교체); (3) A3 blind-rt60 [audio] extra; (4) A2 polygon RT60=FLAIR(17037517) 라이선스 확인 의존.
+- 베이스라인 **715p/7s @ v0.45.0**. 게이트=`/home/seung/miniforge3/bin/python -m pytest`.

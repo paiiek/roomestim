@@ -35,8 +35,20 @@ RT60_DISCLOSURE: str = (
     "against measured U-Rochester RIR (figshare 48711175, CC-BY 4.0) for "
     "acoustically treated rooms the model over-predicts RT60 by +160~826% "
     "(median +326%, rectilinear n=7), so this default-regime figure is NOT "
-    "suitable for sizing acoustic treatment. Treat as relative GUIDANCE, not a "
-    "guaranteed value."
+    "suitable for sizing acoustic treatment. A second, independent measured "
+    "validation against the dEchorate calibrated shoebox corpus (Zenodo "
+    "5562386, CC-BY 4.0; 10 absorption configs x 4 octave bands 500-4000 Hz, "
+    "measured RT60 0.14-0.81 s) corroborates this and adds a quantified trend "
+    "result: the diffuse-field Sabine / Eyring predictors track the measured "
+    "RT60 ORDERING across configurations (Spearman rho ~= 0.90), but ABSOLUTE "
+    "accuracy is NOT established -- with literature absorption analogs the ISM "
+    "over-predicts the reflective configs (MAPE ~103%, dynamic range ~11x too "
+    "wide) while Sabine under-predicts (MAPE ~28%). Because dEchorate -- like "
+    "every measured corpus on hand -- publishes material NAMES but no "
+    "per-surface absorption coefficients, the absolute error is dominated by "
+    "absorption-INPUT uncertainty, so a tight absolute-accuracy band remains "
+    "DEFERRED while the ordering/relative-trend validity is measurement-backed. "
+    "Treat as relative GUIDANCE, not a guaranteed value."
 )
 
 # Image-backend cam_h scale-ambiguity. A single equirectangular panorama recovers

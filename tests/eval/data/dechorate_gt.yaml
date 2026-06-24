@@ -1,0 +1,84 @@
+# dEchorate measured RT60 ground truth + literature absorption analogs.
+#
+# Committable, tiny, fully-transcribed GT for the out-of-gate RT60 validation
+# harness (tests/eval/rt60_validation.py). NOT collected by the default pytest
+# gate. ALL numeric values are transcribed from fetched sources; NO invented
+# numbers. Unverifiable cells are the string "UNVERIFIED".
+#
+# Source provenance (full notes in .omc/research/_data/dechorate_gt.yaml):
+#   PAPER: Di Carlo, Tandeitnik, Foy, Deleforge, Bertin, Gannot,
+#     "dEchorate: a Calibrated Room Impulse Response Database for Echo-aware
+#      Signal Processing", EURASIP J. Audio Speech Music Proc. 2021, 2021:4.
+#     DOI 10.1186/s13636-021-00229-0 (arXiv 2104.13168).
+#     - dims & speed of sound: Sec 2.1 / 2.2
+#     - facet order: Table 3 (Surface coding)
+#     - measured RT60: Table 5 (only 500/1000/2000/4000 Hz reported)
+#     - surface materials: Table 8 (Appendix "Room materials")
+#   ABSORPTION analogs: standard published octave-band absorption tables
+#     (usenclosure.com "Sound Absorption Coefficients"; acoustic.ua
+#      "Absorption Coefficients") — best-match analogs; dEchorate does NOT
+#      publish per-band alpha for its own surfaces (the alpha-input gap).
+
+geometry:
+  length_m: 6.0
+  width_m: 6.0
+  height_m: 2.4
+  speed_of_sound_m_s: 346.98   # 24C, 80% RH (paper Sec 2.2)
+
+# 6-bit facet code, bit0 leftmost. 0=absorbent, 1=reflective.
+# Order (paper Table 3 header): Floor | Ceil | West | South | East | North.
+# Floor is ALWAYS absorbent (bit0=0). Confirmed against 011000 row.
+facet_order: [floor, ceiling, wall_west, wall_south, wall_east, wall_north]
+
+# Mapping dEchorate facets -> roomestim image-source LOCKED surface order
+# (floor, ceiling, wall_x_neg, wall_x_pos, wall_y_neg, wall_y_pos).
+# West/East = one opposing wall pair (x), South/North = other pair (y).
+surface_index_map: [floor, ceiling, wall_west, wall_east, wall_south, wall_north]
+
+# Measured RT60 [s] per octave-band center (Hz). Table 5.
+# 125 & 250 Hz are NOT reported by the paper -> omitted (validation is 4-band).
+bands_measured_hz: [500, 1000, 2000, 4000]
+configs:
+  - {code: "000000", rt60: {500: 0.18, 1000: 0.14, 2000: 0.16, 4000: 0.22}}
+  - {code: "011000", rt60: {500: 0.40, 1000: 0.33, 2000: 0.25, 4000: 0.25}}
+  - {code: "011100", rt60: {500: 0.46, 1000: 0.34, 2000: 0.30, 4000: 0.37}}
+  - {code: "011110", rt60: {500: 0.60, 1000: 0.56, 2000: 0.48, 4000: 0.55}}
+  - {code: "011111", rt60: {500: 0.75, 1000: 0.73, 2000: 0.68, 4000: 0.81}}
+  - {code: "001000", rt60: {500: 0.22, 1000: 0.19, 2000: 0.18, 4000: 0.22}}
+  - {code: "000100", rt60: {500: 0.21, 1000: 0.19, 2000: 0.20, 4000: 0.23}}
+  - {code: "000010", rt60: {500: 0.21, 1000: 0.18, 2000: 0.18, 4000: 0.26}}
+  - {code: "000001", rt60: {500: 0.22, 1000: 0.19, 2000: 0.18, 4000: 0.24}}
+  - {code: "010001", rt60: {500: 0.37, 1000: 0.26, 2000: 0.24, 4000: 0.28}}
+
+# Incremental reflective series for the monotonicity test (paper config order).
+monotonic_series: ["000000", "011000", "011100", "011110", "011111"]
+
+# Literature absorption analogs (alpha per band). dEchorate ships material NAMES
+# (Table 8) only, not alpha -> these are cited standard-table best matches.
+# Center = x1.0 case; alpha-sensitivity sweep scales the two ABSORBENT analogs.
+absorption_analogs:
+  hairy_carpet:           # floor (always absorbent)
+    role: floor
+    alpha: {125: 0.08, 250: 0.24, 500: 0.57, 1000: 0.69, 2000: 0.71, 4000: 0.73}
+    source: "usenclosure.com 'Carpet - Heavy, on 40oz Hairfelt/Foam on Concrete'"
+  glass_wool_absorber:    # ceiling/wall absorbent face
+    role: absorbent
+    alpha: {125: 0.17, 250: 0.45, 500: 0.80, 1000: 0.89, 2000: 0.97, 4000: 0.94}
+    source: "acoustic.ua 'Glass wool 50mm, 16 kg/m3'"
+  formica_reflective:     # Formica 20mm laminate (reflective panel)
+    role: reflective
+    alpha: {125: 0.01, 250: 0.01, 500: 0.01, 1000: 0.01, 2000: 0.02, 4000: 0.02}
+    source: "usenclosure.com 'Marble or Glazed Tile' (hard rigid non-porous analog; no laminate entry exists)"
+  plaster_reflective:     # plaster on solid wall (reflective wall)
+    role: reflective
+    alpha: {125: 0.013, 250: 0.015, 500: 0.02, 1000: 0.03, 2000: 0.04, 4000: 0.05}
+    source: "usenclosure.com 'Plaster - Gypsum/Lime, Smooth Finish on Tile or Brick'"
+
+# Which analog each facet uses when reflective vs absorbent.
+# Floor: always hairy_carpet. Ceiling+walls: absorbent->glass_wool, reflective:
+#   ceiling->formica, walls->plaster (paper Table 8: reflective walls = plaster,
+#   reflective ceiling = Formica panels).
+facet_material_rule:
+  floor:   {absorbent: hairy_carpet,        reflective: hairy_carpet}
+  ceiling: {absorbent: glass_wool_absorber, reflective: formica_reflective}
+  wall:    {absorbent: glass_wool_absorber, reflective: plaster_reflective}
