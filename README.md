@@ -67,7 +67,7 @@ python scripts/lint_tense.py
 서브커맨드: `ingest` (capture → RoomModel) · `place` (배치 → layout.yaml) ·
 `export` (room.yaml + layout.yaml 재방출, `--format {yaml,usdz,gltf,glb}` +
 `--with-acoustics-sidecar` 지원) · `run` (ingest+place+export 합성) ·
-`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam,image}` 이며,
+`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam,image,multiview}` 이며,
 `polycam` 은 `MeshAdapter` alias 로 `.obj`/`.gltf`/`.glb`/`.ply` 를 처리합니다.
 `image` 는 **실험적 rough-estimate tier**(v0.25.0, [ADR 0045](docs/adr/0045-image-to-geometry-capture-backend.md))
 — 단일 equirectangular 파노라마 1장에서 geometry 를 *추정*합니다. **install-grade 아님**
@@ -99,6 +99,24 @@ python -m roomestim run --backend image --experimental \
 `--format usdz` 는 `[usd]` extra (usd-core) 가 필요하며, 없으면 친절한 에러로
 안내합니다. export/edit 의 엔진 검증은 `--validate-engine PATH` /
 `--no-engine-validation` 으로 토글합니다 (ADR 0033).
+
+### `multiview` 백엔드 + A-consumer 레버 (v0.50.0, [ADR 0056](docs/adr/0056-aconsumer-placement-levers-multiview-ingest.md))
+
+`--backend multiview` 는 multi-view/video 재구성(예: VGGT)이 만든 **재구성된 포인트
+클라우드**(`.ply` points-only / `.npz` / `.xyz`/`.txt`)를 입력으로 받습니다. `MeshAdapter`
+가 거부하는 faces-없는 cloud 를 메우며, 동일한 footprint/ceiling/wall 추출을 재사용해
+`--floor-reconstruction` 이 그대로 적용됩니다(`provenance=reconstructed`). frames→cloud
+재구성 자체(VGGT, 무거운 GPU 의존)는 **out of scope** — 이 백엔드는 cloud 만 ingest 합니다.
+
+거친 phone/video cloud 는 천장에 거의 닿지 않아 자동 추출 천장이 신뢰 불가하므로 두 개의
+**A-consumer 레버**를 함께 제공합니다(둘 다 모든 백엔드에서 동작, additive):
+
+- `--ceiling-height-m M` — 사용자가 줄자로 잰 단일 스칼라로 천장고를 **덮어씁니다**
+  (벽/천장을 floor 평면에 일관되게 재구축, `ceiling_confidence=high`). cloud 가 천장을
+  못 잡는 multiview 에 권장.
+- `place --snap-to-surfaces` — 배치된 스피커를 가장 가까운 벽/천장 mount 표면에 **스냅**
+  (floor 제외). 거친 geometry 위 계획이 실 표면에서 ~35 cm 벗어나는 것을 install-time 에
+  완화하는 보정. PLACEMENT_SENSITIVITY_VERDICT.md 측정 기반.
 
 ### `structure` 서브커맨드 — Apple CapturedStructure → N개 방 (정직 고지)
 
@@ -177,6 +195,8 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.50.1** | 2026-06-26 | (commit) | v0.50.0 **독립 code-review follow-up** (PATCH, additive) — v0.50.0 가 리뷰 전 출하되어 별도 세션 독립 `code-reviewer`(APPROVE-WITH-FIXES: 0 CRITICAL/HIGH, 1 MEDIUM, 4 LOW) 결과를 반영. **(MEDIUM)** `evolve_room_ceiling_height` 의 floor_y 재앵커링이 floor 평면≠0 케이스 미검증(전 테스트 floor=y0) → docstring 의도 명시 + 회귀 테스트(클라우드 +5 m 리프트). **(LOW)** `MultiviewAdapter.__init__` 가 `≤20 m` plausibility bound 를 생성자에서 fail-fast(parse 까지 미지연). **(LOW)** `_points_from_npz` named-key 분기가 `(N,6)` xyzrgb 를 `[:, :3]` 슬라이스(`.xyz`/`.txt` 로더 parity). + v0.50.0 누락 **README 문서화**(backend 열거 + multiview/A-consumer 레버 섹션). 코어 byte-equal·기존 backend 무영향. default 767p/7s(764→+3 테스트) · ruff·mypy(--strict, 63) clean. ([ADR 0056 §Status-update](docs/adr/0056-aconsumer-placement-levers-multiview-ingest.md)). |
+| **v0.50.0** | 2026-06-26 | `3edaa02` | **A-consumer placement 레버 + multiview 점군 ingest** (MINOR, additive) — `PLACEMENT_SENSITIVITY_VERDICT.md`(spike-vggt-multiview)가 도출한 rough consumer-tier 워크플로를 코드로 착지. (1) 신규 `MultiviewAdapter`(`--backend multiview`): `MeshAdapter` 가 거부하던 **faces-없는 재구성 점군**(.ply points-only/.npz/.xyz·.txt)을 ingest, 동일 footprint/ceiling/wall 추출 재사용(`--floor-reconstruction` 적용), `provenance=reconstructed`, DoS byte-cap(ADR 0038). (2) `edit.evolve_room_ceiling_height` + CLI `--ceiling-height-m M`(ingest/run): 사용자 줄자 천장고로 **모든 backend** 천장 override(벽/천장을 floor 평면에 일관 재구축, `ceiling_confidence=high`, `>0`·`≤20 m` 바운드). (3) `edit.snap_layout_to_surfaces` + CLI `place --snap-to-surfaces`: 배치 스피커를 최근접 벽/천장 mount 면에 스냅(floor 제외, `aim_direction` 유지) — rough-plan 의 ~35 cm 면오차 install-time 완화. 신규 primitive `geom/surface_distance.closest_point_on_surface`. **NO FAKE NUMBERS**: 새 음향/기하 magnitude 무발명·천장 override 는 USER 측정 라벨. **VGGT frames→cloud 재구성은 out of scope**(GPU). 기존 backend·골든 byte-equal. ([ADR 0056](docs/adr/0056-aconsumer-placement-levers-multiview-ingest.md)). |
 | **v0.49.0** | 2026-06-24 | (commit) | A3 **측정(blind) RT60 — `[audio]` extra** (MINOR, additive, opt-in, library-only 증분 1) — 기하 RT60 MODEL(Sabine/Eyring/ISM, 가정 재질)과 달리 **녹음 신호에서 RT60 측정**. 신규 `[audio]` extra(`blind-rt60>=0.1.1` MIT[1차출처 검증, Ratnam et al. ML] + `soundfile`) + 신규 `reconstruct/measured_rt60.py`: `measure_rt60_from_audio(path)`/`measure_rt60_from_signal(x,fs)` → `MeasuredRT60`. **lazy import**(blind_rt60/soundfile 함수 내부 only) → `import roomestim` 가 extra 안 끔(subprocess 테스트 lock), core dep-light. **정직 고지(load-bearing `MEASURED_RT60_NOTE`): 측정이나 blind 추정기 자체 오차 in-repo 미검증(ACE 벤치 defer)·단일 BROADBAND(per-band 아님)·녹음품질 의존.** A1(기하 절대정확도 NO-GO) 보완. ★CLI 미배선(의도): cli.py 가 다른 동시 세션 경합 중→library-only. default 764p/7s + 신규 `tests/test_measured_rt60.py`(importorskip skip-guard) · ruff·mypy(--strict, 63) clean. ([ADR 0055](docs/adr/0055-measured-blind-rt60-audio-extra.md)). |
 | **v0.48.0** | 2026-06-24 | (commit) | B4 **coverage 완전성 densify-to-target** (MINOR, additive, opt-in) — ★성능평가(현실 방 5종×grid 2×overlap 2)에서 B1 nominal grid 가 바닥 **평균 69~75%·최저 53%만 커버**(1-D AVIXA spacing 의 2-D 대각 갭) 발견 → 정직 해결. (1) `place_coverage_grid` 에 additive `spacing_scale`(default 1.0=byte-equal, `(0,1]` densify-only). (2) 신규 `place/coverage_complete.py` `place_coverage_grid_to_target`: **측정 커버리지(B2 overlap 오라클)를 목표까지** spacing 조밀화(×0.9 step, 수렴/cap honest), closed-form 상수 추정 대신 실측 수렴(NO FAKE NUMBERS). (3) CLI `--coverage-target FRAC`: 지정 시 조밀화+`overlap.target`(requested/achieved/converged) 사이드카; **미지정 시 실 커버리지<85%면 stderr 경고**(silent under-cover 제거). 결과: meeting 6×5 방 54%(4spk)→**97%(12spk) MET**. `COVERAGE_COMPLETE_NOTE`(SPL 무주장, 기하 −6dB 원). spacing_scale=1.0 기본→coverage_to_dict·5 알고리즘 golden byte-equal. default 755p/7s + 신규 `tests/test_coverage_complete.py` · ruff·mypy(--strict) clean. ([ADR 0054](docs/adr/0054-coverage-completeness.md)). |
 | **v0.47.0** | 2026-06-24 | (commit) | B2 **coverage-circle overlap 검증** (MINOR, additive, opt-in) — B1 이 명시 보류한 "±3 dB 균일도 검증"을 **절대 SPL 발명 없이** B1 의 coverage-원 기하 그 자체를 검증하는 방향으로 닫음. 신규 `place/coverage_overlap.py` `score_coverage_overlap`: 청취평면 footprint 를 격자 샘플링하여 각 점이 몇 개의 coverage 원(반경=B1 `coverage_radius_m`)에 드는지 세고 `fraction_covered`(≥1, 갭 탐지)·`fraction_overlap_2plus`(≥2)·`worst_point_xz`(최악 갭) 보고. `--algorithm coverage` 가 `layout.coverage.json` 의 **신규 `overlap` 키**(말미 append)에 기록 + `--coverage-grid-res-m`(기본 0.5). **정직 고지(load-bearing `COVERAGE_OVERLAP_NOTE`): 기하 오버랩 검증 — SPL/음향 무주장(절대 SPL=감도/구동레벨 부재, direct-sound=근접장 지배로 비견고; ±3 dB boolean 미제공=잔향장 대상이라 오해 방지).** ★실측 발견: B1 의 1-D AVIXA spacing 은 2-D 에 대각 갭을 남김(square/background 기본은 8×6 m 방 ~51% 만 커버, 반경 1.20<셀반대각 1.44 m) — hex/speech 가 부분 개선. `coverage_to_dict`·5 알고리즘 golden/round-trip byte-equal. default 715→727p/7s + 신규 `tests/test_coverage_overlap.py` · web 86p/3s · ruff·mypy(--strict, 59) clean. ([ADR 0053](docs/adr/0053-coverage-overlap.md)). |

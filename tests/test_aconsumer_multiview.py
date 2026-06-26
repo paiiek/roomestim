@@ -146,6 +146,43 @@ def test_ceiling_override_rebuilds_geometry(tmp_path, cloud):
     assert room.ceiling_height_m != pytest.approx(2.5)
 
 
+def test_ceiling_override_offset_floor_consistency(tmp_path):
+    # Regression (code-review MEDIUM): when the detected floor plane is NOT at
+    # y=0, the override must re-anchor walls/ceiling to the floor surface's y so
+    # the box stays vertically consistent (mesh extraction builds walls from
+    # y=0 while placing the floor at its detected plane).
+    offset = _rough_cloud() + np.array([0.0, 5.0, 0.0])  # lift cloud +5 m in y
+    p = tmp_path / "c.npz"
+    np.savez(p, P_m=offset)
+    room = MultiviewAdapter(up_axis="y").parse(p)
+    out = evolve_room_ceiling_height(room, 2.4)
+    floor_y = next(s for s in out.surfaces if s.kind == "floor").polygon[0].y
+    assert floor_y == pytest.approx(5.0, abs=0.2)
+    ceil = next(s for s in out.surfaces if s.kind == "ceiling")
+    assert all(v.y == pytest.approx(floor_y + 2.4) for v in ceil.polygon)
+    for w in (s for s in out.surfaces if s.kind == "wall"):
+        ys = sorted(v.y for v in w.polygon)
+        assert ys[0] == pytest.approx(floor_y)
+        assert ys[-1] == pytest.approx(floor_y + 2.4)
+
+
+def test_multiview_adapter_rejects_implausible_ceiling():
+    # Fail-fast at construction (code-review LOW): the 20 m plausibility bound
+    # is enforced in __init__, not deferred to parse().
+    with pytest.raises(ValueError, match="plausibility bound"):
+        MultiviewAdapter(ceiling_height_m=999.0)
+
+
+def test_multiview_npz_xyzrgb_key_sliced(tmp_path, cloud):
+    # code-review LOW: a named point key carrying extra columns (xyzrgb) is
+    # sliced to xyz for parity with the .xyz/.txt loader, not rejected.
+    rgb = np.random.default_rng(1).uniform(0, 1, size=(cloud.shape[0], 3))
+    p = tmp_path / "c.npz"
+    np.savez(p, points=np.hstack([cloud, rgb]))  # (N, 6)
+    room = MultiviewAdapter(up_axis="y").parse(p)
+    assert len(room.floor_polygon) >= 3
+
+
 @pytest.mark.parametrize("bad", [0.0, -1.0, 999.0])
 def test_ceiling_override_rejects_implausible(tmp_path, cloud, bad):
     p = tmp_path / "c.npz"

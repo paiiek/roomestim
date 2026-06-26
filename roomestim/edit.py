@@ -505,7 +505,12 @@ def evolve_room_ceiling_height(room: RoomModel, height_m: float) -> RoomModel:
     as vertical rectangles ``[floor_y, floor_y + height_m]`` and the ceiling
     surface is lifted to ``floor_y + height_m`` (consistent with
     ``reconstruct.walls.walls_from_floor_polygon``). Each rebuilt surface keeps
-    its existing material and per-band absorption. Because a measured ceiling is
+    its existing material and per-band absorption. Note that walls are
+    intentionally re-anchored to the floor surface's ``y``: mesh extraction
+    builds walls from ``y=0`` while placing the floor at its detected plane, so
+    for a floor detected at a non-zero offset this override makes walls, floor,
+    and ceiling vertically consistent (rather than preserving any ``[0, h]``
+    span). Because a measured ceiling is
     authoritative, ``ceiling_confidence`` becomes ``"high"`` and
     ``ceiling_coverage`` is cleared (it described the discarded auto-estimate).
 

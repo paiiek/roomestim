@@ -34,7 +34,7 @@ import numpy as np
 
 from roomestim.adapters.base import ScaleAnchor
 from roomestim.adapters.mesh import FloorReconstruction, MeshAdapter, UpAxis
-from roomestim.edit import evolve_room_ceiling_height
+from roomestim.edit import _MAX_USER_CEILING_M, evolve_room_ceiling_height
 from roomestim.model import RoomModel
 
 __all__ = ["MultiviewAdapter"]
@@ -78,13 +78,19 @@ class MultiviewAdapter:
         up_axis: UpAxis = "auto",
         ceiling_height_m: float | None = None,
     ) -> None:
-        if ceiling_height_m is not None and (
-            not np.isfinite(ceiling_height_m) or ceiling_height_m <= 0.0
-        ):
-            raise ValueError(
-                f"MultiviewAdapter: ceiling_height_m must be > 0, "
-                f"got {ceiling_height_m!r}."
-            )
+        if ceiling_height_m is not None:
+            if not np.isfinite(ceiling_height_m) or ceiling_height_m <= 0.0:
+                raise ValueError(
+                    f"MultiviewAdapter: ceiling_height_m must be > 0, "
+                    f"got {ceiling_height_m!r}."
+                )
+            # Fail fast at construction with the same plausibility bound
+            # evolve_room_ceiling_height applies at parse() time.
+            if ceiling_height_m > _MAX_USER_CEILING_M:
+                raise ValueError(
+                    f"MultiviewAdapter: ceiling_height_m={ceiling_height_m} m "
+                    f"exceeds the {_MAX_USER_CEILING_M} m plausibility bound."
+                )
         self._mesh = MeshAdapter(
             floor_reconstruction=floor_reconstruction, up_axis=up_axis
         )
@@ -168,7 +174,13 @@ class MultiviewAdapter:
         with np.load(path, allow_pickle=False) as data:
             for key in _NPZ_POINT_KEYS:
                 if key in data:
-                    return np.asarray(data[key], dtype=float)
+                    arr = np.asarray(data[key], dtype=float)
+                    # Parity with the .xyz/.txt loader: a named point key that
+                    # carries extra columns (e.g. (N, 6) xyzrgb) is sliced to xyz
+                    # rather than rejected by the downstream (N, 3) shape check.
+                    if arr.ndim == 2 and arr.shape[1] > 3:
+                        arr = arr[:, :3]
+                    return arr
             # Fall back to the first (N, 3) array in the archive.
             for key in data.files:
                 arr = np.asarray(data[key])
