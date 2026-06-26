@@ -1205,3 +1205,9 @@ ADR 0045 §Status-update-2026-06-05c / D89. Allocated 2026-06-05.
 - [ ] Speech overlap fraction fixed at 0.23 (midpoint of AVIXA 20-25%) — confirm whether to expose the exact fraction as a CLI override or keep the two named modes only.
 - [ ] Inclusion rule is centroid-in-polygon (not circle-area-overlap). For concave notches the coverage circle may overhang a wall — confirm this honest-but-simple rule is acceptable for B1, or whether a coverage-fraction threshold is wanted (leans toward B2/SPL territory).
 - [ ] No cap on n_speakers for small-spacing/large rooms — confirm a count cap is intentionally out of scope (a cap is a cost/acoustic judgement, deferred).
+
+## moge-image-backend - 2026-06-27
+- [ ] **(MOGE-1)** `[moge]` extra packaging: is MoGe published on PyPI, or only git-installable? — If git-only, a `git+https` direct ref in the extra blocks PyPI wheel install of that extra (ADR 0007 publishability). Executor decides PyPI vs git-ref vs hf_hub-weights+thin-wrapper in Phase 0 and records rationale in ADR 0057.
+- [ ] **(MOGE-2)** Is the PanoContext/Stanford2D3D GT metric scale itself derived from an assumed camera height? — If yes, "MoGe beats cam_h" cannot be claimed purely from absolute-dimension agreement; report scale-invariant shape error alongside absolute. Affects the go/no-go interpretation.
+- [ ] **(MOGE-3)** Per-crop MoGe metric-scale drift across the multi-crop pano fusion — measure overlap scale dispersion; if large, the pano apples-to-apples comparison degrades and we fall back to a perspective-image GT benchmark. Decide threshold during Phase 5.
+- [ ] **(MOGE-4)** Default vs experimental shipping decision is data-gated on the real eval numbers (Phase 5 go/no-go rule); not resolvable until the eval runs.

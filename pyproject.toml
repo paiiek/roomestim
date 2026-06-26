@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.51.0"
+version = "0.51.1"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -104,7 +104,10 @@ include = ["roomestim*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
-roomestim = ["proto/*.json", "vision/horizonnet/LICENSE", "vision/horizonnet/NOTICE"]
+roomestim = ["proto/*.json", "vision/horizonnet/LICENSE", "vision/horizonnet/NOTICE", "py.typed"]
+# py.typed: PEP 561 marker — roomestim is mypy --strict clean across 63 files;
+# the marker advertises types to the named downstream consumer spatial_engine.
+# Last pre-publish code gap in ADR 0007.
 
 [tool.pytest.ini_options]
 markers = [
