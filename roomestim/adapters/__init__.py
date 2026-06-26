@@ -5,6 +5,7 @@ from __future__ import annotations
 from roomestim.adapters.base import CaptureAdapter, ScaleAnchor
 from roomestim.adapters.image import ImageAdapter
 from roomestim.adapters.mesh import MeshAdapter
+from roomestim.adapters.multiview import MultiviewAdapter
 from roomestim.adapters.polycam import PolycamAdapter
 from roomestim.adapters.roomplan import RoomPlanAdapter
 
@@ -12,6 +13,7 @@ __all__ = [
     "CaptureAdapter",
     "ImageAdapter",
     "MeshAdapter",
+    "MultiviewAdapter",
     "PolycamAdapter",
     "RoomPlanAdapter",
     "ScaleAnchor",

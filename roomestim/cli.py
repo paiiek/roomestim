@@ -100,14 +100,40 @@ def _add_floor_reconstruction_arg(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_ceiling_height_arg(p: argparse.ArgumentParser) -> None:
+    """Shared ``--ceiling-height-m`` arg (A-consumer user override).
+
+    Applied AFTER ``adapter.parse`` for ANY backend via
+    :func:`roomestim.edit.evolve_room_ceiling_height`. Motivation
+    (PLACEMENT_SENSITIVITY_VERDICT.md): ceiling height is essentially
+    unrecoverable from a rough phone/video point cloud, but is a single scalar
+    the user can measure — supplying it makes the height layer mountable. A user
+    measurement is authoritative, so it overrides the auto-extracted height and
+    sets ceiling_confidence='high'.
+    """
+    p.add_argument(
+        "--ceiling-height-m",
+        type=float,
+        default=None,
+        metavar="M",
+        help="User-supplied ceiling height (metres). Overrides the auto-"
+        "extracted ceiling for ANY backend (A-consumer lever; recommended for "
+        "the 'multiview' rough-cloud backend, whose cloud rarely reaches the "
+        "ceiling). Must be > 0 and <= 20.",
+    )
+
+
 def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = sub.add_parser("ingest", help="Parse a capture artifact into a RoomModel.")
     p.add_argument(
         "--backend",
-        choices=["roomplan", "polycam", "image"],
+        choices=["roomplan", "polycam", "image", "multiview"],
         required=True,
         help="Capture backend. 'image' is an EXPERIMENTAL single-panorama "
-        "rough-estimate tier (requires --experimental; NOT install-grade).",
+        "rough-estimate tier (requires --experimental; NOT install-grade). "
+        "'multiview' ingests a reconstructed point cloud (.ply/.npz/.xyz) from "
+        "multi-view/video reconstruction; provenance=reconstructed, honors "
+        "--floor-reconstruction and --ceiling-height-m.",
     )
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
@@ -123,6 +149,7 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
         help="Populate per-octave-band absorption block in room.yaml (opt-in; default off).",
     )
     _add_floor_reconstruction_arg(p)
+    _add_ceiling_height_arg(p)
     _add_image_backend_args(p)
 
 
@@ -256,6 +283,24 @@ def _add_place_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) 
             "alter layout.yaml."
         ),
     )
+    _add_snap_arg(p)
+
+
+def _add_snap_arg(p: argparse.ArgumentParser) -> None:
+    """Shared ``--snap-to-surfaces`` flag (install-time placement mitigation).
+
+    Snaps each placed speaker onto the nearest wall/ceiling mount surface. From
+    PLACEMENT_SENSITIVITY_VERDICT.md: a layout planned on a rough room sits
+    ~35 cm off the real surfaces; snapping recovers coverage to within ~0.03 dB
+    of the oracle. See :func:`roomestim.edit.snap_layout_to_surfaces`.
+    """
+    p.add_argument(
+        "--snap-to-surfaces",
+        action="store_true",
+        help="Snap placed speakers onto the nearest wall/ceiling mount surface "
+        "before writing layout.yaml (install-time mitigation for rough-geometry "
+        "plans; floors excluded).",
+    )
 
 
 def _add_export_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -318,10 +363,13 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p = sub.add_parser("run", help="Composite: ingest + place + export.")
     p.add_argument(
         "--backend",
-        choices=["roomplan", "polycam", "image"],
+        choices=["roomplan", "polycam", "image", "multiview"],
         required=True,
         help="Capture backend. 'image' is an EXPERIMENTAL single-panorama "
-        "rough-estimate tier (requires --experimental; NOT install-grade).",
+        "rough-estimate tier (requires --experimental; NOT install-grade). "
+        "'multiview' ingests a reconstructed point cloud (.ply/.npz/.xyz) from "
+        "multi-view/video reconstruction; provenance=reconstructed, honors "
+        "--floor-reconstruction and --ceiling-height-m.",
     )
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
@@ -389,6 +437,8 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     _add_coverage_args(p)
     _add_floor_reconstruction_arg(p)
+    _add_ceiling_height_arg(p)
+    _add_snap_arg(p)
     _add_image_backend_args(p)
     # FIX-4 / D77: engine validation toggle (D42 / ADR 0033), at parity with
     # `export`/`edit`. CLI flag > ENV var > default ON.
@@ -792,6 +842,19 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
             weights=getattr(args, "weights", "st3d"),
             accept_noncommercial=getattr(args, "accept_zind_tou", False),
         )
+    if backend == "multiview":
+        # Reconstructed point cloud (.ply/.npz/.xyz). Mesh-extraction-based, so
+        # --floor-reconstruction applies natively (no "ignored" NOTE). The
+        # ceiling override is applied post-parse in the command handler, so the
+        # adapter itself is constructed without it.
+        from roomestim.adapters.mesh import FloorReconstruction
+        from roomestim.adapters.multiview import MultiviewAdapter
+
+        return MultiviewAdapter(
+            floor_reconstruction=cast(
+                "FloorReconstruction | None", floor_reconstruction
+            )
+        )
     raise ValueError(f"unknown backend: {backend!r}")
 
 
@@ -811,20 +874,77 @@ def _scale_anchor_for(args: argparse.Namespace) -> "ScaleAnchor | None":
     return ScaleAnchor("known_distance", cam_height)
 
 
-def _maybe_print_estimated_notice(room: RoomModel) -> None:
-    """Print the ESTIMATED provenance disclosure for image-reconstructed rooms.
+def _maybe_apply_user_ceiling(
+    room: RoomModel, args: argparse.Namespace
+) -> RoomModel:
+    """Apply ``--ceiling-height-m`` (A-consumer override) if supplied.
+
+    A user-measured ceiling is authoritative for the height layer; this
+    overrides the auto-extracted ceiling for any backend (recommended for the
+    ceiling-less 'multiview' rough cloud). See
+    :func:`roomestim.edit.evolve_room_ceiling_height`.
+    """
+    height = getattr(args, "ceiling_height_m", None)
+    if height is None:
+        return room
+    from roomestim.edit import evolve_room_ceiling_height
+
+    new_room = evolve_room_ceiling_height(room, height)
+    print(
+        f"NOTE: ceiling height overridden to user-supplied {height} m "
+        "(ceiling_confidence=high).",
+        file=sys.stderr,
+    )
+    return new_room
+
+
+def _maybe_snap_to_surfaces(
+    result: "PlacementResult", room: RoomModel, args: argparse.Namespace
+) -> "PlacementResult":
+    """Snap placed speakers onto the nearest wall/ceiling if ``--snap-to-surfaces``.
+
+    Install-time mitigation (PLACEMENT_SENSITIVITY_VERDICT.md): recovers a
+    rough-plan layout to within ~0.03 dB of the oracle by mounting each speaker
+    on the actual nearest surface. See
+    :func:`roomestim.edit.snap_layout_to_surfaces`.
+    """
+    if not getattr(args, "snap_to_surfaces", False):
+        return result
+    from roomestim.edit import snap_layout_to_surfaces
+
+    snapped = snap_layout_to_surfaces(room, result)
+    print(
+        "NOTE: snapped placed speakers onto nearest wall/ceiling surfaces "
+        "(--snap-to-surfaces).",
+        file=sys.stderr,
+    )
+    return snapped
+
+
+def _maybe_print_estimated_notice(
+    room: RoomModel, backend: str | None = None
+) -> None:
+    """Print the ESTIMATED provenance disclosure for reconstructed rooms.
 
     Measured backends (roomplan/polycam) emit provenance != "reconstructed", so
-    nothing is printed for them.
+    nothing is printed for them. The source phrase is backend-specific (a single
+    panorama for ``image``; a reconstructed point cloud for ``multiview``) so the
+    disclosure stays accurate now that more than one reconstructed-provenance
+    backend exists.
     """
-    if getattr(room, "provenance", None) == "reconstructed":
-        print(
-            "NOTE: geometry is ESTIMATED from a single image "
-            "(provenance=reconstructed) — rough-estimate tier, NOT install-grade. "
-            "Dimensions are approximate; verify before install. <=15 cm accuracy "
-            "is reserved for LiDAR/RoomPlan capture.",
-            file=sys.stderr,
-        )
+    if getattr(room, "provenance", None) != "reconstructed":
+        return
+    source = {
+        "image": "a single image",
+        "multiview": "a reconstructed multi-view/video point cloud",
+    }.get(backend or "", "a reconstruction")
+    print(
+        f"NOTE: geometry is ESTIMATED from {source} "
+        "(provenance=reconstructed) — rough-estimate tier, NOT install-grade. "
+        "Dimensions are approximate; verify before install. <=15 cm accuracy "
+        "is reserved for LiDAR/RoomPlan capture.",
+        file=sys.stderr,
+    )
 
 
 def _maybe_print_low_ceiling_notice(room: RoomModel) -> None:
@@ -1044,11 +1164,12 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         scale_anchor=_scale_anchor_for(args),
         octave_band=octave_band,
     )
+    room = _maybe_apply_user_ceiling(room, args)
 
     out_path = out_dir / "room.yaml"
     write_room_yaml(room, out_path)
     print(f"wrote {out_path}")
-    _maybe_print_estimated_notice(room)
+    _maybe_print_estimated_notice(room, getattr(args, "backend", None))
     _maybe_print_low_ceiling_notice(room)
     return 0
 
@@ -1078,6 +1199,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
             order=getattr(args, "order", None),
         )
     assert isinstance(result, PlacementResult)
+    result = _maybe_snap_to_surfaces(result, room, args)
 
     out_path = out_dir / "layout.yaml"
     write_layout_yaml(result, out_path)
@@ -1092,7 +1214,7 @@ def _cmd_place(args: argparse.Namespace) -> int:
         )
     if getattr(args, "check_angles", False):
         _emit_layout_angle_check(result, room, out_dir)
-    _maybe_print_estimated_notice(room)
+    _maybe_print_estimated_notice(room, getattr(args, "backend", None))
     _maybe_print_low_ceiling_notice(room)
     return 0
 
@@ -1223,6 +1345,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         scale_anchor=_scale_anchor_for(args),
         octave_band=octave_band,
     )
+    room = _maybe_apply_user_ceiling(room, args)
 
     _maybe_print_ambisonics_notes(args)
     coverage_result: CoverageGridResult | None = None
@@ -1240,6 +1363,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             order=getattr(args, "order", None),
         )
     assert isinstance(result, PlacementResult)
+    result = _maybe_snap_to_surfaces(result, room, args)
 
     room_out = out_dir / "room.yaml"
     layout_out = out_dir / "layout.yaml"
@@ -1266,7 +1390,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             grid_res_m=getattr(args, "coverage_grid_res_m", 0.5),
             coverage_target=getattr(args, "coverage_target", None),
         )
-    _maybe_print_estimated_notice(room)
+    _maybe_print_estimated_notice(room, getattr(args, "backend", None))
     _maybe_print_low_ceiling_notice(room)
     return 0
 
@@ -1436,7 +1560,7 @@ def _cmd_collection(args: argparse.Namespace) -> int:
         write_layout_yaml(result, out_dir / layout_ref)
         print(f"wrote {out_dir / room_ref}")
         print(f"wrote {out_dir / layout_ref}")
-        _maybe_print_estimated_notice(room)
+        _maybe_print_estimated_notice(room, getattr(args, "backend", None))
         _maybe_print_low_ceiling_notice(room)
 
         rooms.append(room)

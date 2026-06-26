@@ -467,6 +467,135 @@ def nudge_speaker(
     return evolve_placement(result, speakers=new_speakers)
 
 
+# Absolute ceiling-height plausibility bound (metres), mirroring
+# ``MeshAdapter._MAX_CEILING_HEIGHT_M``. A user override is authoritative for the
+# height layer but still bounded: a typo'd 250 m must not pass silently.
+_MAX_USER_CEILING_M = 20.0
+
+
+def _wall_base_edge(
+    wall: Surface,
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Return the wall's base edge as two distinct ``(x, z)`` columns.
+
+    A wall is a vertical rectangle, so its 4 vertices collapse to exactly two
+    distinct ``(x, z)`` columns. Returns those two, or ``None`` if the polygon is
+    degenerate (fewer than two distinct columns — a collapsed wall).
+    """
+    seen: list[tuple[float, float]] = []
+    for p in wall.polygon:
+        xz = (p.x, p.z)
+        if xz not in seen:
+            seen.append(xz)
+        if len(seen) == 2:
+            return seen[0], seen[1]
+    return None
+
+
+def evolve_room_ceiling_height(room: RoomModel, height_m: float) -> RoomModel:
+    """Return a new room with a USER-supplied ceiling height (A-consumer lever).
+
+    Motivation (PLACEMENT_SENSITIVITY_VERDICT.md): ceiling height is essentially
+    unrecoverable from a rough phone/video point cloud (the cloud rarely reaches
+    the ceiling), yet it is a single scalar the user can measure with a tape.
+    Supplying it makes the height layer (ceiling-mounted speakers) mountable —
+    in the measurement the ceiling-speaker surface error dropped 45 cm → 0.
+
+    The floor footprint and floor surface are left unchanged. Walls are rebuilt
+    as vertical rectangles ``[floor_y, floor_y + height_m]`` and the ceiling
+    surface is lifted to ``floor_y + height_m`` (consistent with
+    ``reconstruct.walls.walls_from_floor_polygon``). Each rebuilt surface keeps
+    its existing material and per-band absorption. Because a measured ceiling is
+    authoritative, ``ceiling_confidence`` becomes ``"high"`` and
+    ``ceiling_coverage`` is cleared (it described the discarded auto-estimate).
+
+    Raises ``ValueError`` for a non-positive or implausibly large height.
+    """
+    if not math.isfinite(height_m) or height_m <= 0.0:
+        raise ValueError(
+            f"evolve_room_ceiling_height: height_m must be > 0, got {height_m!r}"
+        )
+    if height_m > _MAX_USER_CEILING_M:
+        raise ValueError(
+            f"evolve_room_ceiling_height: height_m={height_m} m exceeds the "
+            f"{_MAX_USER_CEILING_M} m plausibility bound; refusing a likely typo."
+        )
+
+    # Anchor everything to the existing floor surface's y so walls/ceiling stay
+    # vertically consistent with the floor (floor_y is ~0 for consumer/multiview
+    # clouds but may be offset on a measured mesh).
+    floor_surfaces = [s for s in room.surfaces if s.kind == "floor"]
+    floor_y = float(floor_surfaces[0].polygon[0].y) if floor_surfaces else 0.0
+    ceil_y = floor_y + height_m
+
+    new_surfaces: list[Surface] = []
+    for surf in room.surfaces:
+        if surf.kind == "wall":
+            # Rebuild each wall on ITS OWN base edge at the new height — no
+            # dependence on wall/floor-edge ordering or count (robust to edited
+            # rooms). The base edge is the wall's two distinct (x, z) columns;
+            # rebuild as the vertical rectangle [floor_y, ceil_y] over it.
+            base_edge = _wall_base_edge(surf)
+            if base_edge is None:
+                new_surfaces.append(surf)  # degenerate wall: leave untouched
+                continue
+            (x0, z0), (x1, z1) = base_edge
+            new_poly = [
+                Point3(x0, floor_y, z0),
+                Point3(x1, floor_y, z1),
+                Point3(x1, ceil_y, z1),
+                Point3(x0, ceil_y, z0),
+            ]
+            new_surfaces.append(replace(surf, polygon=new_poly))
+        elif surf.kind == "ceiling":
+            new_poly = [Point3(p.x, ceil_y, p.z) for p in surf.polygon]
+            new_surfaces.append(replace(surf, polygon=new_poly))
+        else:
+            new_surfaces.append(surf)
+
+    return replace(
+        evolve_room(room, surfaces=new_surfaces),
+        ceiling_height_m=float(height_m),
+        ceiling_confidence="high",
+        ceiling_coverage=None,
+    )
+
+
+def snap_layout_to_surfaces(
+    room: RoomModel, result: PlacementResult
+) -> PlacementResult:
+    """Snap every placed speaker onto the nearest wall/ceiling mount surface.
+
+    Install-time mitigation from PLACEMENT_SENSITIVITY_VERDICT.md: a layout
+    planned on a rough room model puts speakers ~35 cm off the real surfaces;
+    snapping each to the nearest actual mount surface recovers coverage to
+    within ~0.03 dB of the oracle. Useful for edited/imported/drifted layouts
+    whose positions no longer lie on a surface.
+
+    Floors are excluded as mount surfaces (speakers are not floor-mounted).
+    Only ``position`` is changed; each speaker keeps its existing
+    ``aim_direction`` (the snap displacement is small, so the original aim stays
+    valid — re-aiming is left to ``nudge_speaker`` if desired). Returns the
+    layout unchanged when the room has no wall/ceiling surface.
+    """
+    from roomestim.geom.surface_distance import closest_point_on_surface
+
+    mounts = [s for s in room.surfaces if s.kind in ("wall", "ceiling")]
+    if not mounts:
+        return result
+
+    new_speakers: list[PlacedSpeaker] = []
+    for sp in result.speakers:
+        best_d = math.inf
+        best_pt = sp.position
+        for surf in mounts:
+            d, pt = closest_point_on_surface(sp.position, surf)
+            if d < best_d:
+                best_d, best_pt = d, pt
+        new_speakers.append(replace(sp, position=best_pt))
+    return evolve_placement(result, speakers=new_speakers)
+
+
 __all__ = [
     "evolve_surface",
     "evolve_room",
@@ -474,6 +603,8 @@ __all__ = [
     "evolve_room_materials_bulk",
     "evolve_room_add_object",
     "evolve_room_remove_object",
+    "evolve_room_ceiling_height",
     "evolve_placement",
     "nudge_speaker",
+    "snap_layout_to_surfaces",
 ]
