@@ -147,18 +147,23 @@ ROOMPLAN_STRUCTURE_SPLIT_NOTE: str = (
 # geometric RT60 MODEL (Sabine / Eyring / ISM), a blind RT60 estimate is a
 # MEASUREMENT derived from a recorded signal — but the blind estimator (Ratnam
 # et al. maximum-likelihood decay model, via the `blind-rt60` package) carries
-# its OWN error, which roomestim has NOT yet validated in-repo against a measured
-# corpus (ACE benchmark deferred). It is a single BROADBAND value, not per-octave-
-# band. Single source of truth — reference, do not retype.
+# its OWN error: a controlled-sim benchmark now bounds the decay-fit accuracy
+# (~9% MAPE under clean impulsive excitation, see note body), but roomestim has
+# NOT yet validated it end-to-end against a measured corpus (ACE benchmark
+# deferred). It is a single BROADBAND value, not per-octave-band. Single source
+# of truth — reference, do not retype.
 MEASURED_RT60_NOTE: str = (
     "Measured (blind) RT60 is estimated from a recorded audio signal by the "
     "`blind-rt60` package (Ratnam et al. maximum-likelihood reverberation-decay "
     "model) — it is a MEASUREMENT, not the geometric Sabine/Eyring/ISM model, so "
     "it reflects the actual room + furnishings rather than assumed materials. "
-    "HOWEVER the blind estimator has its OWN error that roomestim has NOT yet "
-    "quantified in-repo (an ACE-corpus accuracy benchmark is deferred), so treat "
-    "the value as an indicative measurement, not a calibrated reference. It is a "
-    "single "
+    "HOWEVER the blind estimator carries its OWN error. A CONTROLLED-SIMULATION "
+    "benchmark now BOUNDS the estimator's decay-fit accuracy (vs Schroeder RT60 "
+    "of pyroomacoustics shoebox RIRs under clean impulsive excitation: ~9% MAPE, "
+    "max ~18%, n=5), but this is a SIM bound, NOT measured-room end-to-end error; "
+    "the END-TO-END measured-corpus (ACE) accuracy benchmark stays deferred. So "
+    "treat the value as an indicative measurement, not a calibrated reference. It "
+    "is a single "
     "BROADBAND RT60 (seconds), NOT per-octave-band, and its accuracy depends on "
     "the recording (a clean impulsive excitation — a clap or balloon pop — in a "
     "quiet room is best; steady background noise degrades it). Requires the "

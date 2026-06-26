@@ -740,6 +740,38 @@ def _add_structure_parser(sub: argparse._SubParsersAction[argparse.ArgumentParse
     )
 
 
+def _add_measure_rt60_parser(
+    sub: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Additive `measure-rt60` subcommand (ADR 0055, A3 increment 2a).
+
+    MEASURES a single broadband RT60 from a recorded audio signal via the
+    `blind-rt60` ML decay model (``roomestim.reconstruct.measured_rt60``), as
+    opposed to the geometric Sabine/Eyring/ISM MODEL. Requires the optional
+    ``[audio]`` extra (blind-rt60 + soundfile); the handler catches a missing
+    extra and prints the install hint. The honesty framing is the single source
+    of truth ``MEASURED_RT60_NOTE`` (printed to stderr).
+    """
+    p = sub.add_parser(
+        "measure-rt60",
+        help="Measure broadband RT60 from a recording (blind-rt60; [audio] extra).",
+    )
+    p.add_argument(
+        "--audio",
+        required=True,
+        metavar="PATH",
+        help="Recorded audio file (wav/flac/ogg via soundfile). A clean "
+        "impulsive excitation (clap / balloon pop) in a quiet room is best.",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit machine-readable JSON (rt60_s, sample_rate_hz, n_samples, "
+        "source, method, note) instead of human-readable text.",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="roomestim",
@@ -755,6 +787,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_edit_parser(sub)
     _add_collection_parser(sub)
     _add_structure_parser(sub)
+    _add_measure_rt60_parser(sub)
 
     return parser
 
@@ -1731,6 +1764,55 @@ def _cmd_structure(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_measure_rt60(args: argparse.Namespace) -> int:
+    """Measure broadband RT60 from a recording (ADR 0055, A3 increment 2a).
+
+    Wraps ``roomestim.reconstruct.measured_rt60.measure_rt60_from_audio`` (the
+    `blind-rt60` ML decay model). On success: human mode prints the RT60 + method
+    + source + sample rate + sample count to stdout and the honesty NOTE
+    (``MEASURED_RT60_NOTE``) to stderr; ``--json`` emits the dataclass fields as
+    JSON to stdout. The ``[audio]`` extra being absent surfaces as an
+    ``ImportError`` caught HERE (friendly install hint, exit 1) so main()'s shared
+    except tuple stays unwidened; ``FileNotFoundError`` (missing file) and
+    ``ValueError`` (empty / non-finite / bad audio) propagate to main().
+    """
+    # Module import is dependency-light (measured_rt60 lazy-imports blind_rt60 /
+    # soundfile INSIDE its functions) — the missing-[audio]-extra ImportError can
+    # only surface from the call below, which is where it is caught.
+    from roomestim.reconstruct.measured_rt60 import measure_rt60_from_audio
+
+    try:
+        res = measure_rt60_from_audio(args.audio)
+    except ImportError as exc:  # the lazy blind_rt60/soundfile import (in-handler)
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    if getattr(args, "json", False):
+        import json
+
+        print(
+            json.dumps(
+                {
+                    "rt60_s": res.rt60_s,
+                    "sample_rate_hz": res.sample_rate_hz,
+                    "n_samples": res.n_samples,
+                    "source": res.source,
+                    "method": res.method,
+                    "note": res.note,
+                }
+            )
+        )
+        return 0
+
+    print(f"RT60 (broadband, measured): {res.rt60_s:.3f} s")
+    print(f"  method: {res.method}")
+    print(f"  source: {res.source}")
+    print(f"  sample_rate_hz: {res.sample_rate_hz}")
+    print(f"  n_samples: {res.n_samples}")
+    print(f"NOTE: {res.note}", file=sys.stderr)
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
@@ -1758,6 +1840,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_collection(args)
         if args.command == "structure":
             return _cmd_structure(args)
+        if args.command == "measure-rt60":
+            return _cmd_measure_rt60(args)
     except _ExperimentalGate as gate:
         print(f"error: {gate}", file=sys.stderr)
         return 1
