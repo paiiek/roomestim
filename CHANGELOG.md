@@ -7,6 +7,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Web (앱-티어, roomestim 버전 무관)
+
+rough+ 컨슈머 티어를 웹(Gradio) 경로에 노출 (`roomestim_web`, additive). 코어 패키지가 이미
+구현한 rough-tier 워크플로(`MultiviewAdapter` 점군 ingest + 천장 override + snap-to-surfaces)를
+consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, points-only .ply fallback)·
+줄자 천장고 입력(blank/0 → auto)·snap 체크박스. 신규 인자는 키워드 전용 기본값 → 기존 7-positional
+호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
+ruff·core mypy(--strict, 64) clean.
+
+## [0.52.0] — 2026-06-27
+
+MoGe metric 단일-이미지 백엔드 (MINOR, additive, EXPERIMENTAL). ADR 0057.
+`[moge]` extra(MIT 코드·Apache-2.0 가중치, git-only), `--backend moge --experimental`.
+**정직 negative**: cuboid-pano eval(n=100)서 HorizonNet 미달(per-DIM median 151.7 vs 58.0 cm,
+천장 71.7 vs 13.1 cm); scale-invariant shape-only 비교에서도 미달. cam_h 불필요 + 상업 가중치가
+장점이나 HorizonNet `image` 가 계속 documented rough-tier. 기존 backend·default gate byte-equal.
+
+---
+
 ## [0.51.1] — 2026-06-27
 
 py.typed PEP 561 마커 + CHANGELOG.md (패키징 위생, ADR 0007, PATCH additive).
