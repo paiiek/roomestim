@@ -34,6 +34,7 @@ def run_pipeline(
     ceiling_height_m: float | None = None,
     snap_to_surfaces: bool = False,
     floor_length_m: float | None = None,
+    listening_point_xz: tuple[float, float] | None = None,
 ) -> PipelineResult:
     """Run full parse → place → export pipeline.
 
@@ -60,6 +61,11 @@ def run_pipeline(
             cloud is NOT metric-native (per-room 1–5x off), so this one scalar
             anchors the footprint to metric scale (PLACEMENT_SENSITIVITY_VERDICT.md).
             Omit for clouds already in metres; ignored for mesh/RoomPlan inputs.
+        listening_point_xz: Optional user listening point ``(x_right, z_front)``
+            in the room frame (metres). Recenters the coverage listener area on
+            the user's seat instead of the floor centroid — the cheap, high-impact
+            "D" lever (PLACEMENT_SENSITIVITY_VERDICT.md). Applies to any input
+            type; must lie inside the footprint. Omit to keep the auto centre.
 
     Returns:
         PipelineResult with room, layout, and output file paths.
@@ -113,6 +119,14 @@ def run_pipeline(
             f"Unsupported input format '{suffix}'."
             " Expected .usdz / .json / .obj / .gltf / .glb / .ply"
             " (mesh) or .npz / .xyz / .txt (point cloud)."
+        )
+
+    # D lever (PLACEMENT_SENSITIVITY_VERDICT.md): recenter the coverage listener
+    # area on the user's seat before placement. Applies to any input type.
+    if listening_point_xz is not None:
+        from roomestim.edit import evolve_room_listener_point
+        room = evolve_room_listener_point(
+            room, float(listening_point_xz[0]), float(listening_point_xz[1])
         )
 
     from roomestim.place.dispatch import run_placement

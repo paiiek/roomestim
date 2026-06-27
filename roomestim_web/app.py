@@ -194,6 +194,8 @@ def _on_submit(
     ceiling_height_m: float | None = None,
     snap_to_surfaces: bool = False,
     floor_length_m: float | None = None,
+    listening_x_m: float | None = None,
+    listening_z_m: float | None = None,
 ) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
@@ -239,6 +241,13 @@ def _on_submit(
             floor_length_m=(
                 float(floor_length_m)
                 if floor_length_m and float(floor_length_m) > 0.0
+                else None
+            ),
+            # D lever: user listening point (room-frame metres). Both X and Z
+            # must be supplied; otherwise keep the auto centre (None).
+            listening_point_xz=(
+                (float(listening_x_m), float(listening_z_m))
+                if listening_x_m is not None and listening_z_m is not None
                 else None
             ),
         )
@@ -584,6 +593,24 @@ def build_demo() -> gr.Blocks:
                         "이내로 회복합니다 (PLACEMENT_SENSITIVITY_VERDICT.md)."
                     ),
                 )
+                # D lever: optional user listening point (room-frame metres). Both
+                # fields must be filled to take effect; otherwise the auto centre
+                # (floor centroid) is used.
+                listening_x_m = gr.Number(
+                    value=None,
+                    label="청취점 X (m) — 선택 (오른쪽 +)",
+                    info=(
+                        "실제 청취 위치를 방 좌표계(미터)로 지정하면 그 지점에 커버리지를 "
+                        "최적화합니다 — geometry 오차와 무관하게 배치 품질을 높이는 'D' 레버. "
+                        "X·Z 둘 다 입력해야 적용되며, 비우면 자동(방 중앙). "
+                        "footprint 밖이면 오류."
+                    ),
+                )
+                listening_z_m = gr.Number(
+                    value=None,
+                    label="청취점 Z (m) — 선택 (앞쪽 +)",
+                    info="청취점의 앞-뒤 좌표(미터). X와 함께 입력하세요.",
+                )
 
                 # Engine validation toggle (D42 / ADR 0033).
                 # Unchecked (default) = validation ON (backward-compat).
@@ -718,6 +745,7 @@ def build_demo() -> gr.Blocks:
                 scan_file, algorithm, n_speakers, radius, elevation,
                 octave_band, wfs_f_max_hz, skip_engine_validation,
                 ceiling_height_m, snap_to_surfaces, floor_length_m,
+                listening_x_m, listening_z_m,
             ],
             outputs=[
                 viewer_plot, report_plot, report_json, pdf_file,

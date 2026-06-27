@@ -37,6 +37,7 @@ from roomestim.model import (
     Object,
     PlacedSpeaker,
     PlacementResult,
+    Point2,
     Point3,
     RoomModel,
     Surface,
@@ -601,6 +602,45 @@ def snap_layout_to_surfaces(
     return evolve_placement(result, speakers=new_speakers)
 
 
+def evolve_room_listener_point(
+    room: RoomModel, x_m: float, z_m: float
+) -> RoomModel:
+    """Recenter the listener area on a user-specified listening point (D lever).
+
+    The auto listener area sits at the floor centroid; letting the user mark
+    their actual seat re-optimizes coverage there, lifting placement quality
+    independently of geometry error (PLACEMENT_SENSITIVITY_VERDICT.md calls this
+    the cheap, high-impact "D" lever). The point is given in the room/floor frame
+    ``(x_right, z_front)`` in metres. The existing listener-area shape and ear
+    height are preserved — only the centre moves (the polygon is translated).
+
+    Raises ``ValueError`` for a non-finite point or one outside the floor
+    footprint (a listening seat must be inside the room).
+    """
+    if not (math.isfinite(x_m) and math.isfinite(z_m)):
+        raise ValueError(
+            f"evolve_room_listener_point: point must be finite, got ({x_m!r}, {z_m!r})"
+        )
+    from shapely.geometry import Point as ShapelyPoint
+    from shapely.geometry import Polygon as ShapelyPolygon
+
+    footprint = ShapelyPolygon([(p.x, p.z) for p in room.floor_polygon])
+    if not footprint.contains(ShapelyPoint(x_m, z_m)):
+        raise ValueError(
+            f"evolve_room_listener_point: listening point ({x_m}, {z_m}) lies "
+            "outside the room footprint."
+        )
+
+    la = room.listener_area
+    dx = x_m - la.centroid.x
+    dz = z_m - la.centroid.z
+    new_polygon = [Point2(p.x + dx, p.z + dz) for p in la.polygon]
+    new_area = ListenerArea(
+        polygon=new_polygon, centroid=Point2(x_m, z_m), height_m=la.height_m
+    )
+    return replace(room, listener_area=new_area)
+
+
 __all__ = [
     "evolve_surface",
     "evolve_room",
@@ -609,6 +649,7 @@ __all__ = [
     "evolve_room_add_object",
     "evolve_room_remove_object",
     "evolve_room_ceiling_height",
+    "evolve_room_listener_point",
     "evolve_placement",
     "nudge_speaker",
     "snap_layout_to_surfaces",

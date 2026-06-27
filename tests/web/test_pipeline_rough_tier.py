@@ -180,3 +180,22 @@ def test_pipeline_floor_length_anchor_rescales_cloud(tmp_path: Path) -> None:
     assert _area(anchored) == pytest.approx(12.0, rel=0.05)   # metric
     assert _area(raw) > 3.0 * _area(anchored)                 # ~2.5² larger, uncorrected
     assert len(anchored.layout.speakers) == 8
+
+
+@pytest.mark.web
+def test_pipeline_listening_point_recenters_coverage(cloud_npz: Path, tmp_path: Path) -> None:
+    """listening_point_xz recenters the coverage listener area on the user seat."""
+    result = run_pipeline(
+        cloud_npz,
+        algorithm="dbap",
+        n_speakers=8,
+        layout_radius_m=2.0,
+        el_deg=0.0,
+        octave_band=False,
+        out_dir=tmp_path,
+        ceiling_height_m=2.7,
+        listening_point_xz=(1.0, 1.0),
+    )
+    la = result.room.listener_area  # type: ignore[attr-defined]
+    assert (la.centroid.x, la.centroid.z) == pytest.approx((1.0, 1.0))
+    assert len(result.layout.speakers) == 8

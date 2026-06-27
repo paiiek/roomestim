@@ -104,6 +104,28 @@ def test_on_submit_forwards_floor_length() -> None:
 
 
 @pytest.mark.web
+def test_on_submit_forwards_listening_point() -> None:
+    """Both X and Z given → tuple reaches run_pipeline; either missing → None."""
+    mock_file = MagicMock()
+    mock_file.name = "rough.npz"
+    # both supplied → (x, z) tuple
+    k = _capture_run_pipeline_kwargs(
+        mock_file, "dbap", "8", 2.0, 0.0, False, 8000.0, False, 2.7, True, 5.0, 1.0, 1.5
+    )
+    assert k["listening_point_xz"] == pytest.approx((1.0, 1.5))
+    # only X (Z left blank) → None (not enough to locate a point)
+    konly = _capture_run_pipeline_kwargs(
+        mock_file, "dbap", "8", 2.0, 0.0, False, 8000.0, False, 2.7, True, 5.0, 1.0, None
+    )
+    assert konly["listening_point_xz"] is None
+    # neither → None
+    knone = _capture_run_pipeline_kwargs(
+        mock_file, "dbap", "8", 2.0, 0.0, False, 8000.0, False, 2.7, True, 5.0
+    )
+    assert knone["listening_point_xz"] is None
+
+
+@pytest.mark.web
 def test_build_demo_assembles_with_new_inputs() -> None:
     """build_demo() wires the two new components into the submit click w/o error."""
     import gradio as gr
