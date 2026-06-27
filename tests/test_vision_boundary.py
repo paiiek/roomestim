@@ -23,6 +23,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 _TORCH_FREE_MODULES = [
     "roomestim",
     "roomestim.adapters",
+    # ADR 0057 [moge] extra: importing the MoGe adapter must NOT pull torch/moge
+    # (both are lazily imported inside its inference helpers). moge.py needs only
+    # numpy + core, so this runs and guards the boundary in the canonical gate
+    # even though the moge-marked tests are skipped (no [moge] extra installed).
+    "roomestim.adapters.moge",
     "roomestim.vision",
     "roomestim.vision.checkpoints",
 ]

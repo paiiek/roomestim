@@ -127,13 +127,15 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
     p = sub.add_parser("ingest", help="Parse a capture artifact into a RoomModel.")
     p.add_argument(
         "--backend",
-        choices=["roomplan", "polycam", "image", "multiview"],
+        choices=["roomplan", "polycam", "image", "multiview", "moge"],
         required=True,
         help="Capture backend. 'image' is an EXPERIMENTAL single-panorama "
         "rough-estimate tier (requires --experimental; NOT install-grade). "
         "'multiview' ingests a reconstructed point cloud (.ply/.npz/.xyz) from "
         "multi-view/video reconstruction; provenance=reconstructed, honors "
-        "--floor-reconstruction and --ceiling-height-m.",
+        "--floor-reconstruction and --ceiling-height-m. 'moge' is an EXPERIMENTAL "
+        "metric single-image backend (Microsoft MoGe; requires --experimental + "
+        "the [moge] extra; metric, NO --cam-height; honors --floor-reconstruction).",
     )
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
@@ -363,13 +365,15 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     p = sub.add_parser("run", help="Composite: ingest + place + export.")
     p.add_argument(
         "--backend",
-        choices=["roomplan", "polycam", "image", "multiview"],
+        choices=["roomplan", "polycam", "image", "multiview", "moge"],
         required=True,
         help="Capture backend. 'image' is an EXPERIMENTAL single-panorama "
         "rough-estimate tier (requires --experimental; NOT install-grade). "
         "'multiview' ingests a reconstructed point cloud (.ply/.npz/.xyz) from "
         "multi-view/video reconstruction; provenance=reconstructed, honors "
-        "--floor-reconstruction and --ceiling-height-m.",
+        "--floor-reconstruction and --ceiling-height-m. 'moge' is an EXPERIMENTAL "
+        "metric single-image backend (Microsoft MoGe; requires --experimental + "
+        "the [moge] extra; metric, NO --cam-height; honors --floor-reconstruction).",
     )
     p.add_argument("--input", required=True, metavar="PATH", help="Input file path.")
     p.add_argument(
@@ -888,6 +892,35 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
                 "FloorReconstruction | None", floor_reconstruction
             )
         )
+    if backend == "moge":
+        # HARD GATE (ADR 0057): experimental rough-estimate tier. Fires BEFORE
+        # importing the adapter (which is torch-free anyway) so no torch import
+        # happens on the gated-out path.
+        if not getattr(args, "experimental", False):
+            raise _ExperimentalGate(
+                "--backend moge is experimental (metric single-image rough-"
+                "estimate tier, not install-grade); pass --experimental to use it."
+            )
+        # MoGe is metric: a supplied --cam-height is meaningless (scale comes from
+        # the model), so disclose it is ignored rather than silently dropping it.
+        if getattr(args, "cam_height", None) is not None:
+            print(
+                "NOTE: --cam-height is ignored for --backend moge (MoGe is a "
+                "metric backend; scale comes from the model, not a camera-height "
+                "anchor).",
+                file=sys.stderr,
+            )
+        # --floor-reconstruction APPLIES (mesh-cloud extraction, like multiview);
+        # no "ignored" NOTE. Importing the module is torch-free (torch/MoGe are
+        # lazy inside parse()).
+        from roomestim.adapters.mesh import FloorReconstruction
+        from roomestim.adapters.moge import MoGeAdapter
+
+        return MoGeAdapter(
+            floor_reconstruction=cast(
+                "FloorReconstruction | None", floor_reconstruction
+            )
+        )
     raise ValueError(f"unknown backend: {backend!r}")
 
 
@@ -970,6 +1003,7 @@ def _maybe_print_estimated_notice(
     source = {
         "image": "a single image",
         "multiview": "a reconstructed multi-view/video point cloud",
+        "moge": "a single-image metric reconstruction (MoGe)",
     }.get(backend or "", "a reconstruction")
     print(
         f"NOTE: geometry is ESTIMATED from {source} "

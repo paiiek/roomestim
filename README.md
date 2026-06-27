@@ -67,7 +67,7 @@ python scripts/lint_tense.py
 서브커맨드: `ingest` (capture → RoomModel) · `place` (배치 → layout.yaml) ·
 `export` (room.yaml + layout.yaml 재방출, `--format {yaml,usdz,gltf,glb}` +
 `--with-acoustics-sidecar` 지원) · `run` (ingest+place+export 합성) ·
-`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam,image,multiview}` 이며,
+`edit` (스피커 nudge + round-trip). `--backend` 는 `{roomplan,polycam,image,multiview,moge}` 이며,
 `polycam` 은 `MeshAdapter` alias 로 `.obj`/`.gltf`/`.glb`/`.ply` 를 처리합니다.
 `image` 는 **실험적 rough-estimate tier**(v0.25.0, [ADR 0045](docs/adr/0045-image-to-geometry-capture-backend.md))
 — 단일 equirectangular 파노라마 1장에서 geometry 를 *추정*합니다. **install-grade 아님**
@@ -99,6 +99,21 @@ python -m roomestim run --backend image --experimental \
 `--format usdz` 는 `[usd]` extra (usd-core) 가 필요하며, 없으면 친절한 에러로
 안내합니다. export/edit 의 엔진 검증은 `--validate-engine PATH` /
 `--no-engine-validation` 으로 토글합니다 (ADR 0033).
+
+### `moge` 백엔드 — MoGe metric 단일-이미지 (v0.52.0, [ADR 0057](docs/adr/0057-moge-metric-image-backend.md), EXPERIMENTAL)
+
+`--backend moge` 는 **MoGe**(Microsoft Research, 코드 MIT + 가중치 Apache-2.0) metric depth 모델을 사용해 단일 equirectangular 파노라마에서 `cam_h` 없이 geometry 를 추정합니다. 파노라마를 known-rotation 퍼스펙티브 crop 으로 분할 → 각 crop MoGe 추론 → 3D 융합 → `MeshAdapter` 기하 추출 재사용(`--floor-reconstruction` 적용 가능). `provenance=reconstructed`, 재질 `UNKNOWN`. `[moge]` extra(`pip install 'roomestim[moge]'`, git-only) + `--experimental` 게이트 필요.
+
+> **상업 가중치 장점**: HorizonNet 기본 가중치(`st3d`, 상용 적합성 미확인) / `zind`(NC ToU) 대비 MoGe Apache-2.0 가중치는 상업적으로 더 명확하다.
+
+> **⚠ 정직 평가 고지 (load-bearing, 단일진실원천 `MOGE_METRIC_NOTE`)**: cuboid-pano 벤치(n=100, Stanford2D3D 사무 50 + PanoContext 주거 50)에서 MoGe 는 **HorizonNet 을 넘지 못한다** — per-DIM median 오차 **151.7 cm(MoGe convex) / 176.3 cm(MoGe robust) vs 58.0 cm(HorizonNet)**; 천장 median 오차 **71.7 cm vs 13.1 cm**. GT metric scale 편향(cam_h-derived) 제거 후 scale-invariant shape-only 비교에서도 MoGe convex **52.9 cm** 로 방 단위 ≤15 cm 율이 HorizonNet 미달(1.0% vs 3.1%). per-crop metric-scale 분산 CV median **14.7%**, p90 **25.8%**. ★벤치 GT 가 100% cuboid 이고 GT 스케일 자체가 cam_h-derived 이며 MoGe 가 개구부/창문을 투과 depth 로 보는 modality 차이가 있어 절대 비교가 MoGe 에 불리하게 편향되나, 이 편향을 제거한 shape-only 비교에서도 MoGe 가 우세하지 않다. 공정한 검증을 위해 non-cuboid measured-metric GT 가 필요하다. **이 백엔드는 cam_h 없이 쓸 수 있는 실험적 대안으로만 제공 — HorizonNet `image` 백엔드가 계속 documented rough-tier 이다.**
+
+```bash
+pip install 'roomestim[moge]'  # git-only extra; PyPI [moge] 미배포
+python -m roomestim run --backend moge --experimental \
+    --input room_pano.jpg \
+    --algorithm vbap --n-speakers 6 --out-dir /tmp/out
+```
 
 ### `multiview` 백엔드 + A-consumer 레버 (v0.50.0, [ADR 0056](docs/adr/0056-aconsumer-placement-levers-multiview-ingest.md))
 
@@ -222,6 +237,7 @@ OQ-38). byte-equal (comment/key-order/float-format 완전 보존) 은 비-목표
 
 | 버전 | 날짜 | 커밋 | 주요 변경 |
 |---|---|---|---|
+| **v0.52.0** | 2026-06-27 | (commit) | MoGe **metric 단일-이미지 백엔드** (MINOR additive, [ADR 0057](docs/adr/0057-moge-metric-image-backend.md)) — `[moge]` extra(MIT 코드·Apache-2.0 가중치, git-only), `--backend moge --experimental`. **정직 negative**: cuboid-pano eval(n=100)서 HorizonNet 미달(per-DIM median 151.7 vs 58.0 cm, 천장 71.7 vs 13.1 cm); scale-invariant shape-only 비교에서도 미달; cam_h 불필요 + 상업 가중치가 장점. HorizonNet `image` 가 계속 documented rough-tier. 기존 backend·default gate 770p/7s byte-equal. |
 | **v0.51.1** | 2026-06-27 | (commit) | py.typed PEP 561 마커 + CHANGELOG.md (패키징 위생, ADR 0007, PATCH additive). |
 | **v0.51.0** | 2026-06-26 | (commit) | A3 **측정(blind) RT60 — 컨트롤드-SIM 벤치(증분 2a) + CLI 배선** (MINOR, additive) — v0.49.0 의 library-only 측정 RT60 경로를 (1) **정확도 바운드** + (2) **CLI 노출**로 완성. **(1) 컨트롤드-SIM 벤치** `tests/eval/blind_rt60_benchmark.py`(out-of-gate, `test_` 없음·`__main__` 전용): pyroomacoustics shoebox RIR 의 Schroeder RT60 을 GT 로, **impulsive-clap** 여기 하에 blind-rt60 추정기의 decay-fit 정확도를 측정 → **MAPE ~9% (8.7%), bias -8.5%, MAE 135 ms, max \|err\| 17.8% (n=5)**. ★이는 **SIM 바운드(추정기 decay-fit)이지 측정-방 end-to-end 오차가 아님**; **steady-noise 음성 대조군은 decay tail 부재로 39.5 s 로 발산**(정직 caveat). **ACE 측정 코퍼스(CC-BY-ND) + Acta 폐형 보정은 여전히 DEFER(증분 2b)**. **(2) CLI** `roomestim measure-rt60 --audio PATH [--json]`: 녹음→broadband RT60 측정, 사람가독/JSON 출력 + `MEASURED_RT60_NOTE` stderr; `[audio]` extra 부재는 in-handler `ImportError`→친절 hint·exit 1, 누락파일/빈신호는 main 의 기존 except→exit 1. **단일진실원천 `MEASURED_RT60_NOTE` 갱신**(SIM 바운드 명시, ACE end-to-end DEFER 유지). default 767→+3 테스트 `tests/test_measure_rt60_cli.py`(importorskip skip-guard, **정확도 단언 없음** — plumbing only) · ruff·mypy(--strict, 63) clean. ([ADR 0055 §Status-update](docs/adr/0055-measured-blind-rt60-audio-extra.md)). |
 | **v0.50.1** | 2026-06-26 | (commit) | v0.50.0 **독립 code-review follow-up** (PATCH, additive) — v0.50.0 가 리뷰 전 출하되어 별도 세션 독립 `code-reviewer`(APPROVE-WITH-FIXES: 0 CRITICAL/HIGH, 1 MEDIUM, 4 LOW) 결과를 반영. **(MEDIUM)** `evolve_room_ceiling_height` 의 floor_y 재앵커링이 floor 평면≠0 케이스 미검증(전 테스트 floor=y0) → docstring 의도 명시 + 회귀 테스트(클라우드 +5 m 리프트). **(LOW)** `MultiviewAdapter.__init__` 가 `≤20 m` plausibility bound 를 생성자에서 fail-fast(parse 까지 미지연). **(LOW)** `_points_from_npz` named-key 분기가 `(N,6)` xyzrgb 를 `[:, :3]` 슬라이스(`.xyz`/`.txt` 로더 parity). + v0.50.0 누락 **README 문서화**(backend 열거 + multiview/A-consumer 레버 섹션). 코어 byte-equal·기존 backend 무영향. default 767p/7s(764→+3 테스트) · ruff·mypy(--strict, 63) clean. ([ADR 0056 §Status-update](docs/adr/0056-aconsumer-placement-levers-multiview-ingest.md)). |
@@ -696,6 +712,7 @@ python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev,web]"
 | `[usd]` | usd-core (USDZ parse + export) |
 | `[mesh-export]` | usd-core (메시 export 경로; ADR 0035) |
 | `[colmap]` | pycolmap (experimental capture backend) |
+| `[moge]` | MoGe metric depth (experimental image backend; git-only, PyPI 미배포) |
 
 ---
 
@@ -733,6 +750,7 @@ release되었습니다.
 
 - **메인 코드** — MIT (Anthropic Claude Code 협업 표기 포함; 루트 [`LICENSE`](LICENSE))
 - **vendored HorizonNet 코드** (`roomestim/vision/horizonnet/`) — **MIT, (c) 2019 Cheng Sun** (verbatim·재라이선스 아님; 해당 디렉터리 `LICENSE`/`NOTICE`)
+- **`[moge]` 가중치** — **Apache-2.0** (Microsoft Research MoGe, 첫 사용 시 내려받음; 상업 적합성은 사용자가 직접 검증). 코드는 MIT.
 - **`[vision]` 사전학습 가중치** — **MIT 아님** (`roomestim/vision/horizonnet/NOTICE`): 기본 가중치는 `st3d`(Structured3D **research dataset** 파생 — 상용 적합성 미확인), 옵트인 가중치는 `zind`(ZInD, academic / **NON-COMMERCIAL** ToU — `ROOMESTIM_ACCEPT_ZIND_TOU=1` 명시 수락 필요). 가중치는 이 저장소에 포함되지 않고 첫 사용 시 내려받으며, 상용 배포 전 어느 가중치든 해당 약관 적합성을 사용자가 직접 검증해야 한다.
 - **HRTF 데이터** — HUTUBS (TU Berlin, **CC BY 4.0**) 우선; MIT KEMAR (public domain)는 대체 출처
 - **테스트 오디오** — LibriVox (public domain)

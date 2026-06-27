@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.51.1"
+version = "0.52.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -73,6 +73,34 @@ audio = [
 usd = ["usd-core>=24.0; python_version >= '3.10'"]
 mesh-export = ["usd-core>=24.0; python_version >= '3.10'"]
 colmap = ["pycolmap>=0.6"]
+moge = [
+    # ADR 0057: metric single-image geometry backend (Microsoft MoGe). Outputs a
+    # METRIC point map + FoV from one perspective RGB image with NO camera-height
+    # assumption (the dominant error lever of the HorizonNet [vision] backend).
+    #
+    # LICENSE (commercial advantage over [vision]): the MoGe code is MIT and the
+    # released weights are MIT/Apache-2.0 (github.com/microsoft/MoGe) — COMMERCIALLY
+    # CLEAN, UNLIKE the [vision] HorizonNet pretrained weights, which are
+    # academic/NON-COMMERCIAL (see the license note near the HorizonNet block).
+    #
+    # PACKAGING HONESTY: MoGe is NOT published on PyPI (no `moge` distribution), so
+    # this extra installs from a git ref. That means `pip install roomestim[moge]`
+    # is NOT PyPI-wheel-installable on its own — it requires the git source — and
+    # therefore this extra is excluded from the PyPI-publishability contract
+    # (ADR 0007); core `roomestim` stays PyPI-clean. Weights (~1-2 GB) download on
+    # first use via huggingface_hub into the per-user HF cache (not vendored).
+    #
+    # BOUNDARY: torch + MoGe are NEVER imported at `import roomestim` /
+    # `import roomestim.adapters.moge` time (lazy-imported inside the inference
+    # helper), so the torch-free core/web boundary (gate #4) is preserved. The
+    # canonical miniforge env ships a broken torchvision, so the MoGe PATH is
+    # marker-skipped in the default gate and run out-of-gate against a working
+    # torch venv (same posture as [vision]).
+    "moge @ git+https://github.com/microsoft/MoGe.git",
+    "torch",
+    "Pillow",
+    "huggingface_hub",
+]
 vision = [
     # ADR 0045: image->geometry inference (vendored HorizonNet). These deps are
     # behind an OPT-IN extra and are NEVER imported at `import roomestim` time so
@@ -116,6 +144,7 @@ markers = [
     "network: marker reserved for tests that may fetch over network (currently no test invokes it; gate is local-dir env var)",
     "web: requires the [web] optional extras (Gradio, pyroomacoustics, HRTF data); excluded from default CI",
     "vision: requires the [vision] extra (torch+torchvision+HorizonNet weights); excluded from default CI",
+    "moge: requires the [moge] extra (torch + MoGe weights, git-only); excluded from default CI",
 ]
 testpaths = ["tests"]
 
@@ -151,4 +180,12 @@ ignore_missing_imports = true
 # whether or not the extra is installed in the type-check env.
 [[tool.mypy.overrides]]
 module = ["blind_rt60.*", "soundfile.*"]
+ignore_missing_imports = true
+
+# Microsoft MoGe ([moge] extra, ADR 0057) ships no type stubs / py.typed marker
+# and is git-only. It is lazily imported behind a friendly ImportError inside
+# roomestim/adapters/moge.py, so silence the missing-stub noise whether or not
+# the extra is installed in the type-check env. (torch is typed via [vision].)
+[[tool.mypy.overrides]]
+module = "moge.*"
 ignore_missing_imports = true

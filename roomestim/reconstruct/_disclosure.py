@@ -170,8 +170,36 @@ MEASURED_RT60_NOTE: str = (
     "optional `roomestim[audio]` extra (blind-rt60 + soundfile)."
 )
 
+# MoGe metric single-image backend disclosure ([moge] extra, ADR 0057). MoGe
+# (Microsoft) outputs a METRIC point map from a single perspective RGB image with
+# NO camera-height assumption — removing the dominant scale-ambiguity lever of the
+# HorizonNet [vision] image backend (IMAGE_CAM_H_SCALE_NOTE). For an equirectangular
+# panorama, roomestim renders known-rotation perspective crops, runs MoGe per crop,
+# and fuses them (scale comes from MoGe, never a cam_h prior). It is still an
+# EXPERIMENTAL rough-estimate tier: the metric scale is UNVALIDATED against real
+# metric ground truth, the only benchmark on hand (PanoContext) is 100% CUBOID, and
+# a SINGLE perspective image sees only a fraction of a room. Single source of
+# truth — reference, do not retype.
+MOGE_METRIC_NOTE: str = (
+    "MoGe ([moge] extra) is a METRIC single-image geometry model: it recovers a "
+    "metric point map directly from RGB with NO camera-height assumption, so it "
+    "removes the cam_h scale-ambiguity that dominates the HorizonNet image backend. "
+    "For a panorama, roomestim renders known-rotation perspective crops, runs MoGe "
+    "per crop, and fuses them in a common gravity-aligned frame; metric scale comes "
+    "from MoGe alone (--cam-height is IGNORED). HONESTY: this is an EXPERIMENTAL "
+    "rough-estimate tier, NOT install-grade. The metric scale is UNVALIDATED against "
+    "real measured metric ground truth; the only available benchmark (PanoContext) "
+    "is 100% CUBOID so ONLY cuboid accuracy can be measured, and the dataset's own "
+    "metric scale may itself be derived from an assumed camera height (so a metric "
+    "disagreement is not necessarily a MoGe error). A SINGLE perspective image sees "
+    "only part of a room: its footprint is the VISIBLE EXTENT, not a closed floor "
+    "polygon. Per-crop metric-scale dispersion is reported as an honesty metric. "
+    "MoGe weights are MIT/Apache (commercially clean, unlike the HorizonNet weights)."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
+    "MOGE_METRIC_NOTE",
     "RT60_MODEL_NAME",
     "MEASURED_RT60_NOTE",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",
