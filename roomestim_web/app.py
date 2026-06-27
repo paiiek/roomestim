@@ -191,6 +191,8 @@ def _on_submit(
     octave_band: bool,
     wfs_f_max_hz: float,
     skip_engine_validation: bool = False,
+    ceiling_height_m: float | None = None,
+    snap_to_surfaces: bool = False,
 ) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
@@ -222,6 +224,15 @@ def _on_submit(
             out_dir=out_dir,
             wfs_f_max_hz=wfs_f_max_hz,
             skip_engine_validation=skip_engine_validation,
+            # Rough+ consumer tier (PLACEMENT_SENSITIVITY_VERDICT.md): a user
+            # ceiling scalar (only used on the point-cloud path) and install-time
+            # snap. Treat 0/blank ceiling as "auto-estimate" (None).
+            ceiling_height_m=(
+                float(ceiling_height_m)
+                if ceiling_height_m and float(ceiling_height_m) > 0.0
+                else None
+            ),
+            snap_to_surfaces=bool(snap_to_surfaces),
         )
     except ValueError as exc:
         _LOG.warning("run_pipeline ValueError (WFS or validation): %s", exc)
@@ -459,8 +470,10 @@ def build_demo() -> gr.Blocks:
     with gr.Blocks(title="roomestim — 공간 음향 구성기") as demo:
         gr.Markdown("## roomestim · 공간 음향 구성기")
         gr.Markdown(
-            "방 스캔 파일 (`.usdz`, `.obj`, `.gltf`, `.glb`, `.ply`)을 업로드하고"
-            " 좌측 사이드바에서 알고리즘·스피커·반경·고도각을 설정한 뒤 **실행** 버튼을 누르세요.\n\n"
+            "방 스캔 파일 (`.usdz`, `.obj`, `.gltf`, `.glb`, `.ply`) 또는 폰/영상 포인트 "
+            "클라우드 (`.npz`, `.xyz`, `.txt`)를 업로드하고 좌측 사이드바에서 알고리즘·스피커·"
+            "반경·고도각을 설정한 뒤 **실행** 버튼을 누르세요. 거친 포인트 클라우드는 천장 높이를 "
+            "직접 입력하고 ‘설치 시 표면에 스냅’을 켜는 것을 권장합니다.\n\n"
             "결과는 우측 탭에서 3D 뷰어, 음향 리포트, 설치 안내 PDF, 바이노럴 데모,"
             " 원본 YAML 압축 파일로 제공됩니다."
         )
@@ -522,8 +535,35 @@ def build_demo() -> gr.Blocks:
                 )
 
                 scan_file = gr.File(
-                    file_types=[".usdz", ".obj", ".gltf", ".glb", ".ply"],
-                    label="방 스캔 (.usdz / .obj / .gltf / .glb / .ply)",
+                    file_types=[
+                        ".usdz", ".obj", ".gltf", ".glb", ".ply",
+                        ".npz", ".xyz", ".txt",
+                    ],
+                    label="방 스캔 / 포인트 클라우드 (.usdz / .obj / .gltf / .glb / .ply / .npz / .xyz / .txt)",
+                )
+
+                # ── Rough+ consumer tier (PLACEMENT_SENSITIVITY_VERDICT.md) ──
+                # Point-cloud (phone/video) captures never reconstruct the
+                # ceiling, so the user supplies it as one scalar; install-time
+                # snap then mounts the planned speakers on real surfaces.
+                ceiling_height_m = gr.Number(
+                    value=None,
+                    label="천장 높이 (m) — 선택",
+                    info=(
+                        "포인트 클라우드(.npz/.xyz/.txt 또는 점-전용 .ply) 입력 시 천장 높이를 "
+                        "직접 지정합니다. 거친 캡처는 천장을 복원하지 못하므로 한 숫자만 입력하면 "
+                        "높이 레이어가 정확해집니다. 비우면(0) 클라우드에서 자동 추정. "
+                        "메쉬/RoomPlan 입력에서는 무시됩니다."
+                    ),
+                )
+                snap_to_surfaces = gr.Checkbox(
+                    value=False,
+                    label="설치 시 표면에 스냅",
+                    info=(
+                        "배치된 스피커를 가장 가까운 실제 벽/천장 표면으로 이동시켜 물리적으로 "
+                        "설치 가능하게 만듭니다. 거친 방 모델에서 커버리지를 오라클 대비 ~0.03 dB "
+                        "이내로 회복합니다 (PLACEMENT_SENSITIVITY_VERDICT.md)."
+                    ),
                 )
 
                 # Engine validation toggle (D42 / ADR 0033).
@@ -658,6 +698,7 @@ def build_demo() -> gr.Blocks:
             inputs=[
                 scan_file, algorithm, n_speakers, radius, elevation,
                 octave_band, wfs_f_max_hz, skip_engine_validation,
+                ceiling_height_m, snap_to_surfaces,
             ],
             outputs=[
                 viewer_plot, report_plot, report_json, pdf_file,
