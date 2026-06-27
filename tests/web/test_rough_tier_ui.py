@@ -84,6 +84,23 @@ def test_on_submit_defaults_backward_compatible() -> None:
     )
     assert kwargs["ceiling_height_m"] is None
     assert kwargs["snap_to_surfaces"] is False
+    assert kwargs["floor_length_m"] is None
+
+
+@pytest.mark.web
+def test_on_submit_forwards_floor_length() -> None:
+    """A non-zero floor length reaches run_pipeline; blank/0 coerces to None."""
+    mock_file = MagicMock()
+    mock_file.name = "rough.npz"
+    k = _capture_run_pipeline_kwargs(
+        mock_file, "dbap", "8", 2.0, 0.0, False, 8000.0, False, 2.7, True, 5.0
+    )
+    assert k["floor_length_m"] == pytest.approx(5.0)
+    # 0.0 → None (no anchor)
+    k0 = _capture_run_pipeline_kwargs(
+        mock_file, "dbap", "8", 2.0, 0.0, False, 8000.0, False, 2.7, True, 0.0
+    )
+    assert k0["floor_length_m"] is None
 
 
 @pytest.mark.web

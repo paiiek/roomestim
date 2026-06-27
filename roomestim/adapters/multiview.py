@@ -51,6 +51,51 @@ _MAX_CLOUD_FILE_BYTES = int(
     os.environ.get("ROOMESTIM_MAX_CLOUD_BYTES", 500 * 1024 * 1024)  # ~500 MB
 )
 
+# The only scale-anchor type this adapter accepts: the known longest floor
+# dimension (metres). Unlike the image backend's camera-height "known_distance",
+# a multiview cloud has no camera frame — the floor footprint is the anchor.
+_FLOOR_LENGTH_ANCHOR_TYPE = "known_floor_length"
+
+# Plausibility bound on the supplied floor length (metres); mirrors the ceiling
+# bound and rejects obviously-wrong scalars (e.g. a value entered in cm).
+_MAX_FLOOR_LENGTH_M = 100.0
+
+
+def _validate_floor_length_anchor(anchor: ScaleAnchor | None) -> None:
+    """Fail fast on an unusable scale anchor (None is allowed = metric-native)."""
+    if anchor is None:
+        return
+    if anchor.type != _FLOOR_LENGTH_ANCHOR_TYPE:
+        raise ValueError(
+            f"MultiviewAdapter: scale_anchor must be type "
+            f"{_FLOOR_LENGTH_ANCHOR_TYPE!r} (the known longest floor dimension in "
+            f"metres); got {anchor.type!r}."
+        )
+    if not np.isfinite(anchor.length_m) or anchor.length_m <= 0.0:
+        raise ValueError(
+            f"MultiviewAdapter: scale_anchor.length_m must be a positive finite "
+            f"length in metres; got {anchor.length_m!r}."
+        )
+    if anchor.length_m > _MAX_FLOOR_LENGTH_M:
+        raise ValueError(
+            f"MultiviewAdapter: scale_anchor.length_m={anchor.length_m} m exceeds "
+            f"the {_MAX_FLOOR_LENGTH_M} m plausibility bound (value in cm?)."
+        )
+
+
+def _footprint_diameter(room: RoomModel) -> float:
+    """Longest pairwise distance between floor-polygon corners (metres).
+
+    A rotation-invariant extent of the footprint, used to match the cloud's
+    scale to the user's known floor length. Pure-numpy (footprints have few
+    corners) to avoid a scipy dependency in this core adapter.
+    """
+    pts = np.asarray([[p.x, p.z] for p in room.floor_polygon], dtype=float)
+    if pts.shape[0] < 2:
+        return 0.0
+    diff = pts[:, None, :] - pts[None, :, :]
+    return float(np.sqrt((diff * diff).sum(axis=-1)).max())
+
 
 class MultiviewAdapter:
     """``CaptureAdapter`` for a reconstructed point cloud (no faces required).
@@ -103,7 +148,11 @@ class MultiviewAdapter:
         scale_anchor: ScaleAnchor | None = None,
         octave_band: bool = False,
     ) -> RoomModel:
-        del scale_anchor  # reconstructed clouds are assumed metric-native
+        # scale_anchor is honored for the "known_floor_length" type (below): a
+        # raw VGGT/multiview cloud is NOT metric-native (per-room 1–5x off), so a
+        # single user-supplied known floor length sets metric scale. With no
+        # anchor the cloud is assumed already metric (e.g. anchored upstream).
+        _validate_floor_length_anchor(scale_anchor)
         path_obj = Path(path)
         suffix = path_obj.suffix.lower()
         if suffix not in _SUPPORTED_SUFFIXES:
@@ -135,15 +184,33 @@ class MultiviewAdapter:
                 "MultiviewAdapter: point cloud contains non-finite coordinates."
             )
 
-        # Reuse the mesh adapter's vertex-array extraction (footprint mode,
-        # robust floor/ceiling planes, walls, listener area). It stamps
-        # provenance="measured"; a reconstruction is downgraded below.
-        room = self._mesh._extract_room_model(
-            points, name=path_obj.stem, octave_band=octave_band
-        )
         from dataclasses import replace
 
-        room = replace(room, provenance="reconstructed")
+        def _extract(pts: np.ndarray) -> RoomModel:
+            # Reuse the mesh adapter's vertex-array extraction (footprint mode,
+            # robust floor/ceiling planes, walls, listener area). It stamps
+            # provenance="measured"; a reconstruction is downgraded here.
+            r = self._mesh._extract_room_model(
+                pts, name=path_obj.stem, octave_band=octave_band
+            )
+            return replace(r, provenance="reconstructed")
+
+        room = _extract(points)
+
+        # Metric-scale anchor (PLACEMENT_SENSITIVITY_VERDICT.md): VGGT/multiview
+        # native scale is per-room 1–5x off, so re-scale the cloud isotropically
+        # until the convex footprint's longest dimension equals the user-supplied
+        # known floor length, then re-extract. The floor is always reconstructed
+        # (the ceiling is not), so a floor length is the one reliable anchor.
+        if scale_anchor is not None:
+            diameter = _footprint_diameter(room)
+            if diameter <= 0.0:
+                raise ValueError(
+                    "MultiviewAdapter: cannot apply scale anchor — the extracted "
+                    "footprint is degenerate (diameter 0)."
+                )
+            scale = scale_anchor.length_m / diameter
+            room = _extract(points * scale)
 
         if self._ceiling_height_m is not None:
             room = evolve_room_ceiling_height(room, self._ceiling_height_m)

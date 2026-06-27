@@ -193,6 +193,7 @@ def _on_submit(
     skip_engine_validation: bool = False,
     ceiling_height_m: float | None = None,
     snap_to_surfaces: bool = False,
+    floor_length_m: float | None = None,
 ) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
     """Submit handler — runs pipeline and builds 3D figure when a file is uploaded.
 
@@ -233,6 +234,13 @@ def _on_submit(
                 else None
             ),
             snap_to_surfaces=bool(snap_to_surfaces),
+            # Known floor length → metric scale anchor (point-cloud path only).
+            # 0/blank means "no anchor" (cloud already metric).
+            floor_length_m=(
+                float(floor_length_m)
+                if floor_length_m and float(floor_length_m) > 0.0
+                else None
+            ),
         )
     except ValueError as exc:
         _LOG.warning("run_pipeline ValueError (WFS or validation): %s", exc)
@@ -556,6 +564,17 @@ def build_demo() -> gr.Blocks:
                         "메쉬/RoomPlan 입력에서는 무시됩니다."
                     ),
                 )
+                floor_length_m = gr.Number(
+                    value=None,
+                    label="바닥 최장 길이 (m) — 포인트 클라우드 스케일 앵커",
+                    info=(
+                        "포인트 클라우드의 가장 긴 바닥 치수(예: 측정한 벽 길이/대각선)를 입력하면 "
+                        "footprint를 이 길이에 맞춰 등방 스케일해 미터 단위로 보정합니다. "
+                        "VGGT/멀티뷰 재구성은 방마다 스케일이 1–5배 어긋나므로 raw 클라우드에는 "
+                        "필수입니다. 이미 미터 스케일인 클라우드는 비우세요(0). "
+                        "메쉬/RoomPlan 입력에서는 무시됩니다."
+                    ),
+                )
                 snap_to_surfaces = gr.Checkbox(
                     value=False,
                     label="설치 시 표면에 스냅",
@@ -698,7 +717,7 @@ def build_demo() -> gr.Blocks:
             inputs=[
                 scan_file, algorithm, n_speakers, radius, elevation,
                 octave_band, wfs_f_max_hz, skip_engine_validation,
-                ceiling_height_m, snap_to_surfaces,
+                ceiling_height_m, snap_to_surfaces, floor_length_m,
             ],
             outputs=[
                 viewer_plot, report_plot, report_json, pdf_file,

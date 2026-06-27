@@ -152,3 +152,31 @@ def test_pipeline_ply_points_only_falls_back_to_cloud(tmp_path: Path) -> None:
     )
     assert result.room.provenance == "reconstructed"  # type: ignore[attr-defined]
     assert len(result.layout.speakers) == 8
+
+
+@pytest.mark.web
+def test_pipeline_floor_length_anchor_rescales_cloud(tmp_path: Path) -> None:
+    """floor_length_m anchors a non-metric (2.5x) cloud back to metric scale."""
+    import roomestim.geom.polygon as gp
+
+    p = tmp_path / "rough.npz"
+    np.savez(p, P_m=(_rough_cloud() * 2.5).astype(np.float32))  # non-metric cloud
+
+    def _area(res) -> float:
+        return gp.shoelace_2d([(c.x, c.z) for c in res.room.floor_polygon])
+
+    common = dict(
+        algorithm="dbap",
+        n_speakers=8,
+        layout_radius_m=2.0,
+        el_deg=0.0,
+        octave_band=False,
+        ceiling_height_m=2.7,
+    )
+    # Known longest floor dimension of the true 4x3 room = 5.0 m diagonal.
+    anchored = run_pipeline(p, out_dir=tmp_path / "a", floor_length_m=5.0, **common)
+    raw = run_pipeline(p, out_dir=tmp_path / "b", **common)  # no anchor → 2.5x off
+
+    assert _area(anchored) == pytest.approx(12.0, rel=0.05)   # metric
+    assert _area(raw) > 3.0 * _area(anchored)                 # ~2.5² larger, uncorrected
+    assert len(anchored.layout.speakers) == 8

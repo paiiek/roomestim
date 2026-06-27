@@ -33,6 +33,7 @@ def run_pipeline(
     skip_engine_validation: bool = False,
     ceiling_height_m: float | None = None,
     snap_to_surfaces: bool = False,
+    floor_length_m: float | None = None,
 ) -> PipelineResult:
     """Run full parse → place → export pipeline.
 
@@ -54,6 +55,11 @@ def run_pipeline(
             real wall/ceiling surface after placement (install-time mitigation
             from PLACEMENT_SENSITIVITY_VERDICT.md — recovers coverage to within
             ~0.03 dB of the oracle on a rough room model).
+        floor_length_m: Optional user-supplied known longest floor dimension
+            (metres). Only applied on the point-cloud path: a raw VGGT/multiview
+            cloud is NOT metric-native (per-room 1–5x off), so this one scalar
+            anchors the footprint to metric scale (PLACEMENT_SENSITIVITY_VERDICT.md).
+            Omit for clouds already in metres; ignored for mesh/RoomPlan inputs.
 
     Returns:
         PipelineResult with room, layout, and output file paths.
@@ -70,6 +76,13 @@ def run_pipeline(
     # validated consumer "rough+" tier front-end (convex footprint default).
     CLOUD_SUFFIXES = {".npz", ".xyz", ".txt"}
 
+    # Build a metric scale anchor from the user-supplied floor length (cloud path
+    # only). A non-positive/blank value means "no anchor" (assume metric-native).
+    cloud_anchor = None
+    if floor_length_m and floor_length_m > 0.0:
+        from roomestim.adapters.base import ScaleAnchor
+        cloud_anchor = ScaleAnchor("known_floor_length", float(floor_length_m))
+
     suffix = input_path.suffix.lower()
     if suffix in (".usdz", ".json"):
         from roomestim.adapters.roomplan import RoomPlanAdapter
@@ -82,7 +95,7 @@ def run_pipeline(
     elif suffix in CLOUD_SUFFIXES:
         from roomestim.adapters.multiview import MultiviewAdapter
         adapter = MultiviewAdapter(ceiling_height_m=ceiling_height_m)
-        room = adapter.parse(input_path, scale_anchor=None, octave_band=octave_band)
+        room = adapter.parse(input_path, scale_anchor=cloud_anchor, octave_band=octave_band)
     elif suffix == ".ply":
         # .ply is ambiguous: a mesh (with faces) or a points-only cloud. Try the
         # mesh path first; on rejection fall back to the point-cloud adapter,
@@ -94,7 +107,7 @@ def run_pipeline(
         except ValueError:
             from roomestim.adapters.multiview import MultiviewAdapter
             adapter = MultiviewAdapter(ceiling_height_m=ceiling_height_m)
-            room = adapter.parse(input_path, scale_anchor=None, octave_band=octave_band)
+            room = adapter.parse(input_path, scale_anchor=cloud_anchor, octave_band=octave_band)
     else:
         raise ValueError(
             f"Unsupported input format '{suffix}'."
