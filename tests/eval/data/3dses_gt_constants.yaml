@@ -1,0 +1,57 @@
+# 3DSES footprint/wall GT machinery — transcribed-and-cited constants.
+#
+# Source dataset: Mérizette, Audebert, Kervella, Verdun (2024), "3DSES: an indoor
+# Lidar point cloud segmentation dataset with real and pseudo-labels from a 3D
+# model." Zenodo record 13323342, DOI 10.5281/zenodo.13323342 (v1.0,
+# 2024-08-12). Companion arXiv:2501.17534. License: CC-BY-SA-4.0 (verified from
+# the Zenodo record page). Only DERIVED measurements are committed here — never
+# the raw point clouds or the CAD .obj.
+#
+# Every constant below is reproduced from the prior doc-only research
+# (.omc/research/3dses-footprint-wall-validation.md, V1 2026-06-09 + WALLS
+# 2026-06-17) and its scripts .omc/research/nr_wall_repro.py /
+# nr_notch_repro.py, themselves re-derived from the raw .npy + .obj.
+
+# CAD .obj is in Lambert-93 projected map coords; the scan .npy are in a
+# CloudCompare global-shift frame. CAD_vertices - cad_to_scan_shift registers
+# the CAD into the scan frame. Verified residual (scan WALL pt -> nearest CAD
+# IfcWall face): test-area median 1.3-1.9 cm; Gold median 0.3-0.7 cm.
+cad_to_scan_shift: [487000.0, 6772000.0, 0.0]
+
+# Registration residual = the floor on every wall-offset number (offsets below
+# ~2 cm are at the registration limit, not extraction error).
+registration_residual_cm:
+  test_area: 1.5   # S170/S171/S180 (CAD inner-face GT)
+  gold: 0.7        # S163.. (CAD-in-frame CONFIRMED 2026-06-17, 0.3-0.7 cm)
+
+# In-plan building rotation (length-weighted CAD wall-angle mode). All points +
+# CAD rotated by this so per-wall (L/R/B/T) assignment is unambiguous. V1
+# independently derived 44.96 deg; nr_wall_repro hardcodes 45 deg. Convex hull &
+# area are rotation-invariant; rotation only disambiguates wall assignment.
+building_rotation_deg: 45.0
+
+# Authoritative column layout (github.com/merizetm/3dses dataloader esgt.py):
+# 0:3 XYZ | 3:6 RGB | 6 intensity | col -2 (=7) REAL manual label |
+# col -1 (=8) PSEUDO/CAD label. Gold scans are (N,9); test-area scans (N,7) have
+# NO label column.
+label_column_index: 7   # real manual labels (Gold only)
+# Structural class ids DERIVED GEOMETRICALLY (paper/Zenodo/repo give NO id->name
+# table). L12=FLOOR (thin z-min sheet, med z 113.67 m identical across all 7
+# Gold scans = shared building datum); L15=WALL (largest full-height vertical
+# class). Only floor is needed here (rect-pick + coverage), and it is
+# geometrically unambiguous.
+label_floor: 12
+label_wall: 15
+
+# Scan inventory (gitignored raw data under /home/seung/mmhoa/data-gt/3dses/).
+scans_test_area: ["S170", "S171", "S180"]   # 3 axis-rect rooms, (N,7) no labels
+scans_gold: ["S163", "S164", "S165", "S168", "S169", "S178", "S179"]  # (N,9)
+
+# Prior DIRECT-FORMULA (adapter-BYPASSED) numbers this harness re-tests through
+# the real MultiviewAdapter.parse() path (for the CONFIRM / CONTRADICT call):
+#   test-area tight convex per-wall: median |3.4| cm, max |5.0| cm, all 12 walls.
+#   Gold: ~3 of 24 wall-instances genuinely bleed-free at 0-3 cm; aggregate
+#   UNVALIDATED (single-station occlusion + convex bleed).
+prior_test_area_convex_median_cm: 3.4
+prior_test_area_convex_max_cm: 5.0
+prior_gold_clean_wall_cm: 3.0
