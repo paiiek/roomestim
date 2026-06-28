@@ -138,6 +138,35 @@ python -m roomestim run --backend moge --experimental \
   (floor 제외). 거친 geometry 위 계획이 실 표면에서 ~35 cm 벗어나는 것을 install-time 에
   완화하는 보정. PLACEMENT_SENSITIVITY_VERDICT.md 측정 기반.
 
+#### upstream video→room (실험적 rough+ tier — cloud 를 어디서 얻는가)
+
+`multiview` 백엔드는 **이미 재구성된 cloud** 를 입력으로 받습니다. 그 cloud 를 폰
+**영상(frames)** 에서 만드는 한 가지 경로가 **VGGT**(feed-forward multi-view, `facebook/VGGT-1B`)
+입니다. 이 frames→cloud 프런트엔드는 **roomestim 에 패키징되지 않습니다** — 별도 리서치
+워크스페이스(`spike-vggt-multiview/scripts/video_to_room.py`)에 있으며 VGGT 코드 + 체크포인트는
+PyPI 에 없습니다(git/HF 수동 설치, ~7 GB venv). roomestim 코어가 import 하는 VGGT/torch
+의존은 **없습니다**. 따라서 `[vggt]` 류 extra 도 두지 않았습니다 (`pip install` 로 frames→room
+이 바로 동작하지 않으며, 코어가 쓰지 않는 무거운 의존을 끌어오는 것은 overclaim — 이 백엔드는
+어디까지나 cloud ingest 입니다). 이 외부 프런트엔드가 만든 cloud 를 위 `--backend multiview`
++ `--known-floor-len-m`(v0.54.0) + `--ceiling-height-m` 로 흘려보내는 것이 downstream 입니다.
+
+> **⚠ 정직 평가 고지 (load-bearing, video→room 정확도 천장 — 이 블록이 수치의 단일 출처)**:
+> video→room 경로는 **실험적이며 install-grade(≤15 cm) 가 아닙니다.** 진짜 multi-view 메트릭 GT
+> (ARKitScenes raw, 10개 실방, 48 view)에서 VGGT-1B 의 floor-geometry 는 **corner median ≈22.4 cm
+> (2/10 방만 ≤15 cm, 8/10 ≤30 cm)** 로 RoomPlan LiDAR ~8.5 cm 대비 ~2.6× 느슨합니다
+> (`spike-vggt-multiview/VERDICT.md`). multi-view 의 결정적 이득은 **scale 축**입니다 — 단일-파노가
+> cam_h 한 변수로 전체 scale 이 흔들리던 것과 달리, parallax 가 **메트릭 scale 을 안정화**합니다
+> (best-fit 대비 median scale 오차 **1.6 %**, 6/10 방 ≤5 %). 단 anchor 없는 per-room scale 은 여전히
+> ~1.04–5.0× 드리프트(median 1.95×, `PLACEMENT_SENSITIVITY_VERDICT.md`)하므로 metric 출력에는 **`--known-floor-len-m`(known floor 대각) + `--ceiling-height-m`
+> 사용자 입력이 필수**입니다(v0.53.0 `MultiviewAdapter.scale_anchor` → v0.54.0 CLI). shape 정확도는
+> **convex footprint 만** 권장 — `convex_band` 가 best ~13 cm(6/10)이나 이는 **convex-prior 아티팩트**
+> 라 non-convex 방엔 일반화되지 않고, 일반 concave footprint 는 ~18–25 cm·면적 ~40 % under-coverage
+> 로 install-grade 미달입니다(`A3_VERDICT.md`/`A4_VERDICT.md`). 지배 오차는 **VGGT periphery
+> under-reconstruction**(coverage 한계)이며 cross-chunk 정합·coverage-aware selection·TSDF 모두
+> 닫지 못한 채 negative 입니다. **요구 환경**: 2080Ti급 GPU(~7 GB VRAM, float16)·VGGT forward 는
+> "seconds per scene"(VERDICT.md; 구체 초수는 미측정)·**데스크톱 전용(모바일 미지원)**. 이 경로는 단일-파노 `image`/`moge` 백엔드보다 scale-정직하게 우월한
+> **rough pre-scan 추정**으로만 제공되며, ≤15 cm 설치 측정은 LiDAR/RoomPlan 의 몫입니다.
+
 ### `structure` 서브커맨드 — Apple CapturedStructure → N개 방 (정직 고지)
 
 `structure` 는 **진짜 Apple RoomPlan `CapturedStructure` export 1개**(다중 방 device

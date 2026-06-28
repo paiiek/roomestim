@@ -112,3 +112,25 @@ library-only 가 아니다 — `ingest`/`run` 에 `--known-floor-len-m M` 플래
   회귀·`run` 출력(room+layout)·bad-length(`-1`)→rc≠0·room.yaml 미기록. ruff·mypy strict clean.
   남은 한계는 v0.53.0 항목과 동일(anchored 절대치 정확도 = footprint 추출 품질 종속, real-scan GT
   미검증).
+
+## Status-update — upstream video→room 정직 고지 (DOCS-ONLY, 2026-06-28, no version bump)
+
+v0.53/v0.54 가 마감한 downstream(메트릭 scale_anchor)에 대응하는 **upstream**(폰 영상 frames →
+VGGT cloud)을 정직하게 문서화한다. 이 변경은 **docs-only** 다 — pyproject·런타임·골든 전부 무변경,
+버전 무범프.
+
+- **`[vggt]` extra 를 두지 않는다 (정직 판단)**: VGGT(`facebookresearch/vggt`) 코드 + 체크포인트는
+  PyPI 에 없다(git + HF 수동 설치). 더 결정적으로, **roomestim 코어가 import 하는 VGGT/torch
+  의존이 0** 이다 — `MultiviewAdapter` 는 *이미 재구성된* cloud(.ply/.npz/.xyz/.txt)만 ingest 하고,
+  frames→cloud 프런트엔드(`spike-vggt-multiview/scripts/video_to_room.py`)는 gitignored 스파이크에
+  남아 패키징되지 않는다. 따라서 `[vggt]` extra 는 `vggt @ git+...` + torch(~7 GB)를 끌어오면서도
+  패키지 내 **소비자가 없는** 의존이 되어, `pip install roomestim[vggt]` 가 frames→room 을 동작시키지
+  못한 채 video→room 능력을 **overclaim** 한다. 이는 in-repo `roomestim/adapters/moge.py` 를 뒷받침하는
+  `[moge]` extra(ADR 0057)와 결정적으로 다르다(거기엔 실제 소비자가 있다). → 정직성상 DOCS-ONLY 선택.
+- **정직 고지의 정본 = README block**: video→room 정확도 천장의 **모든 수치는 README 의 video→room
+  정직 고지 블록 한 곳에만** 둔다(여기서 재서술하지 않는다 — 두 곳에 두면 divergence 위험). 요지만:
+  실험적·NOT install-grade(corner median > ≤15 cm 게이트), multi-view 의 이득은 scale 안정화이나
+  per-room 드리프트 때문에 `--known-floor-len-m` + `--ceiling-height-m` 필수, shape 는 convex
+  footprint 만 권장. 구체 수치·요구환경·근거는 README 참조. 수치 출처(모두 스파이크 verdict, NO FAKE
+  NUMBERS) = `spike-vggt-multiview/{VERDICT,A3_VERDICT,A4_VERDICT,PLACEMENT_SENSITIVITY_VERDICT}.md`.
+- **검증**: 코드 무변경 → 게이트 회귀 0(default·web byte-equal). README + 본 §Status-update 만 변경.
