@@ -61,3 +61,36 @@ v0.50.0 는 위에서 "code-reviewer(예정)" 로 남겨둔 독립 리뷰 전에
 generic "a reconstruction" 으로 폴백 / `closest_point_on_surface` 의 퇴화-edge 과보수 fallback)는
 정직·무해로 **수용**. 또한 v0.50.0 이 누락했던 **README 문서화**(backend 열거 + `multiview`/A-consumer
 레버 섹션 + 릴리스 행)를 동반. 전체 게이트 **767 passed·7 skipped**, mypy strict(63)·ruff clean.
+
+## Status-update — v0.53.0 (MultiviewAdapter metric scale_anchor, 2026-06-28, additive MINOR)
+
+ADR 본문 §2 는 재구성 클라우드를 **metric-native 가정**으로 ingest 했다(`parse` 가
+`scale_anchor` 를 `del` 로 무시). 그러나 VGGT-class frames→cloud 재구성은 metric-native 가
+**아니다** — per-room scale 이 ~1–5x 드리프트한다([[project_multiview_fusion_a1]] OQ-53 scale
+FAIL 맥락). 단일 user-measured scalar 로 이를 보정하는 cheap A-consumer 레버를 추가한다(additive,
+no-anchor 경로 byte-equal).
+
+- **메커니즘**: `parse(scale_anchor=...)` 가 supplied 되면 (1) 방을 한 번 추출, (2) footprint
+  diameter(= `floor_polygon` 의 (x,z) 코너 최대 pairwise 거리, `_footprint_diameter`,
+  scipy `pdist`) 측정, (3) 클라우드를 `length_m / diameter` 로 **등방 리스케일**, (4) 재추출.
+  `length_m` = footprint **diameter = 코너-대-코너 대각**(임의 두 footprint 코너 사이 최대 직선거리,
+  줄자/도면). **최장 벽이 아니다** — 비정방형 방에선 대각 > 최장벽이라 벽을 재면 aspect-ratio 만큼
+  (4×3 에서 ~20%) silent mis-scale. 이후 `ceiling_height_m` override 는 재추출된 방에 적용.
+- **scale-invariance**: anchor length 가 고정이라 입력 클라우드를 임의 `k` 로 mis-scale 해도
+  anchored footprint 가 동일(테스트 `test_scale_anchor_removes_input_scale_dependence`, k=0.37/2.5
+  → 면적 rel 1e-6 일치). 즉 결과는 입력 클라우드 scale 에 **무의존**. 단 이 *exact* 무의존은
+  `convex`(default, 클라우드 hull 이 scale-equivariant)에서만 — robust/concave/occupancy 의
+  절대-미터 양자화 하에선 근사(테스트는 convex 만 커버).
+- **가드**: `type ∈ {known_distance, user_provided}` (그 외 거부), `length_m` finite & >0
+  (0/음수/inf/nan 거부), degenerate footprint(diameter 0) 거부.
+- **scope**: **library-only**. CLI `_scale_anchor_for` 는 `--backend image`(cam_height)에만
+  anchor 를 만들고 multiview 엔 None 을 준다 → cli.py(동시세션 경합 hot-path) 무변경 유지. multiview
+  CLI 노출(`--known-floor-len-m` 류)은 별도 follow-up. VGGT frames→cloud 재구성은 여전히 OUT OF
+  SCOPE.
+- **검증 한계(정직)**: `_footprint_diameter` 는 추출된 (가능하면 convex) footprint 의 코너
+  대각에 의존 — under-captured 클라우드에서 convex-hull 이 diameter 를 과대/과소 추정하면 rescale 도
+  같은 비율로 bias 된다. scale-invariance(입력 무의존)는 증명되나, **anchored 절대치의 정확도는
+  footprint 추출 품질에 종속**이며 real-scan end-to-end GT 로 미검증.
+- **검증**: `tests/test_aconsumer_multiview.py` +6 케이스(scale-invariance/metric 착지 ~12㎡
+  /diameter 복원/type·length 거부/no-anchor 회귀가드). 전체 게이트 **791 passed·8 skipped**,
+  web 95 passed·4 skipped, mypy strict·ruff clean.

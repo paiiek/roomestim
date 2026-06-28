@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from roomestim.adapters.base import ScaleAnchor
 from roomestim.adapters.multiview import MultiviewAdapter
 from roomestim.edit import (
     evolve_room_ceiling_height,
@@ -118,6 +119,82 @@ def test_multiview_rejects_too_few_points(tmp_path):
 def test_multiview_bad_ceiling_arg():
     with pytest.raises(ValueError, match="ceiling_height_m must be > 0"):
         MultiviewAdapter(ceiling_height_m=-1.0)
+
+
+# --------------------------------------------------------------------------- #
+# MultiviewAdapter — scale_anchor (metric-scale anchor)
+# --------------------------------------------------------------------------- #
+def _footprint_area(room) -> float:
+    from shapely.geometry import Polygon
+
+    return float(Polygon([(p.x, p.z) for p in room.floor_polygon]).area)
+
+
+def _parse_npz(tmp_path, points, *, scale_anchor=None, name="c"):
+    p = tmp_path / f"{name}.npz"
+    np.savez(p, P_m=points)
+    return MultiviewAdapter(up_axis="y", floor_reconstruction="convex").parse(
+        p, scale_anchor=scale_anchor
+    )
+
+
+@pytest.mark.parametrize("k", [0.37, 2.5])
+def test_scale_anchor_removes_input_scale_dependence(tmp_path, k):
+    # Property the spike _validate_scale_anchor.py asserts: mis-scaling the WHOLE
+    # cloud by any k yields an IDENTICAL anchored footprint area. The anchor
+    # length is fixed, so the rescale undoes whatever input scale was present.
+    fixed_len = 5.0
+    base = _parse_npz(
+        tmp_path, _rough_cloud(), scale_anchor=ScaleAnchor("user_provided", fixed_len),
+        name="base",
+    )
+    mis = _parse_npz(
+        tmp_path,
+        _rough_cloud() * k,
+        scale_anchor=ScaleAnchor("user_provided", fixed_len),
+        name=f"k{k}",
+    )
+    base_area = _footprint_area(base)
+    mis_area = _footprint_area(mis)
+    assert mis_area == pytest.approx(base_area, rel=1e-6)
+
+
+def test_scale_anchor_lands_metric_area(tmp_path):
+    # Metric sanity: the 4x3 m rough cloud has true footprint diameter 5.0 m
+    # (diagonal of 4x3). Anchoring to 5.0 m should leave the convex footprint at
+    # ~12 m^2 (area of a 4x3 rect).
+    room = _parse_npz(
+        tmp_path, _rough_cloud(), scale_anchor=ScaleAnchor("user_provided", 5.0)
+    )
+    assert _footprint_area(room) == pytest.approx(12.0, rel=0.15)
+
+
+def test_scale_anchor_rescales_diameter(tmp_path):
+    # Anchoring a 2x mis-scaled cloud to 5.0 m brings the footprint diameter back
+    # to ~5.0 m (the convex 4x3 diagonal).
+    room = _parse_npz(
+        tmp_path, _rough_cloud() * 2.0, scale_anchor=ScaleAnchor("user_provided", 5.0)
+    )
+    assert MultiviewAdapter._footprint_diameter(room) == pytest.approx(5.0, rel=0.05)
+
+
+def test_scale_anchor_rejects_unsupported_type(tmp_path, cloud):
+    with pytest.raises(ValueError, match="scale_anchor.type"):
+        _parse_npz(tmp_path, cloud, scale_anchor=ScaleAnchor("aruco", 1.0))
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, float("inf"), float("nan")])
+def test_scale_anchor_rejects_bad_length(tmp_path, cloud, bad):
+    with pytest.raises(ValueError, match="length_m"):
+        _parse_npz(tmp_path, cloud, scale_anchor=ScaleAnchor("user_provided", bad))
+
+
+def test_no_scale_anchor_footprint_unchanged(tmp_path, cloud):
+    # Snapshot: parsing the 4x3 rough cloud WITHOUT an anchor gives the metric-
+    # native ~12 m^2 footprint (regression guard — anchor path must not alter the
+    # no-anchor behavior).
+    room = _parse_npz(tmp_path, cloud, scale_anchor=None)
+    assert _footprint_area(room) == pytest.approx(12.0, rel=0.05)
 
 
 # --------------------------------------------------------------------------- #

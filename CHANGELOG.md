@@ -16,6 +16,22 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+## [0.53.0] — 2026-06-28
+
+MultiviewAdapter metric **scale_anchor** (MINOR, additive). ADR 0056 §Status-update.
+VGGT-class 재구성 클라우드는 metric-native 가 아니라 per-room scale 이 ~1–5x 드리프트한다 →
+`parse(scale_anchor=ScaleAnchor(type, length_m))` 가 supplied 되면 방을 한 번 추출해 footprint
+diameter(`floor_polygon` 코너 최대 pairwise 거리)를 재고, 클라우드를 `length_m/diameter` 로 등방
+리스케일 후 재추출한다. `length_m` = footprint diameter = **코너-대-코너 대각**(최장 벽이 아님; 비정방형
+방에서 벽을 재면 ~20% mis-scale). **scale-invariance**: 입력 클라우드를 임의 `k` 로 mis-scale 해도
+anchored footprint 동일(결과는 입력 scale 에 무의존; *exact* 는 convex default, 양자화 reconstruction
+하에선 근사). 가드:
+`type ∈ {known_distance, user_provided}`·`length_m` finite>0·degenerate footprint 거부. no-anchor
+경로 byte-equal(기존 동작 불변). **scope=library-only**(CLI `_scale_anchor_for` 는 `--backend image`
+에만 anchor 제공, multiview CLI 노출은 follow-up). **검증 한계**: anchored 절대치 정확도는 footprint
+추출 품질에 종속(under-captured convex-hull 이 diameter bias 가능), real-scan end-to-end 미검증.
+default 791p/8s · web 95p/4s · mypy strict · ruff clean.
+
 ## [0.52.0] — 2026-06-27
 
 MoGe metric 단일-이미지 백엔드 (MINOR, additive, EXPERIMENTAL). ADR 0057.

@@ -23,6 +23,21 @@ marks ``provenance="reconstructed"`` and supports a ``ceiling_height_m``
 override (a single user-measured scalar) — pairing the two is the recommended
 A-consumer flow. Scope: ingesting the cloud; the upstream frames→cloud
 reconstruction (VGGT) is out of scope (heavy GPU dependency).
+
+Scale anchor: a reconstructed cloud is NOT always metric-native — VGGT-class
+backends emit a per-room scale that drifts 1–5x off metric. The optional
+``scale_anchor`` (type ``"known_distance"`` or ``"user_provided"``) carries
+``length_m`` = the **footprint diameter**: the corner-to-corner diagonal, i.e.
+the largest straight-line distance between any two footprint corners — NOT the
+longest wall (for a non-square room the diagonal exceeds the longest wall, so
+measuring a wall mis-scales by the aspect ratio). The cloud is rescaled
+isotropically so the extracted footprint diameter matches ``length_m``, then
+re-extracted, removing the input cloud's scale dependence. The invariance is
+*exact* under the ``convex`` floor reconstruction (whole-cloud hull is
+scale-equivariant); under quantized reconstructions (robust/concave/occupancy)
+absolute-metre binning makes it approximate. Accuracy of the resulting absolute
+metres is bounded by footprint-extraction quality — flyer outliers inflate the
+convex diameter and under-scale — and is unvalidated against real-scan GT.
 """
 
 from __future__ import annotations
@@ -69,6 +84,10 @@ class MultiviewAdapter:
         auto-extracted ceiling is overridden via
         :func:`roomestim.edit.evolve_room_ceiling_height` — the recommended path
         for ceiling-less rough clouds.
+
+    The optional ``scale_anchor`` passed to :meth:`parse` carries
+    ``length_m`` = the footprint diameter (corner-to-corner diagonal, in metres,
+    not the longest wall); see :meth:`parse` for the rescale mechanism.
     """
 
     def __init__(
@@ -103,7 +122,22 @@ class MultiviewAdapter:
         scale_anchor: ScaleAnchor | None = None,
         octave_band: bool = False,
     ) -> RoomModel:
-        del scale_anchor  # reconstructed clouds are assumed metric-native
+        """Reconstruct a room model from a cloud, honoring an optional anchor.
+
+        ``scale_anchor`` (optional) carries ``length_m`` = the extracted
+        footprint diameter: the max pairwise distance between floor-polygon
+        corners (the corner-to-corner diagonal, not the longest wall), matching
+        the spike ``--known_floor_len_m``. Its ``type`` must be
+        ``"known_distance"`` or ``"user_provided"`` (the ``"aruco"`` type the
+        :class:`~roomestim.adapters.base.ScaleAnchor` contract advertises is not
+        implemented here and is rejected). When supplied, the room is extracted
+        once, that diameter is measured, the cloud is rescaled isotropically by
+        ``length_m / diameter`` so the footprint matches the known length, and
+        the room is re-extracted from the scaled cloud (two extractions per
+        anchored parse — acceptable for this rough rescale). The optional
+        ``ceiling_height_m`` override then runs on the re-extracted room. With no
+        anchor the cloud is taken as metric-native (behavior unchanged).
+        """
         path_obj = Path(path)
         suffix = path_obj.suffix.lower()
         if suffix not in _SUPPORTED_SUFFIXES:
@@ -135,6 +169,34 @@ class MultiviewAdapter:
                 "MultiviewAdapter: point cloud contains non-finite coordinates."
             )
 
+        # Optional metric-scale anchor (a VGGT-class cloud is not metric-native;
+        # its scale drifts per room). Extract once, measure the footprint
+        # diameter, rescale the cloud so it matches the known floor length, then
+        # re-extract — making the result independent of the input cloud's scale.
+        if scale_anchor is not None:
+            if scale_anchor.type not in ("known_distance", "user_provided"):
+                raise ValueError(
+                    "MultiviewAdapter: scale_anchor.type must be "
+                    "'known_distance' or 'user_provided' (the known longest "
+                    f"floor dimension in metres); got {scale_anchor.type!r}."
+                )
+            length_m = scale_anchor.length_m
+            if not np.isfinite(length_m) or length_m <= 0.0:
+                raise ValueError(
+                    "MultiviewAdapter: scale_anchor.length_m must be finite and "
+                    f"> 0, got {length_m!r}."
+                )
+            probe = self._mesh._extract_room_model(
+                points, name=path_obj.stem, octave_band=octave_band
+            )
+            diameter = self._footprint_diameter(probe)
+            if diameter <= 0.0:
+                raise ValueError(
+                    "MultiviewAdapter: degenerate footprint (diameter 0); cannot "
+                    "apply scale_anchor."
+                )
+            points = points * (length_m / diameter)
+
         # Reuse the mesh adapter's vertex-array extraction (footprint mode,
         # robust floor/ceiling planes, walls, listener area). It stamps
         # provenance="measured"; a reconstruction is downgraded below.
@@ -148,6 +210,20 @@ class MultiviewAdapter:
         if self._ceiling_height_m is not None:
             room = evolve_room_ceiling_height(room, self._ceiling_height_m)
         return room
+
+    @staticmethod
+    def _footprint_diameter(room: RoomModel) -> float:
+        """Measure the footprint diameter (max pairwise corner distance, metres).
+
+        Uses the floor-plane ``(x, z)`` coordinates of ``room.floor_polygon``.
+        Returns ``0.0`` for a degenerate footprint (fewer than two corners).
+        """
+        from scipy.spatial.distance import pdist  # type: ignore[import-untyped]
+
+        corners = np.array([(p.x, p.z) for p in room.floor_polygon], dtype=float)
+        if corners.shape[0] < 2:
+            return 0.0
+        return float(pdist(corners).max())
 
     @staticmethod
     def _load_points(path: Path, suffix: str) -> np.ndarray:
