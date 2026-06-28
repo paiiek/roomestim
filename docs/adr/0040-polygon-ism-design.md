@@ -401,3 +401,89 @@ Validated on MP-RIR: scale/TOA identity, source-side visibility pruning, **and n
 two independent axis-aligned reflections** (edge3 0.00° @7 cm on 06-19; wall3 @7.4 cm here). Still NOT
 validated: the distinctive slanted-line mirror arithmetic, 2nd-order+, receiver-aware visibility, and
 all RT60/absorption/energy (still DEFERRED on material/height GT, per 06-19). No predictor change.
+
+---
+
+## Status-update (2026-06-28, evidence-backed DEFER reconfirmed + blocker-C de-risk study RESOLVED, doc + out-of-gate eval only, byte-equal)
+
+**RT60 cascade stays an evidence-backed DEFER on three blockers. The one blocker that needs ZERO
+external data — (C) the reliability of an RT60-from-decay fit on a SPARSE first-order-only ISM RIR — is
+now SETTLED by a synthetic-GT study: NO-GO. A first-order-only ISM RIR carries essentially NO usable
+decay information, so a polygon-ISM RT60 cascade cannot rest on the first-order enumerator's output.**
+No production code touched: `polygon_image_source.py`, `predictor.py`, `image_source.py`, all materials
+and `_disclosure.py` remain **byte-equal**; no version bump; `PredictorName` unchanged; nothing wired
+into `predict_rt60_default`. The only additions are this status-update and an out-of-gate eval harness
+(`tests/eval/sparse_ism_rt60_fit_study.py`, not pytest-collected).
+
+### What IS landed (recap, geometry only)
+- `roomestim/reconstruct/polygon_image_source.py` (v0.31.0, D100): geometry-only first-order
+  image-source POSITION + shapely visibility enumerator, numpy/shapely-only (no pyroomacoustics import,
+  runs in the default gate). Validated to ~1e-9 vs analytic mirror on a synthetic shoebox, and to ~cm
+  against the measured dEchorate cuboid (5.6 cm median per-wall) and the measured non-rect MP-RIR room
+  (scale/TOA identity + source-side visibility pruning + two axis-aligned walls @7 cm). **GEOMETRY ONLY**
+  — no RT60, absorption, or energy.
+
+### The three blockers keeping RT60 DEFERRED (all still binding)
+- **(A) No on-disk non-shoebox MEASURED RT60 GT with per-surface material + ceiling-height labels.**
+  On disk: U-Rochester (figshare 48711175, CC-BY-4.0, ~185 MB) = **shoebox**; dEchorate
+  (Zenodo 5562386/4626589, CC-BY-4.0, ~341 MB) = **cuboid**. MP-RIR (Zenodo 11148712, CC-BY-4.0, 27 GB)
+  and FLAIR (~10 GB) are non-shoebox/measured but publish **no per-surface material/absorption and no
+  ceiling height**, and both exceed the ~9.5 GB free disk. So there is no labelled non-shoebox corpus
+  to verify an RT60 magnitude against.
+- **(B) Material-confound proven.** The 2026-06-12 C2 study showed the U-Rochester "improvement" of a
+  diffuse cap is a **material-gap coincidence** — the bias sign FLIPS to the opposite corpus
+  (dEchorate-known), and any cap "validated" by U-Rochester error reduction is fitting the material gap.
+  Without per-surface material GT you cannot separate geometry error from material error → any RT60
+  number would be a soft fake number.
+- **(C) RT60-from-fit reliability on a SPARSE first-order ISM RIR — NOW STUDIED → NO-GO (see below).**
+
+### Blocker-(C) de-risk study — RESOLVED, method-backed NO-GO (synthetic GT, no external data)
+Harness: `tests/eval/sparse_ism_rt60_fit_study.py` (out-of-gate; `__main__`-only; requires
+pyroomacoustics — present here, 0.10.1). Method: for 15 synthetic shoeboxes (5 sizes × 3 target RT60
+0.3/0.5/0.7 s), build the pyroomacoustics RIR at **first order (max_order=1, the sparse case the polygon
+enumerator mimics)** vs **dense (`inverse_sabine`-calibrated max_order 32–110)**, fit RT60 from each via
+`pyroomacoustics.experimental.rt60.measure_rt60` (RT30 extrapolation), and compare to the **analytic
+Sabine RT60** (the closed-form GT the simulator is calibrated to). Pre-committed go/no-go (set before
+running): GO if median sparse error ≤20% vs both analytic and dense **and** the dense control is sane
+(≤25% vs analytic); NO-GO if either median ≥35%.
+
+ACTUAL numbers (live):
+- **median |sparse_fit − analytic Sabine| / analytic = 90.9 %** (signed bias **−90.9 %**)
+- **median |sparse_fit − dense_fit| / dense = 92.2 %**
+- dense control SANE: median |dense_fit − analytic| / analytic = **12.7 %** (dense_sane=True)
+- sparse non-finite fits: **0 / 15**
+
+The first-order RT30 fit collapses to **~0.02–0.09 s regardless of the true 0.2–0.7 s RT60** (≈281–575
+nonzero taps, no late tail), while the **same** `measure_rt60` method on the dense RIR
+(~9.6k–35k taps) recovers Sabine to ~13 %. So the failure is **sparsity, not the fitting method** — a
+first-order-only ISM RIR has no sustained exponential decay for Schroeder integration to fit.
+**Verdict: NO-GO — blocker (C) is CONFIRMED.** A polygon-ISM RT60 cascade built on
+`first_order_image_sources` output cannot produce a trustworthy RT60 by RIR-decay fitting; it would
+require either a high-order/full image-source expansion (intractable for long RT60 — `inverse_sabine`
+already needs max_order~137 at RT60=1.0 s) or a hybrid ISM+ray-tracing model (§A option c, ROI-rejected),
+not the shipped first-order enumerator. This is a synthetic-shoebox analytic-GT study only — it is NOT a
+measured-room accuracy claim and does NOT lift blockers (A) or (B).
+
+**Anchor-sensitivity caveat (not overclaimed):** the sparse-collapse *magnitude* is anchor-robust
+(median sparse error 90.9 % under a Sabine anchor ≈ 89.9 % under an Eyring anchor), but the *verdict
+label* itself is mildly anchor-dependent at the dense-sanity gate: under an Eyring anchor the dense
+control reads 28.3 %, which trips the >25 % sanity gate, so the harness would emit INCONCLUSIVE rather
+than NO-GO. **Sabine is the correct anchor** here — `pra.ShoeBox` + `inverse_sabine` invert the Sabine
+model by construction, and the dense ISM fit lands on Sabine (12.7 %) — so the NO-GO stands; the
+anchor-sensitivity is recorded only so the verdict is not overclaimed.
+
+### Decision (unchanged in direction)
+- **Polygon-ISM → RT60 cascade (§D / §A option a/b) stays DEFERRED.** No predictor change, no
+  `PredictorName` addition, no pyroomacoustics core import. Reconfirms 2026-06-08 / 06-12 / 06-19.
+- **Un-block condition (now sharper):** an on-disk **non-shoebox MEASURED RT60 GT with per-surface
+  material + ceiling-height labels** (lifts A+B) **AND** an RT60 estimator that does not rely on a
+  first-order-only RIR decay fit (the path killed by this study's blocker-C NO-GO) — i.e. a higher-order
+  or hybrid acoustic model, which is out of the shipped enumerator's scope.
+
+### Cross-references
+- Prior status-updates: 2026-06-08 (v0.31.0 geometry LANDED), 2026-06-12 (C2 material-confound DEFER),
+  2026-06-19 / 06-21 (MP-RIR non-rect geometry validated, slanted-mirror method-backed negative).
+- Evidence/research notes (gitignored, on-disk): `.omc/research/c2-polygon-ism-rt60-cascade-evaluation.md`,
+  `.omc/research/mp-rir-nonshoebox-toa-validation.md`, `.omc/research/dechorate-polygon-ism-validation.md`.
+- New harness (in-repo, out-of-gate): `tests/eval/sparse_ism_rt60_fit_study.py` (run
+  `python tests/eval/sparse_ism_rt60_fit_study.py`).
