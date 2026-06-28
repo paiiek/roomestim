@@ -123,6 +123,27 @@ def _add_ceiling_height_arg(p: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_known_floor_len_arg(p: argparse.ArgumentParser) -> None:
+    """Shared ``--known-floor-len-m`` arg (multiview metric scale anchor).
+
+    Only meaningful for ``--backend multiview`` (ADR 0056 §Status-update
+    v0.53.0). A reconstructed (VGGT-class) cloud is NOT metric-native; supplying
+    the known footprint diameter rescales it to metric. Inert for other backends.
+    """
+    p.add_argument(
+        "--known-floor-len-m",
+        type=float,
+        default=None,
+        metavar="M",
+        help="Known footprint diameter (metres) for --backend multiview: the "
+        "corner-to-corner diagonal of the floor outline (the largest distance "
+        "between two floor corners), NOT the longest wall. Rescales the "
+        "reconstructed cloud so its extracted footprint diagonal matches this "
+        "length, making a non-metric VGGT-class cloud metric. Pairs with "
+        "--ceiling-height-m. Must be > 0.",
+    )
+
+
 def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = sub.add_parser("ingest", help="Parse a capture artifact into a RoomModel.")
     p.add_argument(
@@ -152,6 +173,7 @@ def _add_ingest_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser])
     )
     _add_floor_reconstruction_arg(p)
     _add_ceiling_height_arg(p)
+    _add_known_floor_len_arg(p)
     _add_image_backend_args(p)
 
 
@@ -442,6 +464,7 @@ def _add_run_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     _add_coverage_args(p)
     _add_floor_reconstruction_arg(p)
     _add_ceiling_height_arg(p)
+    _add_known_floor_len_arg(p)
     _add_snap_arg(p)
     _add_image_backend_args(p)
     # FIX-4 / D77: engine validation toggle (D42 / ADR 0033), at parity with
@@ -925,19 +948,27 @@ def _get_adapter(args: argparse.Namespace) -> "CaptureAdapter":
 
 
 def _scale_anchor_for(args: argparse.Namespace) -> "ScaleAnchor | None":
-    """Build a metric ScaleAnchor from --cam-height for --backend image.
+    """Build a metric ScaleAnchor from CLI args, by backend.
 
-    Returns None when no --cam-height is given (the image adapter then warns +
-    falls back to its default camera height). Measured backends pass None too.
+    --backend image  -> from --cam-height (camera height anchor).
+    --backend multiview -> from --known-floor-len-m (footprint-diameter anchor).
+    Other backends, or the flag omitted, -> None (adapter then assumes the
+    artifact is metric-native / warns + falls back as appropriate).
     """
-    if getattr(args, "backend", None) != "image":
-        return None
-    cam_height = getattr(args, "cam_height", None)
-    if cam_height is None:
-        return None
     from roomestim.adapters.base import ScaleAnchor
 
-    return ScaleAnchor("known_distance", cam_height)
+    backend = getattr(args, "backend", None)
+    if backend == "image":
+        cam_height = getattr(args, "cam_height", None)
+        if cam_height is None:
+            return None
+        return ScaleAnchor("known_distance", cam_height)
+    if backend == "multiview":
+        known = getattr(args, "known_floor_len_m", None)
+        if known is None:
+            return None
+        return ScaleAnchor("known_distance", known)
+    return None
 
 
 def _maybe_apply_user_ceiling(

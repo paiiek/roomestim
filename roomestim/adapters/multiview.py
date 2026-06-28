@@ -177,8 +177,9 @@ class MultiviewAdapter:
             if scale_anchor.type not in ("known_distance", "user_provided"):
                 raise ValueError(
                     "MultiviewAdapter: scale_anchor.type must be "
-                    "'known_distance' or 'user_provided' (the known longest "
-                    f"floor dimension in metres); got {scale_anchor.type!r}."
+                    "'known_distance' or 'user_provided' (the known footprint "
+                    "diameter = corner-to-corner floor diagonal, in metres); "
+                    f"got {scale_anchor.type!r}."
                 )
             length_m = scale_anchor.length_m
             if not np.isfinite(length_m) or length_m <= 0.0:

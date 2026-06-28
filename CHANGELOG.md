@@ -16,6 +16,18 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+## [0.54.0] — 2026-06-28
+
+Multiview metric scale-anchor **CLI 배선** (MINOR, additive). ADR 0056 §Status-update.
+v0.53.0 의 `MultiviewAdapter.scale_anchor`(library-only)를 `ingest`/`run` 에 노출: 신규
+`--known-floor-len-m M` 플래그(footprint diameter = **코너-대-코너 대각**, 최장 벽 아님)가
+재구성 클라우드를 metric 으로 리스케일한다(`--ceiling-height-m` 와 페어). 공유 헬퍼
+`_add_known_floor_len_arg` + `_scale_anchor_for` 를 backend 별 분기(image→`--cam-height`,
+multiview→`--known-floor-len-m`, 그 외 None)로 재구성 — image/기존 backend 경로 무변경. 잘못된
+length 는 adapter ValueError → CLI rc 1(room.yaml 미기록). +5 CLI 테스트(metric 착지 ~12㎡·CLI
+scale-invariance rel 1e-6·no-anchor 회귀·run 출력·bad-length rc≠0). default·web 게이트 GREEN,
+mypy strict·ruff clean.
+
 ## [0.53.0] — 2026-06-28
 
 MultiviewAdapter metric **scale_anchor** (MINOR, additive). ADR 0056 §Status-update.

@@ -94,3 +94,21 @@ no-anchor 경로 byte-equal).
 - **검증**: `tests/test_aconsumer_multiview.py` +6 케이스(scale-invariance/metric 착지 ~12㎡
   /diameter 복원/type·length 거부/no-anchor 회귀가드). 전체 게이트 **791 passed·8 skipped**,
   web 95 passed·4 skipped, mypy strict·ruff clean.
+
+## Status-update — v0.54.0 (multiview scale_anchor CLI 배선, 2026-06-28, additive MINOR)
+
+v0.53.0 가 "별도 follow-up" 으로 남긴 multiview CLI 노출을 마감한다. `scale_anchor` 가 더는
+library-only 가 아니다 — `ingest`/`run` 에 `--known-floor-len-m M` 플래그를 추가했다.
+
+- **배선**: 공유 헬퍼 `_add_known_floor_len_arg`(ingest+run 양쪽 호출) + `_scale_anchor_for(args)` 를
+  backend 별 분기로 재구성 — `image`→`--cam-height`(기존 그대로), `multiview`→`--known-floor-len-m`
+  으로 `ScaleAnchor("known_distance", len)`, 그 외/미공급→`None`. **image·기존 backend 경로 무변경**
+  (구 함수는 non-image 를 early-return None 했고, 신 함수도 동일 결과).
+- **계약**: 플래그 help 는 `length_m` = footprint **diameter = 코너-대-코너 대각**(최장 벽 아님)임을
+  명시. 잘못된 length 는 adapter 가 ValueError → CLI 가 rc 1 로 표면화(room.yaml 미기록), 별도
+  CLI-side 검증 미중복.
+- **검증**: 신규 `tests/test_cli_multiview_scale_anchor.py` +5(`main([...])` 하니스, 실 .npz
+  클라우드): metric 착지 ~12㎡·CLI scale-invariance(2x mis-scale→동일 면적 rel 1e-6)·no-anchor
+  회귀·`run` 출력(room+layout)·bad-length(`-1`)→rc≠0·room.yaml 미기록. ruff·mypy strict clean.
+  남은 한계는 v0.53.0 항목과 동일(anchored 절대치 정확도 = footprint 추출 품질 종속, real-scan GT
+  미검증).
