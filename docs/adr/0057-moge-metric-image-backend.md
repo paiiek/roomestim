@@ -87,3 +87,12 @@ Per-crop metric-scale 분산(CV): median **14.7%**, p90 **25.8%**, max **34.8%**
 ## Reverse-criterion
 
 현재 cuboid-only GT 편향이 있는 상태에서 verdict 는 SHIP-EXPERIMENTAL 이다. non-cuboid measured-metric GT(예: 3DSES + RIR 방 메트릭, 또는 직접 laser 치수)로 재벤치했을 때 MoGe 가 HorizonNet 을 통계적으로 유의하게 넘으면 `--experimental` 해제 + `MOGE_METRIC_NOTE` 갱신을 검토.
+
+## Status-update — MoGe-2 (v2) additive opt-in (2026-06-29, usable-tech Q3)
+
+**MINOR additive, library-only, NO 기존 경로 변경.** `MoGeAdapter.__init__` 에 `model_version: Literal["v1", "v2"] = "v1"` 파라미터를 추가했다. 기본값 `"v1"` 은 기존 동작과 **byte-identical**(default 경로·골든·픽스처 무변경; `weights=None` → 버전별 기본 체크포인트로 해석되며 v1 은 `Ruicheng/moge-vitl`).
+
+- `model_version="v2"` 선택 시: `from moge.model.v2 import MoGeModel` 로드 + 기본 체크포인트 `Ruicheng/moge-2-vitl`(HF hub `200` 확인; `-normal` 변이도 존재하나 normal head 추가분이라 points+mask 만 쓰는 어댑터엔 불필요).
+- **API 동일성(설치된 `moge/model/v2.py` 소스 직접 검증)**: `v2.MoGeModel.infer(image, num_tokens=None, resolution_level=9, force_projection=True, apply_mask=True, fov_x=None, use_fp16=True)` — 어댑터가 넘기는 `fov_x` kwarg 명칭 동일, `force_projection`/`apply_mask` 기본값 둘 다 `True` 로 v1 과 일치, 반환 dict 의 `points` + `mask`(mask_binary) 키도 v1 과 동일. 따라서 `_infer_points` 소비자 코드는 **무변경**. v2 는 추가로 `normal` + `metric_scale` 를 내지만 어댑터가 사용하지 않는다(`metric_scale` 은 v2 내부에서 이미 points 에 적용됨).
+- **GPU smoke PENDING**: 이 변경은 CPU 코드 + 게이트만 검증됐다. GPU 가 별도 spike 로 점유되어 v2 체크포인트에 대한 실제 추론은 **미실행** → v2 metric 정확도는 v1 과 마찬가지로 UNVALIDATED. `MOGE_METRIC_NOTE`(단일진실원천) 의 NEGATIVE 출하 입장은 v2 도 동일하게 적용된다(별도 v2 벤치 전까지 정확도 주장 없음).
+- **잔여 리스크(GPU smoke 에서 확인)**: ① `Ruicheng/moge-2-vitl`(non-`normal`) 의 `from_pretrained` 가 실제 로드되는지; ② v2 의 `num_tokens=None`→`resolution_level=9` 토큰 기본이 crop 해상도(512px)에서 합리적인지; ③ v2 `metric_scale` 적용 후 점군 스케일이 v1 대비 어떻게 다른지(별도 재벤치 대상).

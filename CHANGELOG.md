@@ -16,6 +16,22 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+## [0.55.0] — 2026-06-29
+
+MoGe-2 (**v2**) 단일-이미지 백엔드 **additive opt-in** (MINOR, additive, EXPERIMENTAL).
+ADR 0057 §Status-update. `MoGeAdapter` 에 `model_version: Literal["v1","v2"] = "v1"`
+파라미터 추가 — default `"v1"` 경로는 **byte-equal**(`weights` 시그니처가 `str` → `str|None`
+로 바뀌었으나 `None`+v1 → 기존 `"Ruicheng/moge-vitl"` 로 해소, keyword-only `__init__` 라
+positional 호출 없음, 구 default 를 직접 읽는 provenance/로깅 경로 없음). `model_version="v2"`
+선택 시 `_load_model` 이 `moge.model.v2.MoGeModel` 를 import 하고 weights `Ruicheng/moge-2-vitl`
+사용. `_infer_points` 무변경 — v2 `infer()` 가 동일 `fov_x` kwarg + `force_projection`/`apply_mask`
+기본값을 갖고 `points`/`mask` 키를 반환(설치 소스 확인). `fov_x` 는 keyword 로 전달(v1≠v2
+positional 순서 차이에 대한 가드 주석 추가). **GPU smoke 통과**(RTX 2080 Ti): `moge-2-vitl`
+from_pretrained 로드 + `infer(fov_x=60)` → `points (H,W,3)` finite·`mask` 정상. **정직 한계**:
+MoGe metric 백엔드의 절대 정확도는 여전 **UNVALIDATED**(MOGE_METRIC_NOTE NEGATIVE 입장 v2 에도
+유지) — v2 는 experimental opt-in 일 뿐 정확도 주장 없음. default 701p/7s · web 95p/4s ·
+mypy strict · ruff clean.
+
 ## [0.54.0] — 2026-06-28
 
 Multiview metric scale-anchor **CLI 배선** (MINOR, additive). ADR 0056 §Status-update.

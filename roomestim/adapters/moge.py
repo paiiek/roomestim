@@ -40,7 +40,7 @@ import math
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -61,6 +61,16 @@ __all__ = ["MoGeAdapter"]
 # model; weights (~1-2 GB) download once into the per-user HF cache (not
 # vendored). MIT/Apache licensed (commercial advantage over HorizonNet weights).
 _DEFAULT_WEIGHTS = "Ruicheng/moge-vitl"
+# MoGe-2 (v2) metric checkpoint, used when ``model_version="v2"`` (ADR 0057
+# §Status-update, EXPERIMENTAL opt-in). ``moge.model.v2.MoGeModel.infer`` has the
+# SAME public API the adapter relies on (identical ``fov_x`` kwarg, the same
+# ``force_projection=True`` / ``apply_mask=True`` defaults, and the same
+# ``points`` + ``mask`` output keys), so the consumer path is byte-identical; v2
+# additionally produces ``normal`` + ``metric_scale`` outputs the adapter ignores.
+# The ``-normal`` variant (an extra normal head) also exists on the hub; the
+# points-focused ``moge-2-vitl`` is used here since the adapter consumes only
+# points + mask. GPU smoke pending (no GPU inference has run against this id).
+_DEFAULT_WEIGHTS_V2 = "Ruicheng/moge-2-vitl"
 
 # Panorama detection: an equirectangular pano is ~2:1 (360x180 deg). A tolerant
 # band so slightly-cropped panos still take the multi-crop path.
@@ -210,7 +220,14 @@ class MoGeAdapter:
     Parameters
     ----------
     weights:
-        MoGe HuggingFace checkpoint id (default ``"Ruicheng/moge-vitl"``).
+        MoGe HuggingFace checkpoint id. ``None`` (default) selects the
+        ``model_version`` default (``"Ruicheng/moge-vitl"`` for v1,
+        ``"Ruicheng/moge-2-vitl"`` for v2).
+    model_version:
+        ``"v1"`` (default, unchanged behaviour) or ``"v2"`` (EXPERIMENTAL opt-in,
+        MoGe-2; ADR 0057 §Status-update). v2 shares v1's ``infer`` API and output
+        keys, so only the model import + default checkpoint differ. GPU smoke
+        pending — v2 accuracy is UNVALIDATED here.
     floor_reconstruction:
         Footprint extractor forwarded to the shared mesh-cloud extraction
         (``"convex"`` default; ``"robust"`` trims vertex-noise flyers).
@@ -219,10 +236,21 @@ class MoGeAdapter:
     def __init__(
         self,
         *,
-        weights: str = _DEFAULT_WEIGHTS,
+        weights: str | None = None,
+        model_version: Literal["v1", "v2"] = "v1",
         floor_reconstruction: FloorReconstruction | None = None,
     ) -> None:
-        self._weights = weights
+        if model_version not in ("v1", "v2"):
+            raise ValueError(
+                f"model_version must be 'v1' or 'v2', got {model_version!r}."
+            )
+        self._model_version: Literal["v1", "v2"] = model_version
+        # Resolve the default checkpoint from the model version so the v1 default
+        # path stays byte-identical (weights=None, model_version="v1" ->
+        # _DEFAULT_WEIGHTS) while v2 picks its own checkpoint.
+        self._weights = weights if weights is not None else (
+            _DEFAULT_WEIGHTS if model_version == "v1" else _DEFAULT_WEIGHTS_V2
+        )
         # The pano is gravity-aligned by construction (Manhattan equirect), so the
         # fused cloud is Y-up: pin up_axis="y" rather than re-detecting it.
         self._mesh = MeshAdapter(
@@ -243,7 +271,10 @@ class MoGeAdapter:
         try:
             import torch
 
-            from moge.model.v1 import MoGeModel
+            if self._model_version == "v2":
+                from moge.model.v2 import MoGeModel
+            else:
+                from moge.model.v1 import MoGeModel
         except ImportError as exc:  # pragma: no cover - exercised out-of-gate
             raise ImportError(
                 "MoGeAdapter requires the optional [moge] extra (torch + MoGe); "
@@ -272,6 +303,9 @@ class MoGeAdapter:
             .permute(2, 0, 1)
         )
         with torch.no_grad():
+            # Pass fov_x by KEYWORD: v1 and v2 differ in the positional order of
+            # infer()'s params (fov_x is 2nd positional in v1, 6th in v2), so a
+            # positional call would silently misbind under model_version="v2".
             out = model.infer(img, fov_x=fov_x_deg)
         points = out["points"].detach().cpu().numpy().astype(np.float64)
         mask = out["mask"].detach().cpu().numpy().astype(bool)
