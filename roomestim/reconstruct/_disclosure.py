@@ -197,8 +197,40 @@ MOGE_METRIC_NOTE: str = (
     "MoGe weights are MIT/Apache (commercially clean, unlike the HorizonNet weights)."
 )
 
+# Direct-field SPL disclosure (immersive-layout-design Phase 1). The SpeakerSpec
+# SPL engine computes a DIRECT-FIELD-ONLY sound pressure level: the free-field
+# inverse-square law plus a SIMPLIFIED axisymmetric directivity roll-off. It does
+# NOT model the reverberant field, room gain, or boundary reinforcement, and its
+# directivity is a coverage-angle convention, NOT a measured polar pattern.
+# Absolute SPL is only meaningful with a REAL datasheet sensitivity; the built-in
+# catalog values are representative ESTIMATEs for previewing. Single source of
+# truth — reference, do not retype.
+SPL_DIRECT_FIELD_NOTE: str = (
+    "Direct-field SPL only: free-field inverse-square law "
+    "(sensitivity_db_1w1m + 10*log10(drive_w) - 20*log10(distance_m) + "
+    "directivity) with NO reverberant field, NO room gain, and NO boundary "
+    "reinforcement, so it UNDER-estimates the real in-room SPL (especially at low "
+    "frequency / far field where the reverberant field dominates). The directivity "
+    "is a SIMPLIFIED axisymmetric model — a smooth quadratic roll-off that is 0 dB "
+    "on-axis and exactly -6 dB at the coverage half-angle (dispersion_deg / 2), "
+    "following the AVIXA coverage-angle (-6 dB total beamwidth) convention; it is "
+    "NOT a measured polar pattern and ignores frequency dependence and lobing. "
+    "Multiple speakers are ENERGY-summed (10*log10(sum(10**(SPL_i/10)))) assuming "
+    "INCOHERENT direct sound (no phase / comb-filter interference). Absolute SPL is "
+    "ONLY meaningful when sensitivity_db_1w1m comes from a REAL datasheet "
+    "(provenance='datasheet'); the built-in catalog values are representative "
+    "ESTIMATEs (provenance='estimate') for previewing layouts, NOT authoritative "
+    "specifications. It is also NOT an upper bound: the model does NOT cap "
+    "predicted SPL at the driver's max_spl_db rating and does NOT model near-field "
+    "breakdown of the inverse-square law, so at high drive power or very short "
+    "distance it can OVER-state the achievable SPL. It is therefore neither an "
+    "upper nor a lower bound — just a free-field direct estimate. Treat as relative "
+    "direct-field GUIDANCE, not a guaranteed SPL."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
+    "SPL_DIRECT_FIELD_NOTE",
     "MOGE_METRIC_NOTE",
     "RT60_MODEL_NAME",
     "MEASURED_RT60_NOTE",

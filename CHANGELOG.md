@@ -16,6 +16,22 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+## [0.56.0] — 2026-06-29
+
+**SpeakerSpec 데이터 모델 + 직접음장(direct-field) SPL 엔진** (MINOR, additive, core byte-equal).
+ADR 0058. 인터랙티브 임머시브 레이아웃 설계 도구 Phase 1. 신규 `roomestim/spec/` 패키지:
+`SpeakerSpec`(datasheet 감도/maxSPL/dispersion/provenance) + `direct_field_spl_db`
+(`sensitivity + 10·log10(W) − 20·log10(d) + directivity`; AVIXA −6 dB-at-half-angle 단순화
+지향성, 비간섭 에너지 합) + `spl_field_over_area`(listener-area ear-plane SPL 필드,
+`coverage_overlap` 샘플링 재사용) + `BUILTIN_SPEAKER_CATALOG`(전부 `estimate` 라벨) +
+yaml/json 로더(실 datasheet 주입, default `datasheet`). 단일진실원천
+`SPL_DIRECT_FIELD_NOTE`(`reconstruct/_disclosure.py`)가 **양방향 정직 고지**: 반사음장/
+room-gain 미모델(과소추정) + `max_spl_db` 미캡·근거리 미모델(과대추정) = upper/lower bound
+아닌 free-field direct 추정. 독립 code-review(opus) APPROVE-WITH-FIXES 3 MEDIUM 반영(NaN-aim
+무성 on-axis화 차단, 과대추정 방향 고지+`exceeds_max_spl` 가시화, 테스트 23→35). REPL 물리
+검증 EXACT(거리2배 −6.02 dB·10×W +10 dB·half-angle −6 dB). numpy-free·`import roomestim`
+torch-free 경계 유지. default 736p/7s(+35)·web 95p/4s·mypy(--strict, 66) clean·ruff clean.
+
 ## [0.55.0] — 2026-06-29
 
 MoGe-2 (**v2**) 단일-이미지 백엔드 **additive opt-in** (MINOR, additive, EXPERIMENTAL).
