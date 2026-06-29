@@ -228,10 +228,37 @@ SPL_DIRECT_FIELD_NOTE: str = (
     "direct-field GUIDANCE, not a guaranteed SPL."
 )
 
+# Immersive-layout angular-quality disclosure (immersive-layout-design Phase 2).
+# The immersive_quality metrics are GEOMETRIC angular measures computed from the
+# speaker DIRECTIONS as seen from a listener at the origin (each speaker's
+# position unit vector on the unit sphere). Angular uniformity approximates how
+# evenly the rig surrounds the listener (a proxy for VBAP/DBAP panning
+# smoothness), and the interference proxy is a geometric minimum-separation flag
+# for too-close pairs. Neither is an acoustic measurement. Single source of
+# truth — reference, do not retype.
+IMMERSIVE_QUALITY_NOTE: str = (
+    "Immersive-layout angular metrics are GEOMETRIC only: they are computed from "
+    "the speaker DIRECTIONS as seen from a listener at the origin (each speaker's "
+    "position as a unit vector on the unit sphere), using the GEODESIC "
+    "(great-circle) angle acos(clamp(dot(u_i, u_j), -1, 1)) between direction "
+    "vectors — NOT azimuth-only, so dome elevation is fully accounted for. Angular "
+    "uniformity = min / max of the per-speaker nearest-neighbour geodesic gaps "
+    "(1.0 = perfectly even angular spacing, smaller = a tighter cluster / bigger "
+    "hole); it APPROXIMATES VBAP/DBAP panning smoothness but is NOT an acoustic "
+    "measurement and ignores radius, level, directivity, and the room. The "
+    "interference proxy is a GEOMETRIC minimum-separation flag — it lists speaker "
+    "PAIRS whose direction separation is below a threshold (too close = risk of "
+    "comb-filtering / redundant coverage) — it is NOT a comb-filter, phase, or "
+    "psychoacoustic prediction. The 10 deg default threshold and the "
+    "uniformity-ratio definition are documented rules of thumb, NOT calibrated "
+    "against measured data. Treat both as relative geometric layout GUIDANCE."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
     "SPL_DIRECT_FIELD_NOTE",
     "MOGE_METRIC_NOTE",
+    "IMMERSIVE_QUALITY_NOTE",
     "RT60_MODEL_NAME",
     "MEASURED_RT60_NOTE",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",

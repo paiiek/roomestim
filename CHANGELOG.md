@@ -16,6 +16,22 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+## [0.57.0] — 2026-06-29
+
+**임머시브 레이아웃 각도 품질 메트릭** (MINOR, additive, core byte-equal). ADR 0059.
+인터랙티브 임머시브 레이아웃 설계 도구 Phase 2. 신규 `roomestim/place/immersive_quality.py`:
+`angular_uniformity`(청취자 원점 기준 스피커 방향들의 **구면 측지각** 최근접-이웃 gap →
+`uniformity = min_nn/max_nn ∈ [0,1]`, dome elevation 완전 반영) + `interference_proxy`
+(기하 최소분리 임계 below 쌍 플래그, `n_close_pairs` 정확 카운트 보존 + `close_pairs` 캡 20 +
+`close_pairs_truncated` 플래그로 무성 드롭 금지). 단일진실원천 `IMMERSIVE_QUALITY_NOTE`
+(`reconstruct/_disclosure.py`): GEOMETRIC only — VBAP/DBAP 패닝 매끄러움 근사일 뿐
+radius/level/지향성/room 무시, interference는 comb-filter/심리음향 예측 아닌 RISK proxy, 10°
+임계·uniformity-ratio는 미보정 rule-of-thumb. `coverage_overlap.py` 스타일 재사용(note-first
+to_dict + format_lines). 독립 code-review(opus) **APPROVE**(0 CRIT/HIGH, 2 MEDIUM+4 LOW 전부
+반영: truncation/flag 테스트·worst_pair uniform reword+sorted 정규화·non-finite/antipodal 테스트·
+O(n²) doc). REPL 측지각 검증 EXACT(8-ring 45°/uniformity 1.0, 90°/0°/180°). numpy-free·
+`import roomestim` torch-free 경계 유지. default 751p/7s(+15)·web 95p/4s·mypy(--strict, 67) clean·ruff clean.
+
 ## [0.56.0] — 2026-06-29
 
 **SpeakerSpec 데이터 모델 + 직접음장(direct-field) SPL 엔진** (MINOR, additive, core byte-equal).
