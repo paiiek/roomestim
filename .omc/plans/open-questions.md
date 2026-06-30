@@ -1211,3 +1211,10 @@ ADR 0045 §Status-update-2026-06-05c / D89. Allocated 2026-06-05.
 - [ ] **(MOGE-2)** Is the PanoContext/Stanford2D3D GT metric scale itself derived from an assumed camera height? — If yes, "MoGe beats cam_h" cannot be claimed purely from absolute-dimension agreement; report scale-invariant shape error alongside absolute. Affects the go/no-go interpretation.
 - [ ] **(MOGE-3)** Per-crop MoGe metric-scale drift across the multi-crop pano fusion — measure overlap scale dispersion; if large, the pano apples-to-apples comparison degrades and we fall back to a perspective-image GT benchmark. Decide threshold during Phase 5.
 - [ ] **(MOGE-4)** Default vs experimental shipping decision is data-gated on the real eval numbers (Phase 5 go/no-go rule); not resolvable until the eval runs.
+
+## immersive-layout-p5-fastapi-threejs - 2026-07-01
+- [ ] (OQ-P5-1) Room ingest for the viewer: built-in synthetic rooms (MVP, decided) + upload→adapter (reuse roomestim_web/pipeline.py, P5.4); also add a first-class room.yaml reader (round-trip with export/room_yaml.py)? — there is NO public read_room_yaml() today; affects P5.4 scope.
+- [ ] (OQ-P5-2) Canonical gate env: add [server] (fastapi/uvicorn/httpx, light pure-Python) to the miniforge canonical env so server tests run in-gate, or marker-skip when fastapi absent (like usd/vision/moge)? — affects how P5.1 gate runs + byte-equal baseline.
+- [ ] (OQ-P5-3) /api/evaluate 200 envelope: wrap as {"ok":true,"report":{...}} (uniform with error envelope) or return tradeoff_to_dict bare? — recommend wrapped; locks the client contract.
+- [ ] (OQ-P5-4) WebSocket for live drag: defer until P5.3 measures REST drag round-trip latency (decision gate in P5.3) — start stateless REST, add WS /api/live only if sluggish.
+- [ ] (OQ-P5-5) Per-speaker aim editing: P5 leaves aim_direction=null (auto-aim at listener); confirm explicit aim editing is out-of-scope for P5 (future phase).

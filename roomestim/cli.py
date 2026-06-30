@@ -799,6 +799,87 @@ def _add_measure_rt60_parser(
     )
 
 
+def _add_evaluate_layout_parser(
+    sub: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Additive `evaluate-layout` subcommand (ADR 0060 §Status-update, P3).
+
+    Exposes the shipped 4-axis trade-off report
+    (``roomestim.design.tradeoff.evaluate_layout``) over an existing room.yaml +
+    layout.yaml. THIN COMPOSER — re-derives no physics; every numeric output is
+    forwarded from the already-frozen scores (level / panning / separation / cost
+    + RT60 context). The honesty framing is the single source of truth
+    ``TRADEOFF_REPORT_NOTE`` (printed to stderr in human mode). Core / torch-free
+    (numpy-free); no optional extra required.
+    """
+    p = sub.add_parser(
+        "evaluate-layout",
+        help="4-axis immersive-layout trade-off report (level/panning/separation/cost).",
+    )
+    p.add_argument(
+        "--in-room",
+        required=True,
+        metavar="PATH",
+        help="room.yaml path (carries the listener_area used for the SPL field).",
+    )
+    p.add_argument(
+        "--in-placement",
+        required=True,
+        metavar="PATH",
+        help="layout.yaml path (the placed speakers to evaluate).",
+    )
+    spec_group = p.add_mutually_exclusive_group()
+    spec_group.add_argument(
+        "--spec",
+        metavar="PATH",
+        help="Speaker datasheet spec yaml/json (provenance='datasheet'). "
+        "Mutually exclusive with --spec-model.",
+    )
+    spec_group.add_argument(
+        "--spec-model",
+        metavar="KEY",
+        help="Built-in catalog key (provenance='estimate', previewing only). "
+        "Default: generic_surround_compact. Mutually exclusive with --spec.",
+    )
+    p.add_argument(
+        "--price",
+        type=float,
+        default=None,
+        metavar="F",
+        help="Optional per-speaker price for the cost axis (applied to the chosen "
+        "spec; only meaningful when the spec lacks a price). NOT a quote.",
+    )
+    p.add_argument(
+        "--drive-w",
+        type=float,
+        default=10.0,
+        metavar="W",
+        help="Per-speaker drive power in watts for the SPL field (default 10.0).",
+    )
+    p.add_argument(
+        "--target-spl-db",
+        type=float,
+        default=85.0,
+        metavar="DB",
+        help="Target SPL for the level-axis headroom (default 85.0).",
+    )
+    p.add_argument(
+        "--measured-rt60",
+        type=float,
+        default=None,
+        metavar="S",
+        help="Engineer-measured RT60 in seconds (>0 → rt60_source='measured'); "
+        "omitted / <=0 → model-predicted.",
+    )
+    p.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Emit the note-first machine-readable trade-off dict as JSON to "
+        "stdout instead of human-readable text.",
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="roomestim",
@@ -815,6 +896,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_collection_parser(sub)
     _add_structure_parser(sub)
     _add_measure_rt60_parser(sub)
+    _add_evaluate_layout_parser(sub)
 
     return parser
 
@@ -1878,6 +1960,81 @@ def _cmd_measure_rt60(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_evaluate_layout(args: argparse.Namespace) -> int:
+    """Emit the 4-axis immersive-layout trade-off report (ADR 0060 §Status-update).
+
+    Composes ``roomestim.design.tradeoff.evaluate_layout`` over an existing
+    room.yaml + layout.yaml: human mode prints ``format_tradeoff_lines`` to stdout
+    and the honesty NOTE (``TRADEOFF_REPORT_NOTE``) to stderr; ``--json`` emits the
+    note-first ``tradeoff_to_dict`` mapping to stdout. Everything is core /
+    torch-free (numpy-free) — there is NO optional extra to miss, so no in-handler
+    ``ImportError`` catch. ``FileNotFoundError`` (missing files), and ``ValueError``
+    (degenerate room/placement, <2 speakers, unknown --spec-model key, non-positive
+    drive power / measured RT60) propagate to main()'s shared except tuple.
+    """
+    import dataclasses
+
+    from roomestim.design.tradeoff import (
+        evaluate_layout,
+        format_tradeoff_lines,
+        tradeoff_to_dict,
+    )
+    from roomestim.io.placement_yaml_reader import read_placement_yaml
+    from roomestim.io.room_yaml_reader import read_room_yaml
+    from roomestim.spec.speaker_spec import (
+        BUILTIN_SPEAKER_CATALOG,
+        load_speaker_spec,
+    )
+
+    room = read_room_yaml(args.in_room)
+    placement = read_placement_yaml(args.in_placement)
+
+    # Resolve the spec source: --spec (datasheet) vs --spec-model (built-in
+    # estimate). argparse already enforces mutual exclusion; default to a built-in
+    # so the command works out-of-box.
+    if args.spec is not None:
+        spec = load_speaker_spec(args.spec)
+    else:
+        model_key = args.spec_model or "generic_surround_compact"
+        try:
+            spec = BUILTIN_SPEAKER_CATALOG[model_key]
+        except KeyError as exc:
+            valid = ", ".join(sorted(BUILTIN_SPEAKER_CATALOG))
+            raise ValueError(
+                f"unknown --spec-model {model_key!r}; valid keys: {valid}"
+            ) from exc
+
+    if args.price is not None:
+        spec = dataclasses.replace(spec, price=args.price)
+
+    measured = (
+        args.measured_rt60
+        if args.measured_rt60 is not None and args.measured_rt60 > 0.0
+        else None
+    )
+
+    report = evaluate_layout(
+        room,
+        placement,
+        spec,
+        listener_area=room.listener_area,
+        drive_w=args.drive_w,
+        target_spl_db=args.target_spl_db,
+        measured_rt60=measured,
+    )
+
+    if getattr(args, "json", False):
+        import json
+
+        print(json.dumps(tradeoff_to_dict(report)))
+        return 0
+
+    for line in format_tradeoff_lines(report):
+        print(line)
+    print(f"NOTE: {report.note}", file=sys.stderr)
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # main
 # --------------------------------------------------------------------------- #
@@ -1907,6 +2064,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_structure(args)
         if args.command == "measure-rt60":
             return _cmd_measure_rt60(args)
+        if args.command == "evaluate-layout":
+            return _cmd_evaluate_layout(args)
     except _ExperimentalGate as gate:
         print(f"error: {gate}", file=sys.stderr)
         return 1

@@ -44,3 +44,16 @@ per-speaker `SpeakerSpec.price` 의 단순 산술 합. 전부 None→`total_pric
 - **(LOW)** `_resolve_measured_rt60` 가 float 분기뿐 아니라 `MeasuredRT60` 분기도 finite/>0 검증(`MeasuredRT60` 는 검증 `__post_init__` 부재 → 손수 만든 음수/NaN `rt60_s` 차단).
 - 나머지 LOW 3건(중복 `_spec_for_channel` dead branch, `report.py` 미러 bare-except, room-only RT60 per-call 재계산)은 record-only/optional 로 미적용.
 게이트 재실행 GREEN: default 775p(+21)·web 95p/4s·mypy(--strict, 69)·ruff clean.
+
+## Status-update (2026-07-01, v0.59.0 — `evaluate-layout` CLI 배선)
+
+P3 4축 trade-off 리포트가 library-only(§Consequences "(−) CLI/web 미배선") 였던 것을 CLI 로 노출. 새 ADR 불필요 — 동일 feature 를 CLI surface 로 배선만 한 것이므로 ADR 0055 가 `measure-rt60` 배선을 §Status-update 로 기록한 선례를 그대로 따른다.
+
+- **CLI 배선 (`measure-rt60` 패턴 미러)**: 신규 `roomestim evaluate-layout --in-room ROOM.yaml --in-placement LAYOUT.yaml [--spec PATH | --spec-model KEY] [--price F] [--drive-w W] [--target-spl-db DB] [--measured-rt60 S] [--json]`.
+  - parser `_add_evaluate_layout_parser` + handler `_cmd_evaluate_layout` + main() dispatch.
+  - spec 해소: `--spec`(datasheet, `load_speaker_spec`) 와 `--spec-model`(빌트인 `BUILTIN_SPEAKER_CATALOG` estimate) 는 argparse mutually-exclusive group; 둘 다 없으면 기본 `generic_surround_compact`(out-of-box). 미지의 model key → `ValueError`(정렬된 valid keys 나열). 선택 `--price` 는 `dataclasses.replace(spec, price=…)` 로 주입.
+  - measured RT60: `--measured-rt60 > 0` → `rt60_source="measured"`; 부재/<=0 → 모델 predicted.
+  - 성공: 사람 모드 = `format_tradeoff_lines` → stdout, 고지 NOTE(`TRADEOFF_REPORT_NOTE`) → stderr; `--json` = `tradeoff_to_dict`(note-first) → stdout.
+  - 전부 core / torch-free(numpy-free) — 놓칠 optional extra 없음 → in-handler `ImportError` catch 없음(`measure-rt60` 의 `[audio]` extra catch 와 달리 불필요). 누락파일(`FileNotFoundError`)·퇴화 room/placement·<2 스피커·미지 `--spec-model`·비양수 `drive_w`(`ValueError`)는 main() 의 기존 공유 except 튜플 → `error: …` + exit 1(무확장). 비양수/NaN `--measured-rt60` 은 (에러가 아니라) model-predicted 로 silent fallback(help 명시; P4 웹 `_is_finite_positive` 와 동일 시맨틱).
+- **테스트**: 신규 `tests/test_evaluate_layout_cli.py`(6, core 게이트, importorskip 불필요) — JSON happy-path(note-first + 4축)·`--spec-model … --price 125`(cost 8×125=1000 산술)·measured/predicted 분기·사람 모드(stdout trade-off / stderr NOTE)·미지 spec-model·누락 room 파일 plumbing 만 lock. 정확도 단언 없음(합성 물리는 `test_tradeoff.py` 가 이미 검증). **물리 재유도 0** — `evaluate_layout` 위임만.
+- **게이트**: default 776→782p / 6s(+6 CLI 테스트)·ruff·mypy(--strict, 69) clean·web 무변경. core byte-equal(신규 CLI 분기 + 테스트만 추가).
