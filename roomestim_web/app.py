@@ -99,6 +99,11 @@ _BINAURAL_DATA_ROOT = Path(
 _BINAURAL_FETCH_STARTED = False
 _BINAURAL_FETCH_LOCK = threading.Lock()
 
+# Bundled one-click example room (a real lab-room mesh, COPY of
+# tests/fixtures/lab_room.obj — web→core layering keeps us from importing tests/).
+# Runs through the SAME pipeline as a user upload.
+_EXAMPLE_ROOM_PATH = Path(__file__).parent / "data" / "examples" / "lab_room.obj"
+
 
 def _cleanup_stale_download_tmps() -> None:
     """Remove leftover ``.tmp`` files from prior interrupted downloads.
@@ -394,6 +399,72 @@ def _on_submit(
     )
 
 
+def _on_load_example(
+    algorithm: str,
+    n_speakers: str,
+    radius: float,
+    elevation: float,
+    octave_band: bool,
+    wfs_f_max_hz: float,
+    skip_engine_validation: bool = False,
+    ceiling_height_m: float | None = None,
+    snap_to_surfaces: bool = False,
+) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
+    """Load the bundled example room and run the SAME pipeline as submit.
+
+    Injects the bundled example mesh path and delegates to ``_on_submit`` so the
+    3D viewer / acoustic report / immersive-design tab all populate from one
+    click, using the current sidebar settings. Returns the same 12-tuple as
+    ``_on_submit``. Never leaks a raw exception (ADR 0038): on a missing bundle
+    or any failure the user gets a generic Korean error report and the rest of
+    the tuple is None.
+    """
+    if not _EXAMPLE_ROOM_PATH.is_file():
+        _LOG.error("Example room missing on disk: %s", _EXAMPLE_ROOM_PATH)
+        error_report: Any = {
+            "error": "예시 룸 파일을 찾을 수 없습니다. 서버 로그를 확인하세요."
+        }
+        return (None, None, error_report, None, None, _binaural_status_update(None),
+                None, None, None, None, None, None)
+    # _on_submit accepts a path string in its `file` slot (uses `file` directly
+    # when it has no `.name` attribute), so pass the bundled path through.
+    return _on_submit(
+        str(_EXAMPLE_ROOM_PATH),
+        algorithm,
+        n_speakers,
+        radius,
+        elevation,
+        octave_band,
+        wfs_f_max_hz,
+        # Force skip_engine_validation for the one-click demo: the bundled mesh is
+        # known-good, so schema validation buys nothing and would otherwise make
+        # the button fail for users without SPATIAL_ENGINE_REPO_DIR (the sidebar
+        # checkbox defaults off). Output YAML just gains the ADR 0033 §C WARNING.
+        True,
+        ceiling_height_m,
+        snap_to_surfaces,
+    )
+
+
+def _on_algorithm_change(alg: str) -> tuple[Any, Any, Any, Any]:
+    """Sidebar reactivity for the algorithm Radio (returns 4 gr.update for
+    [wfs_f_max_hz, n_speakers, radius, elevation]).
+
+    The WFS f_max slider is visible only for ``wfs``. The geometry-driven
+    ``coverage`` grid auto-computes its speaker count from the room and ignores
+    n_speakers / radius / elevation, so those three are greyed out
+    (``interactive=False``) when coverage is selected and re-enabled otherwise.
+    Module-scope (not a build_demo closure) so it is unit-testable.
+    """
+    is_coverage = alg == "coverage"
+    return (
+        gr.update(visible=(alg == "wfs")),
+        gr.update(interactive=not is_coverage),  # n_speakers
+        gr.update(interactive=not is_coverage),  # radius
+        gr.update(interactive=not is_coverage),  # elevation
+    )
+
+
 def _on_apply_overrides_wrapper(
     room: Any,
     layout: Any,
@@ -489,20 +560,27 @@ def build_demo() -> gr.Blocks:
                 gr.Markdown("### 설정")
 
                 algorithm = gr.Radio(
-                    ["vbap", "dbap", "wfs"],
+                    ["vbap", "dbap", "wfs", "dome", "coverage"],
                     label="알고리즘",
                     value="vbap",
                     info=(
                         "VBAP: 3-스피커 vector-based amplitude panning, 가장 표준."
                         " DBAP: distance-based, 비대칭 배치 허용."
                         " WFS: wave field synthesis, 직선·곡선 어레이용."
+                        " DOME: 2단 스택 링(하단 0° + 상단 고도각 틸트, 높이 레이어,"
+                        " 단일 평면 링 아님 → IRREGULAR; 개수 ≥6)."
+                        " COVERAGE: AVIXA 천장 격자(방 기하로 스피커 개수 자동산출,"
+                        " 개수·반경·고도각 무시·SPL/음향 보장 없음, 기하 전용)."
                     ),
                 )
                 n_speakers = gr.Radio(
-                    ["4", "6", "8", "12", "16"],
+                    ["4", "6", "8", "12", "16", "24", "32", "48", "64"],
                     label="스피커 개수",
                     value="8",
-                    info="레이아웃에 사용할 스피커 개수. VBAP/DBAP는 4–16, WFS는 8–16 권장.",
+                    info=(
+                        "레이아웃에 사용할 스피커 개수. VBAP/DBAP/DOME 은 개수 적용"
+                        " (DOME 은 ≥6, 두 링으로 분할). COVERAGE 는 무시(방 기하로 자동 격자)."
+                    ),
                 )
                 radius = gr.Slider(
                     minimum=0.5,
@@ -546,6 +624,9 @@ def build_demo() -> gr.Blocks:
                     ],
                     label="방 스캔 / 포인트 클라우드 (.usdz / .obj / .gltf / .glb / .ply / .npz / .xyz / .txt)",
                 )
+                # One-click example room: runs the bundled lab-room mesh through
+                # the SAME pipeline as 실행, using the current sidebar settings.
+                load_example_btn = gr.Button("예시 룸 불러오기", variant="secondary")
 
                 # ── Rough+ consumer tier (PLACEMENT_SENSITIVITY_VERDICT.md) ──
                 # Point-cloud (phone/video) captures never reconstruct the
@@ -709,11 +790,13 @@ def build_demo() -> gr.Blocks:
             elem_id="hrtf-attribution-footer",
         )
 
-        # Toggle WFS f_max slider visibility based on algorithm selection
+        # Toggle WFS f_max slider visibility + grey out n/radius/elevation when
+        # the geometry-driven coverage grid ignores them (handler at module scope
+        # so it is unit-testable — see tests/web/test_immersive_algorithms_ui.py).
         algorithm.change(
-            fn=lambda alg: gr.update(visible=(alg == "wfs")),
+            fn=_on_algorithm_change,
             inputs=[algorithm],
-            outputs=[wfs_f_max_hz],
+            outputs=[wfs_f_max_hz, n_speakers, radius, elevation],
         )
 
         # Wire submit button — outputs mapped by component reference
@@ -730,6 +813,24 @@ def build_demo() -> gr.Blocks:
                 material_table, blueprint_image, blueprint_file,
                 room_state,    # index 10 — feeds Material Override Apply button
                 layout_state,  # index 11 — feeds OQ-32 viewer rebuild on Apply (v0.16.1)
+            ],
+        )
+
+        # Wire example-room loader — same outputs/States as submit, minus the
+        # scan_file input (the bundled example path is injected by the handler).
+        load_example_btn.click(
+            fn=_on_load_example,
+            inputs=[
+                algorithm, n_speakers, radius, elevation,
+                octave_band, wfs_f_max_hz, skip_engine_validation,
+                ceiling_height_m, snap_to_surfaces,
+            ],
+            outputs=[
+                viewer_plot, report_plot, report_json, pdf_file,
+                binaural_audio, binaural_status_md, raw_file,
+                material_table,  # type: ignore[list-item]  # Any|None, same as submit_btn (line ~798)
+                blueprint_image, blueprint_file,
+                room_state, layout_state,
             ],
         )
 

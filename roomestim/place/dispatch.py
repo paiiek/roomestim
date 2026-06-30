@@ -35,6 +35,11 @@ def run_placement(
     ``vbap`` produces a fixed-radius ring and ``wfs`` synthesizes its baseline
     from the layout radius — both are independent of room geometry by
     construction (the room argument is unused for those two paths).
+    ``dome`` is likewise geometry-blind like ``vbap`` (the room argument is
+    unused); it splits ``n_speakers`` across two stacked equal-angle rings (a
+    lower ring at 0° and an upper ring tilted by ``el_deg``) and is reported
+    with the conservative ``IRREGULAR`` regularity hint — it is NOT a single
+    planar ring nor a calibrated dome, just two stacked rings.
     ``ambisonics`` is likewise geometry-blind like ``vbap`` (the room argument
     is unused; the rig is a fixed regular platonic solid sized by ``order``),
     AND its end-to-end SH decode/route is engine-gated and UNCONFIRMED (see
@@ -90,6 +95,29 @@ def run_placement(
             mount_surfaces=mount_surfaces,
             n_speakers=n_speakers,
             listener_area=room.listener_area,
+        )
+
+    if algorithm == "dome":
+        from roomestim.place.vbap import place_vbap_dome
+
+        # Each ring needs >=3 speakers, so the dome needs >=6 total. Pre-validate
+        # here for a clear message; place_vbap_dome itself also raises per-ring.
+        if n_speakers < 6:
+            raise ValueError(
+                f"dome requires n_speakers>=6 (two rings of >=3); got {n_speakers}"
+            )
+        # Lower ring gets the odd extra speaker; upper ring is tilted by el_deg
+        # (el_deg <= 0 -> sensible 30° default; a downward/flat upper ring is
+        # nonsensical for a dome, so non-positive elevations fall back to 30°).
+        n_lower = (n_speakers + 1) // 2
+        n_upper = n_speakers // 2
+        el_upper_deg = el_deg if el_deg > 0.0 else 30.0
+        return place_vbap_dome(
+            n_lower=n_lower,
+            n_upper=n_upper,
+            el_lower_deg=0.0,
+            el_upper_deg=el_upper_deg,
+            radius_m=layout_radius_m,
         )
 
     if algorithm == "wfs":

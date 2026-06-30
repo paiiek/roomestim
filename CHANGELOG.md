@@ -5,6 +5,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.60.0] — 2026-07-01
+
+**`dome` placement dispatch wiring** (MINOR, additive, core byte-equal). ADR 0003
+§Status-update. The two-stacked-ring VBAP dome (`place_vbap_dome`, A6 — already in
+`roomestim/place/vbap.py`) is now reachable through the public dispatcher:
+`run_placement(room, "dome", n_speakers, layout_radius_m, el_deg, ...)` splits the
+single `n_speakers` into `n_lower=(n+1)//2` / `n_upper=n//2` (lower ring at 0°,
+upper ring tilted by `el_deg`; el_deg ≤ 0 → 30° default), `radius_m = layout_radius_m`. Guard:
+`n_speakers >= 6` (two rings of ≥3) with a clear `ValueError` message before the
+per-ring `kErrTooFewSpeakers`. Geometry-blind (room argument unused), reported with
+the conservative `IRREGULAR` hint and `target_algorithm == "VBAP"` — NOT a calibrated
+dome, just two stacked equal-angle rings; no SPL/acoustic claim. All existing dispatch
+branches byte-equal (additive branch only).
+
+### Web (앱-티어, roomestim 버전 무관)
+
+dome + coverage 알고리즘과 고-스피커 개수, 원클릭 예시 룸 로더를 웹(Gradio) UI 에 노출
+(`roomestim_web/app.py`, additive). 알고리즘 Radio 에 `dome`(2단 스택 링, 높이 레이어,
+IRREGULAR, 개수 ≥6) + `coverage`(AVIXA 천장 격자, 방 기하로 개수 자동산출·n/반경/고도각
+무시·SPL 보장 없음) 추가; 스피커 개수 Radio 를 `4–16` → `4/6/8/12/16/24/32/48/64` 로 확장
+(vbap-ring + dbap 가 24–64 처리 검증됨, 기존 16 상한은 순전히 Radio 선택지 제약이었음).
+`algorithm.change` 핸들러가 coverage 선택 시 n/반경/고도각을 `interactive=False` 로 비활성화
+(자동 격자라 무시됨을 UX 로 표면화). **"예시 룸 불러오기"** 버튼 추가 — 번들된 실제 lab-room
+메쉬(`roomestim_web/data/examples/lab_room.obj`, `tests/fixtures/lab_room.obj` 의 COPY,
+web→core 레이어링 유지)를 현재 사이드바 설정으로 `_on_submit` 과 동일 파이프라인에 통과시켜
+3D 뷰어·음향 리포트·임머시브 설계 탭을 한 번에 채움. raw exception 미노출(ADR 0038) —
+번들 부재/실패 시 generic 한국어 메시지. 시각(육안) 확인은 사람 몫(headless Gradio 렌더 불가).
+
 ## [Unreleased]
 
 ### Web (앱-티어, roomestim 버전 무관)
