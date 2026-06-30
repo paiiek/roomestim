@@ -16,6 +16,26 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+## [0.58.0] — 2026-07-01
+
+**임머시브 레이아웃 4축 trade-off 리포트** (MINOR, additive, core byte-equal). ADR 0060.
+인터랙티브 임머시브 레이아웃 설계 도구 Phase 3. 신규 `roomestim/design/` 패키지(`tradeoff.py`):
+`evaluate_layout`이 이미 ship 된 4축 부품을 단일 `TradeoffReport` frozen dataclass 로 **합성만**
+한다 — (1) 직접음장 SPL field(level + `target_spl_db` headroom = `min_spl − target` exact, Phase 1)·
+(2) 각도 균일도(panning, Phase 2)·(3) interference proxy(separation, Phase 2)·(4) per-speaker
+`price` 산술 합(cost, 견적 아님) + RT60 컨텍스트(`predict_rt60_default` 모델 OR 엔지니어 주입
+`MeasuredRT60`/float, `rt60_source` 라벨). **물리 재유도 0** — 기존 frozen score 를 forward,
+각 메트릭 caveat 상속. `TradeoffCost`: 전부 priced→`complete=True`, 일부→부분합·`complete=False`,
+전무→`total_price=None`. 단일진실원천 `TRADEOFF_REPORT_NOTE`(`reconstruct/_disclosure.py`):
+4축 어느 것도 보장된 in-room 측정 아님 → 후보 레이아웃 상대 비교 guidance. Phase 1/2 스타일 재사용
+(note-first `tradeoff_to_dict` 중첩 `spl`/`angular`/`interference`/`cost`/`rt60` + `format_tradeoff_lines`
+헤더 NO acoustic guarantee). RT60 surface-area 집계는 `roomestim_web/report.py` 패턴 로컬 복제(additive).
+독립 code-review(opus) **APPROVE-WITH-FIXES**(0 CRIT/HIGH) 2건 반영: (MEDIUM) `spl_provenance`
+(datasheet/estimate/mixed) 를 리포트·dict·format line 에 노출 → 절대 SPL/headroom 주장이
+note 없이도 self-describing; (LOW) `_resolve_measured_rt60` 가 float·`MeasuredRT60` 양 분기 모두
+finite/>0 검증(`MeasuredRT60` 는 검증 `__post_init__` 없음). numpy-free·`import roomestim`
+torch-free 경계 유지. default 754→775p(+21)·web 95p/4s 불변·mypy(--strict, 69) clean·ruff clean.
+
 ## [0.57.0] — 2026-06-29
 
 **임머시브 레이아웃 각도 품질 메트릭** (MINOR, additive, core byte-equal). ADR 0059.

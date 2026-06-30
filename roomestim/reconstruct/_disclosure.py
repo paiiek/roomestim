@@ -254,11 +254,44 @@ IMMERSIVE_QUALITY_NOTE: str = (
     "against measured data. Treat both as relative geometric layout GUIDANCE."
 )
 
+# Immersive-layout 4-axis trade-off disclosure (immersive-layout-design Phase 3).
+# The TradeoffReport is an AGGREGATE decision-support summary that composes the
+# already-shipped P1 direct-field SPL field, the P2 geometric angular metrics, an
+# RT60 estimate (model OR engineer-injected measurement), and a simple per-speaker
+# price sum. It re-derives NO physics — it forwards the existing frozen scores —
+# and inherits every one of their caveats. None of the four axes is a guaranteed
+# in-room measurement; treat the whole report as RELATIVE guidance for comparing
+# candidate layouts. Single source of truth — reference, do not retype.
+TRADEOFF_REPORT_NOTE: str = (
+    "The immersive-layout TradeoffReport is an AGGREGATE DECISION-SUPPORT summary "
+    "that COMPOSES four already-computed axes plus an RT60 context value; it "
+    "re-derives no physics and inherits each composed metric's caveats. (a) LEVEL "
+    "is the DIRECT-FIELD-ONLY SPL field (see SPL_DIRECT_FIELD_NOTE): it "
+    "under-estimates the real in-room level (no reverberant field, room gain, or "
+    "boundary reinforcement), uses a SIMPLIFIED coverage-angle directivity (not a "
+    "measured polar pattern), and absolute SPL — including the target_spl_db "
+    "headroom — is only meaningful when the SpeakerSpec sensitivity comes from a "
+    "REAL datasheet (provenance='datasheet'); the headroom inherits all of these "
+    "caveats. (b) PANNING and (c) SEPARATION are GEOMETRIC angular metrics (see "
+    "IMMERSIVE_QUALITY_NOTE): they describe the angular spacing of the speaker "
+    "directions as seen from the listener and are NOT acoustic measurements. (d) "
+    "the RT60 context is EITHER a geometric-acoustics MODEL estimate (see "
+    "RT60_DISCLOSURE — not a validated measurement, materials are assumed) OR an "
+    "engineer-injected MEASURED RT60 (see MEASURED_RT60_NOTE); rt60_source records "
+    "which. (e) the COST axis is a simple ARITHMETIC SUM of the per-speaker `price` "
+    "fields actually supplied on the SpeakerSpec(s) — it is None / incomplete when "
+    "any price is absent and is NOT a quote, install estimate, or street price. "
+    "NONE of the four axes is a guaranteed in-room measurement. Treat the whole "
+    "report as RELATIVE guidance for COMPARING candidate layouts, not an absolute "
+    "performance guarantee."
+)
+
 __all__ = [
     "RT60_DISCLOSURE",
     "SPL_DIRECT_FIELD_NOTE",
     "MOGE_METRIC_NOTE",
     "IMMERSIVE_QUALITY_NOTE",
+    "TRADEOFF_REPORT_NOTE",
     "RT60_MODEL_NAME",
     "MEASURED_RT60_NOTE",
     "CEILING_CONFIDENCE_HEURISTIC_NOTE",
