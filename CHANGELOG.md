@@ -16,6 +16,17 @@ consumer-facing `run_pipeline`/UI 에 배선: 점군 업로드(.npz/.xyz/.txt, p
 호출경로 byte-equal(하위호환). `PLACEMENT_SENSITIVITY_VERDICT.md` 3대 제품요구 착지. web 110p/1s ·
 ruff·core mypy(--strict, 64) clean.
 
+**임머시브 설계 탭** (additive, web-track only, core byte-equal). immersive-layout
+Phase 4 / ADR 0060. 새 `roomestim_web/immersive_design.py` — 이미 배치된 레이아웃
+(`room_state`/`layout_state` 재사용, 재배치 없음)을 P3 4축 trade-off 리포트로 평가·내보내기.
+스피커 모델(`BUILTIN_SPEAKER_CATALOG`)·대당 가격(선택, 비우면 unpriced)·구동 전력·목표 SPL·
+측정 RT60(양수→measured, blank/0→predicted) 입력 → `roomestim.design.tradeoff.evaluate_layout`
+위임(물리 재유도 0, D29 web→core 단방향) → `gr.JSON`(note-first) + 면책 Markdown(report.note +
+self-describing `spl_provenance`/`rt60_source`) 렌더. `imm_state` 가 마지막 `tradeoff_to_dict`
+결과를 보관해 "트레이드오프 JSON 내보내기" 가 표시된 그대로 직렬화(recompute drift 없음, `_TEMP_REAPER`
+cap-8 lifetime). raw exception 미노출(ADR 0038/OQ-45) — 서버 로그 + generic 한국어 메시지.
+시각(육안) 확인은 사람 몫(headless Gradio 렌더 불가). web +7p · ruff·core mypy(--strict) clean.
+
 ## [0.58.0] — 2026-07-01
 
 **임머시브 레이아웃 4축 trade-off 리포트** (MINOR, additive, core byte-equal). ADR 0060.

@@ -32,6 +32,11 @@ from roomestim_web.object_add import (
     _on_remove_object,
     build_object_add_tab,
 )
+from roomestim_web.immersive_design import (
+    _on_evaluate,
+    _on_export_tradeoff,
+    build_immersive_design_tab,
+)
 from roomestim_web.speaker_nudge import (
     _on_nudge_speaker,
     build_speaker_nudge_tab,
@@ -665,6 +670,25 @@ def build_demo() -> gr.Blocks:
                     _nudge_apply_btn = _nudge_comps.get("apply_btn")
                     _nudge_status_md = _nudge_comps.get("status_md")
 
+                    # Immersive Design Tab — immersive-layout P4 (ADR 0060).
+                    # Reuses room_state / layout_state (no re-placement).
+                    _imm_comps = build_immersive_design_tab(
+                        room_state, layout_state, _on_evaluate, _on_export_tradeoff
+                    )
+                    _imm_model_dd = _imm_comps.get("model_dd")
+                    _imm_price_num = _imm_comps.get("price_num")
+                    _imm_drive_slider = _imm_comps.get("drive_slider")
+                    _imm_target_slider = _imm_comps.get("target_slider")
+                    _imm_rt60_num = _imm_comps.get("rt60_num")
+                    _imm_evaluate_btn = _imm_comps.get("evaluate_btn")
+                    _imm_export_btn = _imm_comps.get("export_btn")
+                    _imm_state = _imm_comps.get("imm_state")
+                    _imm_status_md = _imm_comps.get("status_md")
+                    _imm_disclaimer_md = _imm_comps.get("disclaimer_md")
+                    _imm_json_comp = _imm_comps.get("json_comp")
+                    _imm_export_status_md = _imm_comps.get("export_status_md")
+                    _imm_file_comp = _imm_comps.get("file_comp")
+
                     with gr.Tab("2D 블루프린트"):
                         gr.Markdown(
                             "### 2D 블루프린트\n"
@@ -838,6 +862,28 @@ def build_demo() -> gr.Blocks:
                     _nudge_dx, _nudge_dy, _nudge_dz,
                 ],
                 outputs=[layout_state, viewer_plot, _nudge_status_md],
+            )
+
+        # ── Immersive Design wiring (immersive-layout P4 / ADR 0060) ─────────
+        if (
+            _imm_evaluate_btn is not None
+            and _imm_export_btn is not None
+            and _imm_state is not None
+        ):
+            _imm_evaluate_btn.click(
+                fn=_on_evaluate,
+                inputs=[
+                    room_state, layout_state, _imm_model_dd, _imm_price_num,
+                    _imm_drive_slider, _imm_target_slider, _imm_rt60_num,
+                ],
+                outputs=[
+                    _imm_json_comp, _imm_disclaimer_md, _imm_status_md, _imm_state,
+                ],
+            )
+            _imm_export_btn.click(
+                fn=_on_export_tradeoff,
+                inputs=[_imm_state],
+                outputs=[_imm_file_comp, _imm_export_status_md],
             )
 
         # ── Export format dispatch (Phase 5 / ADR 0035) ──────────────────────
