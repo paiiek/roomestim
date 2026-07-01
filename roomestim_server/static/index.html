@@ -83,6 +83,7 @@
       margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
     }
     #controls label { color: var(--muted); font-size: 12px; }
+    #controls .note { color: var(--muted); font-size: 11px; font-style: italic; }
     #controls select, #controls input {
       background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
       border-radius: 4px; padding: 3px 6px; font-size: 12px;
@@ -146,6 +147,9 @@
           <input id="upload-roomplan" type="file" accept=".json" />
           <label for="upload-structure">CapturedStructure (.json)</label>
           <input id="upload-structure" type="file" accept=".json" />
+          <label for="upload-mesh">mesh (.obj/.gltf/.glb/.ply/.usdz)</label>
+          <input id="upload-mesh" type="file" accept=".obj,.gltf,.glb,.ply,.usdz" />
+          <span class="note" title="USD(.usdz) requires the [usd] extra (pxr) on the server">.usdz는 [usd] extra 필요</span>
 
           <label for="examples">예시 불러오기</label>
           <select id="examples"><!-- populated from GET /api/examples on load --></select>
@@ -155,6 +159,7 @@
           </span>
 
           <button id="export" type="button" disabled>Export trade-off JSON</button>
+          <button id="export-layout" type="button">Export layout.yaml</button>
         </div>
 
         <div id="status">Loading…</div>

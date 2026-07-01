@@ -16,6 +16,8 @@ sees the raw text. Mirrors ``roomestim_web/immersive_design.py::_on_evaluate``.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import dataclasses
 import logging
 import math
@@ -32,8 +34,10 @@ from roomestim_server.rooms import (
 )
 from roomestim_server.schemas import (
     EvaluateRequest,
+    LayoutExportRequest,
     PlaceRequest,
     PlacementIn,
+    UploadMeshRequest,
     UploadRoomPlanRequest,
     UploadRoomRequest,
     UploadStructureRequest,
@@ -48,14 +52,23 @@ _T = TypeVar("_T")
 
 __all__ = [
     "evaluate_request",
+    "export_layout",
     "list_examples",
     "list_specs",
     "load_example",
     "place_request",
+    "upload_mesh",
     "upload_room",
     "upload_roomplan",
     "upload_structure",
 ]
+
+#: Mesh filename suffixes the mesh-upload endpoint accepts (mirror of core
+#: ``MeshAdapter._SUPPORTED_SUFFIXES``). An unsupported suffix is rejected at the
+#: endpoint with a generic 400 BEFORE any decode/parse — we never write an unknown
+#: file type to disk. ``.usdz`` additionally needs the ``[usd]`` extra (pxr); its
+#: absence surfaces as a generic 400 from the adapter's ImportError, not here.
+_MESH_SUFFIXES = frozenset({".obj", ".gltf", ".glb", ".ply", ".usdz"})
 
 #: Bundled example capture files (shipped under ``roomestim_server/examples/``).
 _EXAMPLES_DIR = Path(__file__).parent / "examples"
@@ -260,6 +273,49 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
     }
 
 
+def export_layout(request: LayoutExportRequest) -> dict[str, object]:
+    """Emit the engine-contract ``layout.yaml`` for the request placement.
+
+    D29: the layout.yaml is produced ENTIRELY by core
+    ``roomestim.export.layout_yaml.write_layout_yaml`` — the server only builds the
+    ``PlacementResult`` from the validated placement block (via the shared
+    :func:`_build_placement` helper, identical to :func:`evaluate_request`), lets the
+    core writer serialise it to a temp OUTPUT file, and reads the text back to return
+    ``{"filename": "layout.yaml", "yaml": <text>}``. NO geometry/placement math here.
+
+    Validation is env-gated: ``validate = bool(SPATIAL_ENGINE_REPO_DIR)`` — full
+    engine schema validation runs ONLY when the deploy has the spatial_engine repo
+    (there is no machine-specific default path); otherwise the writer skips it and
+    prepends its honest ``# WARNING: schema validation skipped`` header (kept
+    verbatim). ``room_id`` is accepted for symmetry/forward-compat and validated to
+    resolve (a nonexistent room → generic 400), though layout.yaml is placement-only.
+
+    Honesty (ADR 0038 / OQ-45): a layout that violates the engine contract (R10
+    too-few-speakers, WFS without an alias frequency) makes the core writer raise
+    ``ValueError``; that — and any other exception — is caught by
+    :func:`_export_to_temp_file`, logged server-side, and re-raised as a generic
+    :class:`EvaluateError` (→ 400). The temp file is ALWAYS deleted.
+    """
+    from roomestim.export.layout_yaml import write_layout_yaml  # noqa: PLC0415
+
+    # Reject a nonexistent room up front (symmetry with evaluate/place); the
+    # layout.yaml itself is derived purely from the placement block.
+    try:
+        get_room(request.room_id)
+    except KeyError as exc:
+        _LOG.warning("export_layout: unknown room_id %r", request.room_id)
+        raise EvaluateError() from exc
+
+    result = _build_placement(request.placement)
+    validate = bool(os.environ.get("SPATIAL_ENGINE_REPO_DIR"))
+
+    def _write(path: str) -> None:
+        write_layout_yaml(result, path, validate=validate)
+
+    text = _export_to_temp_file(".yaml", _write)
+    return {"filename": "layout.yaml", "yaml": text}
+
+
 def list_specs() -> list[dict[str, object]]:
     """List the built-in speaker specs (catalog metadata only — NO physics).
 
@@ -310,6 +366,77 @@ def _with_temp_file(text: str, suffix: str, fn: Callable[[str], _T]) -> _T:
             os.unlink(tmp.name)
         except OSError:
             _LOG.warning("failed to delete temp upload file %r", tmp.name)
+
+
+def _with_temp_bytes_file(
+    data: bytes, suffix: str, fn: Callable[[str], _T]
+) -> _T:
+    """Write raw ``data`` BYTES to a temp file, run ``fn(path)``, ALWAYS unlink, and
+    map ANY parse exception to a generic :class:`EvaluateError`.
+
+    The binary counterpart of :func:`_with_temp_file` (which writes decoded text) —
+    used by :func:`upload_mesh`, whose payload is a base64-decoded BINARY mesh file
+    (``.obj``/``.gltf``/``.glb``/``.ply``/``.usdz``). The temp-file write +
+    ``finally`` unlink + generic-``EvaluateError``-on-any-exception discipline is
+    IDENTICAL to the text path so the two never drift.
+
+    Honesty (ADR 0038 / OQ-45): the ENTIRE operation is parsing a client-supplied
+    mesh, so EVERY failure is client-attributable. Any exception from ``fn``
+    (``ValueError`` on an unsupported/oversize/degenerate mesh, ``ImportError`` on a
+    ``.usdz`` body when the ``[usd]`` extra is missing, a shapely GEOSException, …)
+    is logged server-side and re-raised as a generic :class:`EvaluateError` (→ 400);
+    the client never sees the raw text. The temp file is ALWAYS deleted.
+    """
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+        mode="wb", suffix=suffix, delete=False
+    )
+    try:
+        tmp.write(data)
+        tmp.close()
+        try:
+            return fn(tmp.name)
+        except Exception as exc:
+            _LOG.warning("mesh upload parse (%s) rejected input: %s", suffix, exc)
+            raise EvaluateError() from exc
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            _LOG.warning("failed to delete temp upload file %r", tmp.name)
+
+
+def _export_to_temp_file(suffix: str, write_fn: Callable[[str], None]) -> str:
+    """Run ``write_fn(path)`` to PRODUCE a temp OUTPUT file, read its text back,
+    ALWAYS unlink, and map ANY exception to a generic :class:`EvaluateError`.
+
+    The OUTPUT-oriented counterpart of :func:`_with_temp_file` (which writes an
+    INPUT temp file for a parser to read): here the core writer OWNS the write, and
+    the server reads the produced text back to return it in the JSON body. Used by
+    :func:`export_layout`. Same ``finally``-unlink + generic-error discipline.
+
+    Honesty (ADR 0038 / OQ-45): a ``write_fn`` failure is client-attributable — a
+    layout that violates the engine contract (R10 too-few-speakers, WFS without an
+    alias frequency) raises ``ValueError`` — so ANY exception (that, a schema
+    ``FileNotFoundError`` when validation is enabled but the engine repo is
+    mis-set, a read error, …) is logged server-side and re-raised as a generic
+    :class:`EvaluateError` (→ 400). The temp file is ALWAYS deleted.
+    """
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+        mode="w", suffix=suffix, delete=False, encoding="utf-8"
+    )
+    tmp.close()
+    try:
+        try:
+            write_fn(tmp.name)
+            return Path(tmp.name).read_text(encoding="utf-8")
+        except Exception as exc:
+            _LOG.warning("export (%s) failed: %s", suffix, exc)
+            raise EvaluateError() from exc
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            _LOG.warning("failed to delete temp export file %r", tmp.name)
 
 
 def _parse_and_register(
@@ -419,6 +546,45 @@ def upload_structure(request: UploadStructureRequest) -> dict[str, object]:
     return _parse_and_register_many(
         request.structure_json, ".json", parse_structure
     )
+
+
+def upload_mesh(request: UploadMeshRequest) -> dict[str, object]:
+    """Parse an uploaded BINARY mesh file (base64) via core ``MeshAdapter`` and register it.
+
+    D29: the base64 payload is decoded to bytes, written to a temp file whose suffix
+    is taken from ``request.filename``, and parsed ENTIRELY by
+    ``roomestim.adapters.mesh.MeshAdapter().parse`` (trimesh for
+    ``.obj``/``.gltf``/``.glb``/``.ply``; the ``[usd]`` extra for ``.usdz``) — the
+    server adds no geometry math. Mesh files are metric-native, so the adapter
+    ignores ``scale_anchor`` (the server never supplies one). The parsed room is
+    stored in the bounded uploaded-room registry and its geometry (id embedded) is
+    returned for rendering, exactly like :func:`upload_room`.
+
+    Honesty (ADR 0038 / OQ-45): ALL failures are client-attributable. An
+    unsupported filename suffix is rejected BEFORE any decode/parse (we never write
+    an unknown file type to disk); a malformed base64 body (``binascii.Error`` /
+    ``ValueError``) is caught here; and any adapter failure — ``ValueError`` on an
+    unsupported/oversize/degenerate mesh, ``ImportError`` on a ``.usdz`` body when
+    the ``[usd]`` extra is missing, a shapely error — is caught by
+    :func:`_with_temp_bytes_file`. Every case is logged server-side and re-raised as
+    a generic :class:`EvaluateError` (→ 400); the temp file is ALWAYS deleted.
+    """
+    from roomestim.adapters.mesh import MeshAdapter  # noqa: PLC0415
+
+    suffix = Path(request.filename).suffix.lower()
+    if suffix not in _MESH_SUFFIXES:
+        _LOG.warning("upload_mesh: unsupported filename suffix %r", suffix)
+        raise EvaluateError()
+
+    try:
+        data = base64.b64decode(request.content_b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        _LOG.warning("upload_mesh: base64 decode failed: %s", exc)
+        raise EvaluateError() from exc
+
+    room = _with_temp_bytes_file(data, suffix, MeshAdapter().parse)
+    room_id = register_uploaded_room(room)
+    return {"room": room_geometry_to_dict(room, room_id)}
 
 
 def list_examples() -> list[dict[str, object]]:

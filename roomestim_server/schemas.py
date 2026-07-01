@@ -25,6 +25,8 @@ __all__ = [
     "UploadRoomRequest",
     "UploadRoomPlanRequest",
     "UploadStructureRequest",
+    "UploadMeshRequest",
+    "LayoutExportRequest",
 ]
 
 
@@ -172,3 +174,44 @@ class UploadStructureRequest(BaseModel):
     # is generous headroom for a large multi-room scan while still far below any
     # adversarial payload.
     structure_json: str = Field(max_length=10_000_000)
+
+
+class UploadMeshRequest(BaseModel):
+    """``POST /api/rooms/upload/mesh`` request body — a mesh file as base64 TEXT.
+
+    A mesh file is BINARY (``.obj``/``.gltf``/``.glb``/``.ply``/``.usdz``), so
+    unlike the text uploads it is carried as a base64 string in a JSON field (NOT
+    multipart) — the server still needs NO python-multipart dependency. The bytes
+    are decoded and parsed ENTIRELY by the core adapter
+    ``roomestim.adapters.mesh.MeshAdapter().parse`` (trimesh for the mesh formats;
+    ``.usdz`` needs the ``[usd]`` extra = pxr) — the server re-derives nothing and
+    adds no geometry math. Mesh files are metric-native, so ``scale_anchor`` is
+    unused (D29).
+    """
+
+    #: Original filename — ONLY its suffix (lowercased) is used to select the
+    #: parse path; the endpoint rejects an unsupported suffix with a generic 400.
+    filename: str
+    # Bounded (~90 MB of base64 ≈ ~67 MB of decoded bytes) so a network client
+    # cannot stream a multi-GB body into memory + temp file — an oversize body
+    # then fails as a clean 422, not an OOM (mirrors the text-upload guards).
+    # base64 inflates binary by ~1.34×; the AUTHORITATIVE decoded-size cap is
+    # MeshAdapter's own ``_MAX_MESH_FILE_BYTES`` (~200 MB), which rejects an
+    # oversize decoded mesh with a generic 400. This field cap is the coarser
+    # transport-level guard against an absurd request body.
+    content_b64: str = Field(max_length=90_000_000)
+
+
+class LayoutExportRequest(BaseModel):
+    """``POST /api/export/layout`` request body — emit the engine ``layout.yaml``.
+
+    ``layout.yaml`` (the placement contract downstream ``spatial_engine`` consumes)
+    is PLACEMENT-only, so ``spec``/``params`` are NOT needed (unlike
+    :class:`EvaluateRequest`). ``room_id`` is accepted for symmetry / forward-compat
+    and validated to resolve (a nonexistent room → generic 400), even though the
+    emitted layout.yaml is derived purely from ``placement`` via core
+    ``roomestim.export.layout_yaml.write_layout_yaml``.
+    """
+
+    room_id: str
+    placement: PlacementIn

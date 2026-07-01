@@ -39,17 +39,21 @@ from roomestim_server.rooms import (
 )
 from roomestim_server.schemas import (
     EvaluateRequest,
+    LayoutExportRequest,
     PlaceRequest,
+    UploadMeshRequest,
     UploadRoomPlanRequest,
     UploadRoomRequest,
     UploadStructureRequest,
 )
 from roomestim_server.service import (
     evaluate_request,
+    export_layout,
     list_examples,
     list_specs,
     load_example,
     place_request,
+    upload_mesh,
     upload_room,
     upload_roomplan,
     upload_structure,
@@ -112,6 +116,26 @@ def _build_router() -> APIRouter:
         # each with its own uploaded:<n> id). A bad body → generic EvaluateError
         # (→ 400). EXACT POST path (not shadowed by the GET path-param route).
         result = upload_structure(request)
+        return {"ok": True, **result}
+
+    @router.post("/api/rooms/upload/mesh")
+    def post_upload_mesh(request: UploadMeshRequest) -> dict[str, object]:
+        # Parse a BINARY mesh file (base64 in JSON — NO multipart) via core
+        # MeshAdapter (D29 — zero geometry math here; trimesh for
+        # .obj/.gltf/.glb/.ply, the [usd] extra for .usdz). An unsupported suffix /
+        # bad base64 / oversize / .usdz-without-[usd] → generic EvaluateError
+        # (→ 400). EXACT POST path (not shadowed by the GET path-param route).
+        result = upload_mesh(request)
+        return {"ok": True, **result}
+
+    @router.post("/api/export/layout")
+    def post_export_layout(request: LayoutExportRequest) -> dict[str, object]:
+        # Emit the engine-contract layout.yaml for the request placement via core
+        # write_layout_yaml (D29 — zero placement math here). Returns
+        # {"filename": "layout.yaml", "yaml": <text>}. Validation is env-gated on
+        # SPATIAL_ENGINE_REPO_DIR; an R10/WFS contract violation → generic
+        # EvaluateError (→ 400). EXACT POST path (no route clash).
+        result = export_layout(request)
         return {"ok": True, **result}
 
     @router.get("/api/examples")

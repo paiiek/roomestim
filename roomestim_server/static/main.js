@@ -37,9 +37,14 @@ const SEED = [
 
 // Mutable layout metadata forwarded verbatim into the /api/evaluate placement
 // block; re-seeding via /api/place overwrites it from the core response.
+// regularity_hint defaults to "IRREGULAR" — the honest label for the hand-placed
+// 5.1 SEED and any free-form dragged layout (non-uniform radii/angles). It is a
+// real engine hint (min-count 1), so "Export layout.yaml" produces a valid
+// layout.yaml on a fresh page too — never a spurious first-click error. (The old
+// "ring" placeholder was NOT an engine hint and made export 400 before re-seed.)
 let layoutMeta = {
   target_algorithm: "vbap",
-  regularity_hint: "ring",
+  regularity_hint: "IRREGULAR",
   layout_name: "live-edit",
 };
 
@@ -509,6 +514,49 @@ function exportTradeoff() {
   URL.revokeObjectURL(url);
 }
 
+// ---- Export layout.yaml (engine contract — produced server-side) ---------
+// D29: NO physics/serialisation in JS — the CURRENT room_id + live placement
+// (the same source /api/evaluate uses) is POSTed to /api/export/layout, where
+// core write_layout_yaml produces the layout.yaml text; the browser only
+// triggers a download of exactly the returned text.
+
+async function exportLayout() {
+  const body = {
+    room_id: currentRoomId,
+    placement: {
+      target_algorithm: layoutMeta.target_algorithm,
+      regularity_hint: layoutMeta.regularity_hint,
+      layout_name: layoutMeta.layout_name,
+      speakers: speakersFromMeshes(),
+    },
+  };
+  setStatus("Exporting layout.yaml…", false);
+  try {
+    const resp = await fetch("/api/export/layout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || data.ok !== true) {
+      showError(data && data.error ? data.error.message : "Layout export failed.");
+      return;
+    }
+    const blob = new Blob([data.yaml], { type: "application/x-yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = data.filename || "layout.yaml";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setStatus("Exported layout.yaml.", false);
+  } catch (err) {
+    showError("Layout export request failed.");
+  }
+}
+
 // ---- Spec dropdown (populated verbatim from GET /api/specs) ---------------
 
 async function populateSpecs() {
@@ -640,6 +688,36 @@ function uploadStructure(file) {
   return _uploadFile(file, "/api/rooms/upload/structure", "structure_json");
 }
 
+// A BINARY mesh file (.obj/.gltf/.glb/.ply/.usdz) — read as an ArrayBuffer, base64-
+// encode, and POST {filename, content_b64} to /api/rooms/upload/mesh. D29: NO
+// parsing/geometry math in the browser — core MeshAdapter parses it server-side.
+function _arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const CHUNK = 0x8000; // build the binary string in chunks to avoid arg-count limits
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+async function uploadMesh(file) {
+  if (!file) return;
+  let content_b64;
+  try {
+    const buf = await file.arrayBuffer();
+    content_b64 = _arrayBufferToBase64(buf);
+  } catch (err) {
+    showError("Could not read the selected mesh file.");
+    return;
+  }
+  return _postAndSwitch(
+    "/api/rooms/upload/mesh",
+    { filename: file.name, content_b64 },
+    `Uploading ${file.name}…`
+  );
+}
+
 function loadExample(exampleId) {
   if (!exampleId) return;
   return _postAndSwitch(
@@ -682,6 +760,7 @@ async function main() {
 
   $("reseed").addEventListener("click", reseedLayout);
   $("export").addEventListener("click", exportTradeoff);
+  $("export-layout").addEventListener("click", exportLayout);
   $("upload").addEventListener("change", (ev) => {
     const file = ev.target.files && ev.target.files[0];
     uploadRoom(file);
@@ -695,6 +774,11 @@ async function main() {
   $("upload-structure").addEventListener("change", (ev) => {
     const file = ev.target.files && ev.target.files[0];
     uploadStructure(file);
+    ev.target.value = ""; // allow re-uploading the same file
+  });
+  $("upload-mesh").addEventListener("change", (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    uploadMesh(file);
     ev.target.value = ""; // allow re-uploading the same file
   });
   $("examples").addEventListener("change", (ev) => {
