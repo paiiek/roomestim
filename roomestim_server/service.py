@@ -21,7 +21,7 @@ import logging
 import math
 import os
 import tempfile
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from roomestim_server.errors import EvaluateError
 from roomestim_server.rooms import (
@@ -33,12 +33,22 @@ from roomestim_server.schemas import (
     EvaluateRequest,
     PlaceRequest,
     PlacementIn,
+    UploadRoomPlanRequest,
     UploadRoomRequest,
 )
 
+if TYPE_CHECKING:
+    from roomestim.model import RoomModel
+
 _LOG = logging.getLogger("roomestim_server.service")
 
-__all__ = ["evaluate_request", "list_specs", "place_request", "upload_room"]
+__all__ = [
+    "evaluate_request",
+    "list_specs",
+    "place_request",
+    "upload_room",
+    "upload_roomplan",
+]
 
 
 def _is_finite_positive(value: Any) -> bool:
@@ -221,6 +231,47 @@ def list_specs() -> list[dict[str, object]]:
     ]
 
 
+def _parse_and_register(
+    text: str,
+    suffix: str,
+    parse_fn: Callable[[str], "RoomModel"],
+) -> dict[str, object]:
+    """Write ``text`` to a temp file, ``parse_fn`` it, register + serialise the room.
+
+    Shared by :func:`upload_room` (room.yaml) and :func:`upload_roomplan`
+    (RoomPlan JSON sidecar). D29: ALL geometry is derived by ``parse_fn`` (a
+    torch-free core reader/adapter) — the server adds no geometry math. The parsed
+    room is stored in the bounded uploaded-room registry and its geometry (with the
+    assigned id embedded) is returned for rendering.
+
+    Honesty (ADR 0038 / OQ-45): the ENTIRE operation is parsing client-supplied
+    text, so EVERY failure is client-attributable. Any exception from ``parse_fn``
+    (``ValueError``/``NotImplementedError``/``KeyError``/… — e.g. a malformed body,
+    a schema violation, or a shapely GEOSException on NaN coords) is logged
+    server-side and re-raised as a generic :class:`EvaluateError` (→ 400); the
+    client never sees the raw text. The temp file is ALWAYS deleted in a ``finally``.
+    """
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+        mode="w", suffix=suffix, delete=False, encoding="utf-8"
+    )
+    try:
+        tmp.write(text)
+        tmp.close()
+        try:
+            room = parse_fn(tmp.name)
+        except Exception as exc:
+            _LOG.warning("upload parse (%s) rejected client input: %s", suffix, exc)
+            raise EvaluateError() from exc
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            _LOG.warning("failed to delete temp upload file %r", tmp.name)
+
+    room_id = register_uploaded_room(room)
+    return {"room": room_geometry_to_dict(room, room_id)}
+
+
 def upload_room(request: UploadRoomRequest) -> dict[str, object]:
     """Parse an uploaded room.yaml (text) via core ``read_room_yaml`` and register it.
 
@@ -238,26 +289,27 @@ def upload_room(request: UploadRoomRequest) -> dict[str, object]:
     """
     from roomestim.io.room_yaml_reader import read_room_yaml  # noqa: PLC0415
 
-    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
-        mode="w", suffix=".yaml", delete=False, encoding="utf-8"
-    )
-    try:
-        tmp.write(request.room_yaml)
-        tmp.close()
-        try:
-            room = read_room_yaml(tmp.name)
-        except Exception as exc:
-            # The ENTIRE operation is parsing client-supplied text, so EVERY
-            # failure is client-attributable → generic 400 (a rare non-ValueError
-            # slipping the schema — e.g. a shapely GEOSException on NaN coords —
-            # thus maps to 400, not 500). Real cause logged server-side only.
-            _LOG.warning("read_room_yaml rejected uploaded room.yaml: %s", exc)
-            raise EvaluateError() from exc
-    finally:
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            _LOG.warning("failed to delete temp upload file %r", tmp.name)
+    return _parse_and_register(request.room_yaml, ".yaml", read_room_yaml)
 
-    room_id = register_uploaded_room(room)
-    return {"room": room_geometry_to_dict(room, room_id)}
+
+def upload_roomplan(request: UploadRoomPlanRequest) -> dict[str, object]:
+    """Parse an uploaded Apple RoomPlan JSON sidecar via core ``RoomPlanAdapter``.
+
+    D29: the RoomPlan JSON text is written to a temp file and parsed ENTIRELY by
+    ``roomestim.adapters.roomplan.RoomPlanAdapter().parse`` (torch-free, json+numpy
+    only) — the server adds no geometry math. RoomPlan is metric-native, so the
+    adapter ignores ``scale_anchor`` (the server never supplies one). The parsed
+    room is stored in the bounded uploaded-room registry and its geometry (id
+    embedded) is returned for rendering, exactly like :func:`upload_room`.
+
+    Honesty (ADR 0038 / OQ-45): ALL parse/validation failures are
+    client-attributable. ``RoomPlanAdapter().parse`` raises ``ValueError`` on a
+    malformed/unsupported sidecar and ``NotImplementedError`` on a ``.usdz`` body;
+    both — and any other exception — are caught by :func:`_parse_and_register`,
+    logged server-side, and re-raised as a generic :class:`EvaluateError` (→ 400).
+    """
+    from roomestim.adapters.roomplan import RoomPlanAdapter  # noqa: PLC0415
+
+    return _parse_and_register(
+        request.roomplan_json, ".json", RoomPlanAdapter().parse
+    )

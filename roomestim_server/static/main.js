@@ -2,7 +2,9 @@
 // /api/evaluate response, every seeded speaker layout comes verbatim from the
 // /api/place response, the spec dropdown comes verbatim from /api/specs, and an
 // uploaded room.yaml is parsed ENTIRELY server-side by core read_room_yaml
-// (POST /api/rooms/upload). "Export trade-off JSON" downloads the exact report
+// (POST /api/rooms/upload), and an uploaded Apple RoomPlan JSON sidecar is parsed
+// ENTIRELY server-side by core RoomPlanAdapter (POST /api/rooms/upload/roomplan).
+// "Export trade-off JSON" downloads the exact report
 // object the server already returned — NO recompute, NO client-side physics.
 // Dragging only moves a speaker's {x,z} (keeps y) — that's UI geometry.
 //
@@ -531,9 +533,13 @@ async function populateSpecs() {
   }
 }
 
-// ---- Upload room.yaml (parsed entirely server-side by core read_room_yaml) -
+// ---- Upload a room (parsed entirely server-side by the torch-free core) ---
+// Two text formats share ONE switch flow: room.yaml (POST /api/rooms/upload,
+// core read_room_yaml) and an Apple RoomPlan JSON sidecar
+// (POST /api/rooms/upload/roomplan, core RoomPlanAdapter). D29: NO parsing or
+// geometry math runs in the browser — the file text is posted verbatim.
 
-async function uploadRoom(file) {
+async function _uploadAndSwitch(file, url, fieldName) {
   if (!file) return;
   let text;
   try {
@@ -544,10 +550,10 @@ async function uploadRoom(file) {
   }
   setStatus(`Uploading ${file.name}…`, false);
   try {
-    const resp = await fetch("/api/rooms/upload", {
+    const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room_yaml: text }),
+      body: JSON.stringify({ [fieldName]: text }),
     });
     const data = await resp.json().catch(() => null);
     if (!resp.ok || !data || data.ok !== true) {
@@ -565,6 +571,14 @@ async function uploadRoom(file) {
   }
 }
 
+function uploadRoom(file) {
+  return _uploadAndSwitch(file, "/api/rooms/upload", "room_yaml");
+}
+
+function uploadRoomPlan(file) {
+  return _uploadAndSwitch(file, "/api/rooms/upload/roomplan", "roomplan_json");
+}
+
 // ---- Boot flow -----------------------------------------------------------
 
 async function main() {
@@ -575,6 +589,11 @@ async function main() {
   $("upload").addEventListener("change", (ev) => {
     const file = ev.target.files && ev.target.files[0];
     uploadRoom(file);
+    ev.target.value = ""; // allow re-uploading the same file
+  });
+  $("upload-roomplan").addEventListener("change", (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    uploadRoomPlan(file);
     ev.target.value = ""; // allow re-uploading the same file
   });
 

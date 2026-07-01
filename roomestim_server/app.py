@@ -39,6 +39,7 @@ from roomestim_server.rooms import (
 from roomestim_server.schemas import (
     EvaluateRequest,
     PlaceRequest,
+    UploadRoomPlanRequest,
     UploadRoomRequest,
 )
 from roomestim_server.service import (
@@ -46,6 +47,7 @@ from roomestim_server.service import (
     list_specs,
     place_request,
     upload_room,
+    upload_roomplan,
 )
 
 _LOG = logging.getLogger("roomestim_server.app")
@@ -85,6 +87,16 @@ def _build_router() -> APIRouter:
         # here). A bad file → generic EvaluateError (→ 400); the app handlers cover
         # errors. Distinct from the GET ``/api/rooms/{id}`` route (different method).
         result = upload_room(request)
+        return {"ok": True, **result}
+
+    @router.post("/api/rooms/upload/roomplan")
+    def post_upload_roomplan(request: UploadRoomPlanRequest) -> dict[str, object]:
+        # Parse an Apple RoomPlan JSON sidecar via core RoomPlanAdapter (D29 — zero
+        # geometry math here; torch-free json+numpy adapter). A bad/`.usdz` body →
+        # generic EvaluateError (→ 400); the app handlers cover errors. This is an
+        # EXACT POST path (not shadowed by the GET ``/api/rooms/{room_id:path}``
+        # route: different method, and exact paths win over the path-param route).
+        result = upload_roomplan(request)
         return {"ok": True, **result}
 
     # ``:path`` captures the id WHOLE so ids containing a colon/slash

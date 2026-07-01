@@ -23,6 +23,7 @@ __all__ = [
     "EvaluateRequest",
     "PlaceRequest",
     "UploadRoomRequest",
+    "UploadRoomPlanRequest",
 ]
 
 
@@ -123,3 +124,25 @@ class UploadRoomRequest(BaseModel):
     # stream a multi-GB body into memory + temp file + yaml.safe_load — an oversize
     # body then fails as a clean 422, not an OOM. Additive DoS guard.
     room_yaml: str = Field(max_length=2_000_000)
+
+
+class UploadRoomPlanRequest(BaseModel):
+    """``POST /api/rooms/upload/roomplan`` request body — an Apple RoomPlan JSON
+    sidecar as raw TEXT.
+
+    Like :class:`UploadRoomRequest`, the file content is sent as a JSON string
+    field (NOT multipart) so the server needs NO python-multipart dependency. The
+    text is parsed ENTIRELY by the torch-free core adapter
+    ``roomestim.adapters.roomplan.RoomPlanAdapter`` (json+numpy only, both already
+    core deps) — the server re-derives nothing and adds no geometry math. RoomPlan
+    is metric-native, so ``scale_anchor`` is unused (D29).
+    """
+
+    # Bounded (~5 MB) so a network client cannot stream a multi-GB body into
+    # memory + temp file + json.load — an oversize body then fails as a clean 422,
+    # not an OOM (mirrors ``UploadRoomRequest``'s guard). The cap is ~2.5× the
+    # room.yaml cap because a RoomPlan sidecar enumerates every wall/floor/ceiling
+    # transform AND per-object (CapturedRoomObject) entry as verbose JSON, so a
+    # richly-furnished multi-surface capture is legitimately larger than a
+    # hand-authored room.yaml while still far below any adversarial payload.
+    roomplan_json: str = Field(max_length=5_000_000)
