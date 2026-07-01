@@ -5,6 +5,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.61.0] — 2026-07-01
+
+**임머시브 레이아웃 FastAPI `/api/evaluate` 서버 (P5.1, 헤드리스 MVP)** (MINOR,
+additive, core/web byte-equal). ADR 0061. 이미 ship 된 P3 4축 trade-off 엔진
+(`roomestim.design.tradeoff.evaluate_layout` → `tradeoff_to_dict`, ADR 0060)을
+HTTP JSON 으로 노출하는 얇은 stateless REST 레이어. **물리 재유도 0** — 모든
+수치는 엔진을 그대로 forward (byte-equal 패리티 테스트로 증명).
+
+### Server (앱-티어, 신규 `[server]` opt-in extra)
+
+신규 top-level 패키지 `roomestim_server/` (`roomestim_web` 와 별개 sibling).
+`create_app()` FastAPI 팩토리 + 엔드포인트: `POST /api/evaluate`
+(`{"ok": true, "report": <note-first tradeoff_to_dict>}`), `GET /api/rooms` +
+`GET /api/rooms/{id}` (지오메트리 ONLY — floor_polygon/ceiling_height/listener_area/
+walls, 물리·재질 미노출), `GET /healthz`. 내장 결정적 합성 룸 `builtin:shoebox`
+(5×4×3 m) 1개. 요청은 pydantic v2 로 검증(스키마 위반 → FastAPI 기본 422).
+
+- **정직성 (ADR 0038 / OQ-45 mirror)**: client-attributable core `ValueError`
+  (drive_w≤0, <2 스피커, 미지 spec key, 비양수 주입 RT60)·미지 room_id 는
+  서버측 `_LOG.warning`/`_LOG.exception` 로 실제 텍스트 로깅 후 generic 봉투로
+  변환 — 400 `{"ok": false, "error": {"code": "INVALID_REQUEST", ...}}` /
+  404 `ROOM_NOT_FOUND` / 전역 핸들러 500 `INTERNAL`. 응답 본문에 stack/path/
+  raw 예외 텍스트 누출 0.
+- **물리 패리티 (NO FAKE NUMBERS)**: 고정 입력에 대해 API report `==` in-process
+  `tradeoff_to_dict(evaluate_layout(...))` dict 완전 일치 단언 → 서버가 어떤
+  물리/drift 도 추가 안 함을 증명 (D29 web→core 단방향).
+- **경계 (additive opt-in)**: `[server]` extra = FastAPI(MIT) + uvicorn(BSD-3) +
+  httpx(BSD-3, TestClient 전송); Starlette(BSD-3)·Pydantic(MIT) 전이. fastapi 는
+  `create_app()` 호출 시에만 lazy import — `import roomestim`(core) 와
+  `import roomestim_server`(패키지) 둘 다 fastapi-free 유지(게이트 검증).
+  extra 부재 시 `create_app()` 은 친절한 `ImportError("install roomestim[server]")`.
+- 헤드리스 서버 테스트 16개(`tests/server/`, `pytest.importorskip("fastapi")` 로
+  extra 부재 env 포터블; 카논 miniforge env 에는 fastapi 설치돼 default 게이트
+  in-gate 합류). 프런트엔드(Three.js 렌더+드래그)는 P5.2/P5.3 로 연기.
+
+---
+
 ## [0.60.0] — 2026-07-01
 
 **`dome` placement dispatch wiring** (MINOR, additive, core byte-equal). ADR 0003

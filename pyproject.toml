@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roomestim"
-version = "0.60.0"
+version = "0.61.0"
 description = "Capture-to-config tool: room scan -> RoomModel + speaker placement -> spatial_engine YAMLs"
 requires-python = ">=3.10"
 authors = [{ name = "paiiek" }]
@@ -69,6 +69,23 @@ audio = [
     # both inside its functions) so the core boundary stays dependency-light.
     "blind-rt60>=0.1.1",
     "soundfile>=0.12",
+]
+server = [
+    # P5.1 / ADR 0061: optional FastAPI REST server (roomestim_server) over the
+    # frozen P3 trade-off engine. ALL deps are permissive + pure-Python:
+    #   fastapi   = MIT   uvicorn   = BSD-3   starlette = BSD-3 (fastapi dep)
+    #   pydantic  = MIT (fastapi dep)         httpx     = BSD-3
+    # No GPL/AGPL/NC transitive surprises (confirmed in ADR 0061). httpx is the
+    # transport TestClient uses and is required for the in-gate server tests, so
+    # it lives in this extra rather than a separate test-only one.
+    #
+    # BOUNDARY: fastapi is NEVER imported at `import roomestim` or
+    # `import roomestim_server` time — only when `roomestim_server.create_app()`
+    # is actually called (lazy import inside the factory). The torch-free,
+    # fastapi-free core boundary is gate-enforced.
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "httpx>=0.27",
 ]
 usd = ["usd-core>=24.0; python_version >= '3.10'"]
 mesh-export = ["usd-core>=24.0; python_version >= '3.10'"]
