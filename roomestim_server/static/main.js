@@ -771,6 +771,21 @@ async function reseedLayout() {
   const algorithm = $("algo").value;
   const n = parseInt($("nspk").value, 10);
   const body = { room_id: currentRoomId, algorithm, n_speakers: n };
+  // P7.3 additive forwards (D29: JS runs NO placement physics — these are just
+  // the request knobs the server hands verbatim to core run_placement).
+  const clearanceEl = $("clearance");
+  if (clearanceEl) {
+    const c = parseFloat(clearanceEl.value);
+    if (Number.isFinite(c)) body.clearance_m = c; // else omit → server default
+  }
+  if (algorithm === "format_avoid") {
+    const fmt = $("format");
+    if (fmt && fmt.value) body.format_id = fmt.value; // missing → honest server 400
+  }
+  if (algorithm === "ambisonics") {
+    const o = parseInt($("order").value, 10);
+    if (Number.isInteger(o)) body.order = o; // missing/NaN → honest server 400
+  }
   _movedChannel = null; // a fresh layout has no "just-moved" speaker to highlight
   setStatus(`Re-seeding (${algorithm}, n=${n})…`, false);
   try {
@@ -781,6 +796,8 @@ async function reseedLayout() {
     });
     const data = await resp.json().catch(() => null);
     if (!resp.ok || !data || data.ok !== true) {
+      // Generic server message (e.g. "format_avoid requires a format" /
+      // "ambisonics needs a valid order") — no crash, no leaked internals.
       showError(data && data.error ? data.error.message : "Re-seed failed.");
       return;
     }
@@ -790,11 +807,34 @@ async function reseedLayout() {
       regularity_hint: placement.regularity_hint,
       layout_name: placement.layout_name,
     };
+    renderPlaceNote(placement); // obstacle-aware disclosure + per-speaker deviation
     setSpeakers(placement.speakers);
     evaluateAndRender(speakersFromMeshes());
   } catch (err) {
     showError("Re-seed request failed.");
   }
+}
+
+// Render the obstacle-aware placement disclosure (server ``note``) + a compact
+// per-speaker ideal-vs-actual deviation summary (from each speaker's ``notes``).
+// D29: pure text rendering, NO physics. Hidden when there is nothing to disclose.
+function renderPlaceNote(placement) {
+  const el = $("place-note");
+  if (!el) return;
+  const note = placement && placement.note;
+  const flagged = ((placement && placement.speakers) || [])
+    .map((s) => s.notes)
+    .filter((t) => t); // drop empty notes (non-format algorithms)
+  if (!note && !flagged.length) {
+    el.textContent = "";
+    el.style.display = "none";
+    return;
+  }
+  const parts = [];
+  if (note) parts.push(note);
+  if (flagged.length) parts.push(...flagged);
+  el.textContent = parts.join("\n"); // textContent = XSS-safe
+  el.style.display = "";
 }
 
 // ---- Export trade-off JSON (verbatim last report — NO recompute) ---------
@@ -918,6 +958,46 @@ async function populateMaterials() {
   } catch (err) {
     /* leave the dropdowns at "— (keep)"; readMaterials() then sends nulls */
   }
+}
+
+// ---- Format dropdown (populated verbatim from GET /api/formats) ------------
+// The immersive format ids ("5.1", "5.1.4", …) the format_avoid placement uses.
+// D29: JS runs NO placement physics — the chosen id is POSTed to /api/place.
+
+async function populateFormats() {
+  const sel = $("format");
+  if (!sel) return;
+  try {
+    const resp = await fetch("/api/formats");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const formats = (data && data.formats) || [];
+    sel.replaceChildren();
+    for (const id of formats) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id; // textContent = XSS-safe
+      sel.appendChild(opt);
+    }
+    // Default to 5.1.4 when present (a common immersive bed+height config).
+    if ([...sel.options].some((o) => o.value === "5.1.4")) sel.value = "5.1.4";
+  } catch (err) {
+    /* leave the dropdown empty; format_avoid then 400s honestly if selected */
+  }
+}
+
+// ---- Algo-conditional control visibility -----------------------------------
+// #format shows only for format_avoid; #order only for ambisonics; #clearance
+// only for the obstacle-aware algorithms (format_avoid / coverage_avoid).
+function syncAlgoControls() {
+  const algo = $("algo") ? $("algo").value : "";
+  const show = (id, on) => {
+    const el = $(id);
+    if (el) el.style.display = on ? "" : "none";
+  };
+  show("format-wrap", algo === "format_avoid");
+  show("order-wrap", algo === "ambisonics");
+  show("clearance-wrap", algo === "format_avoid" || algo === "coverage_avoid");
 }
 
 // ---- Load / upload a room (parsed entirely server-side by torch-free core) --
@@ -1138,6 +1218,11 @@ async function main() {
   const showCeiling = $("show-ceiling");
   if (showCeiling) showCeiling.addEventListener("change", applyCeilingVisibility);
 
+  // P7.3: toggle the format/order/clearance controls to match the chosen algo.
+  const algoSel = $("algo");
+  if (algoSel) algoSel.addEventListener("change", syncAlgoControls);
+  syncAlgoControls();
+
   // Any spec/param change → debounced re-evaluate (shares scheduleEvaluate with
   // drag-end). The form values are the single source of truth for every request.
   for (const id of [
@@ -1152,6 +1237,7 @@ async function main() {
   // "— (keep)" → no override; examples stay empty).
   await populateSpecs();
   await populateMaterials();
+  await populateFormats();
   await populateExamples();
 
   // 1. Fetch room geometry and build the scene.

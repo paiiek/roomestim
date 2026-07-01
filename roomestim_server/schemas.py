@@ -120,10 +120,12 @@ class EvaluateRequest(BaseModel):
 class PlaceRequest(BaseModel):
     """``POST /api/place`` request body — seed a layout via core ``run_placement``.
 
-    The five fields map 1:1 to ``run_placement``'s first five positional args
-    (``room, algorithm, n_speakers, layout_radius_m, el_deg``). The wfs/coverage
-    keyword arguments are intentionally NOT exposed here (P5.3) — their defaults
-    apply. All placement physics stays in core; the server re-derives nothing.
+    The first five fields map 1:1 to ``run_placement``'s first five positional
+    args (``room, algorithm, n_speakers, layout_radius_m, el_deg``); ``format_id``
+    / ``clearance_m`` / ``order`` are the P7.3 additive keyword forwards (the
+    obstacle-aware format catalog + ambisonics rig order). The remaining wfs/coverage
+    keyword arguments are intentionally NOT exposed here — their defaults apply. All
+    placement physics stays in core; the server re-derives nothing.
     """
 
     room_id: str
@@ -135,6 +137,20 @@ class PlaceRequest(BaseModel):
     n_speakers: int = Field(default=6, ge=1, le=128)
     layout_radius_m: float = 1.8
     el_deg: float = 0.0
+    # Immersive format id (e.g. "5.1.4") — REQUIRED only for algorithm="format_avoid"
+    # (P7.3). None for every other algorithm; core validates it against the catalog
+    # (an unknown id / a missing id for format_avoid → ValueError → generic 400).
+    format_id: str | None = None
+    # Plan-view obstacle clearance (metres) used by the obstacle-aware algorithms
+    # ("format_avoid", "coverage_avoid"). Bounded to [0, 2] so a network client
+    # cannot request an absurd margin; ignored by every other algorithm. The core
+    # default (0.30 m) is mirrored here so an omitted field is byte-equal to today.
+    clearance_m: float = Field(default=0.30, ge=0.0, le=2.0)
+    # Ambisonics rig order — REQUIRED only for algorithm="ambisonics" (unlocks it:
+    # the platonic rig is sized by ``order``). None for every other algorithm; core
+    # raises ValueError → generic 400 when ambisonics is requested without a valid
+    # order (or an unsupported order).
+    order: int | None = None
 
 
 class UploadRoomRequest(BaseModel):

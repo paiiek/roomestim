@@ -246,6 +246,138 @@ def test_place_coverage_avoid_ok() -> None:
     assert len(placement["speakers"]) == 8
 
 
+# --------------------------------------------------------------------------- #
+# P7.3 — /api/formats catalog + format_avoid / ambisonics unlock + clearance_m
+# --------------------------------------------------------------------------- #
+
+
+def test_formats_catalog_endpoint() -> None:
+    """GET /api/formats returns the non-empty immersive-format id catalog."""
+    resp = _client().get("/api/formats")
+    assert resp.status_code == 200
+    formats = resp.json()["formats"]
+    assert isinstance(formats, list)
+    assert formats  # non-empty
+    assert "5.1.4" in formats
+
+
+def test_place_format_avoid_ok() -> None:
+    """format_avoid seeds a standard format (5.1.4 → 10 channels) via run_placement.
+
+    The obstacle-aware disclosure ``note`` is surfaced on the response (additive);
+    the placement is room-absolute (FORMAT_AVOID ∉ ear-origin set → un-lifted).
+    """
+    resp = _client().post(
+        "/api/place",
+        json={
+            "room_id": BUILTIN_SHOEBOX_ID,
+            "algorithm": "format_avoid",
+            "format_id": "5.1.4",
+            "n_speakers": 10,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    placement = body["placement"]
+    assert placement["target_algorithm"] == "FORMAT_AVOID"
+    assert len(placement["speakers"]) == 10
+    # Additive honesty surface: the disclosure note is present for the placement.
+    assert placement["note"]
+    # Each speaker carries its per-channel ideal-vs-actual note (deviation surface).
+    assert all("notes" in s for s in placement["speakers"])
+
+
+def test_place_format_avoid_missing_format_id_400_generic() -> None:
+    """format_avoid without ``format_id`` → core ValueError → generic 400 (ADR 0038)."""
+    resp = _client().post(
+        "/api/place",
+        json={
+            "room_id": BUILTIN_SHOEBOX_ID,
+            "algorithm": "format_avoid",
+            "n_speakers": 10,
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["ok"] is False
+    _assert_no_internals(resp.text)
+
+
+def test_place_coverage_avoid_accepts_clearance_m() -> None:
+    """coverage_avoid now accepts the wired ``clearance_m`` field (P7.3)."""
+    resp = _client().post(
+        "/api/place",
+        json={
+            "room_id": BUILTIN_SHOEBOX_ID,
+            "algorithm": "coverage_avoid",
+            "n_speakers": 8,
+            "clearance_m": 0.5,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    placement = body["placement"]
+    assert placement["target_algorithm"] == "COVERAGE_AVOID"
+    assert len(placement["speakers"]) == 8
+    assert placement["note"]  # obstacle-aware disclosure surfaced
+
+
+def test_place_ambisonics_unlocked_with_order() -> None:
+    """ambisonics is unlocked by forwarding ``order`` (P7.3) — order=1 → octahedron.
+
+    Previously ambisonics blanket-400'd because ``place_request`` passed no
+    ``order``; now a valid order succeeds. The order-1 platonic rig is a fixed
+    6-node octahedron (``n_speakers`` is advisory for this rig).
+    """
+    resp = _client().post(
+        "/api/place",
+        json={
+            "room_id": BUILTIN_SHOEBOX_ID,
+            "algorithm": "ambisonics",
+            "n_speakers": 8,
+            "order": 1,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["placement"]["target_algorithm"] == "AMBISONICS"
+    assert body["placement"]["speakers"]  # a rig was produced
+
+
+def test_place_ambisonics_without_order_still_400() -> None:
+    """ambisonics WITHOUT ``order`` still 400s honestly (order defaults to None)."""
+    resp = _client().post(
+        "/api/place",
+        json={
+            "room_id": BUILTIN_SHOEBOX_ID,
+            "algorithm": "ambisonics",
+            "n_speakers": 8,
+        },
+    )
+    assert resp.status_code == 400
+    assert resp.json()["ok"] is False
+    _assert_no_internals(resp.text)
+
+
+def test_place_clearance_m_out_of_bounds_422() -> None:
+    """clearance_m outside [0, 2] is rejected at the schema (pydantic 422)."""
+    for c in (-0.1, 2.5):
+        resp = _client().post(
+            "/api/place",
+            json={
+                "room_id": BUILTIN_SHOEBOX_ID,
+                "algorithm": "coverage_avoid",
+                "n_speakers": 8,
+                "clearance_m": c,
+            },
+        )
+        assert resp.status_code == 422, c
+        assert resp.json()["ok"] is False
+        assert resp.json()["error"]["code"] == "VALIDATION"
+
+
 def test_place_then_evaluate_round_trip() -> None:
     client = _client()
     placement = client.post(

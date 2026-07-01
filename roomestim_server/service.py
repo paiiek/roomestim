@@ -55,6 +55,7 @@ __all__ = [
     "evaluate_request",
     "export_layout",
     "list_examples",
+    "list_formats",
     "list_materials",
     "list_specs",
     "load_example",
@@ -77,6 +78,12 @@ __all__ = [
 #: after the room is recentred at registration) and must NOT be lifted — lifting
 #: them would float ceiling/wall speakers above the room, re-introducing the bug.
 _EAR_ORIGIN_ALGORITHMS = frozenset({"vbap", "dome", "ambisonics"})
+
+#: Obstacle-aware placement algorithms (P7.3). Both are room-ABSOLUTE (like
+#: ``dbap``) — they are deliberately NOT in ``_EAR_ORIGIN_ALGORITHMS`` so they are
+#: NOT height-lifted (they already emit Frame A). They carry the shared
+#: ``OBSTACLE_AWARE_PLACEMENT_NOTE`` disclosure in the ``/api/place`` response.
+_OBSTACLE_AWARE_ALGORITHMS = frozenset({"format_avoid", "coverage_avoid"})
 
 #: Mesh filename suffixes the mesh-upload endpoint accepts (mirror of core
 #: ``MeshAdapter._SUPPORTED_SUFFIXES``). An unsupported suffix is rejected at the
@@ -508,6 +515,9 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
             request.n_speakers,
             request.layout_radius_m,
             request.el_deg,
+            format_id=request.format_id,
+            clearance_m=request.clearance_m,
+            order=request.order,
         )
     except ValueError as exc:
         _LOG.warning("run_placement rejected inputs: %s", exc)
@@ -531,10 +541,25 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
         else 0.0
     )
 
+    # Additive honesty surface (P7.3): the obstacle-aware algorithms carry a
+    # single-source-of-truth disclosure the UI renders under the re-seed panel, and
+    # each speaker's ``notes`` (ideal-vs-actual deviation for format_avoid, empty for
+    # the rest) is forwarded verbatim. Both are additive keys → byte-equal-safe for
+    # every existing caller/test. The core NOTE is imported lazily (server import
+    # stays cheap) and only when an obstacle-aware algorithm ran.
+    note: str | None = None
+    if request.algorithm.lower() in _OBSTACLE_AWARE_ALGORITHMS:
+        from roomestim.place.obstacle_aware import (  # noqa: PLC0415
+            OBSTACLE_AWARE_PLACEMENT_NOTE,
+        )
+
+        note = OBSTACLE_AWARE_PLACEMENT_NOTE
+
     return {
         "target_algorithm": result.target_algorithm,
         "regularity_hint": result.regularity_hint,
         "layout_name": result.layout_name,
+        "note": note,
         "speakers": [
             {
                 "channel": s.channel,
@@ -552,6 +577,7 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
                         "z": s.aim_direction.z,
                     }
                 ),
+                "notes": s.notes,
             }
             for s in result.speakers
         ],
@@ -643,6 +669,19 @@ def list_materials() -> list[dict[str, object]]:
         }
         for label in MaterialLabel
     ]
+
+
+def list_formats() -> list[str]:
+    """List the immersive format catalog ids for the UI dropdown (P7.3 — NO physics).
+
+    Returns the ordered ``roomestim.place.formats.list_format_ids()`` (e.g.
+    ``["5.1", "7.1", "5.1.2", "5.1.4", ...]``) — the exact ids the ``format_avoid``
+    ``PlaceRequest.format_id`` field expects back. NO angle/geometry math is done
+    here; the catalog is imported lazily so ``import roomestim_server`` stays cheap.
+    """
+    from roomestim.place.formats import list_format_ids  # noqa: PLC0415
+
+    return list_format_ids()
 
 
 def _with_temp_file(text: str, suffix: str, fn: Callable[[str], _T]) -> _T:

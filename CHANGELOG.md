@@ -44,6 +44,24 @@ HEURISTIC 이며 음향/SPL 주장 없음(`OBSTACLE_AWARE_PLACEMENT_NOTE` 단일
   - `format_avoid` dispatch 분기(`format_id` kwarg; None → ValueError 로 포맷
     id 목록 안내) + `run_placement` room-awareness docstring 확장;
     `TargetAlgorithm.FORMAT_AVOID` (`x_target_algorithm` 라운드트립).
+- **P7.3 — 서버 + 뷰어 UI (server/static ONLY; core `roomestim/` 무변경).**
+  - `roomestim_server/schemas.py::PlaceRequest` 에 additive optional 3필드:
+    `format_id`(format_avoid 필수)·`clearance_m`(기본 0.30, `[0,2]` 바운드 DoS
+    가드)·`order`(ambisonics 언락). `place_request` 가 셋을 `run_placement` 로
+    포워드; 모든 core `ValueError`(미지 format_id, 포맷 최소 미만, 빈 후보풀,
+    ambisonics 잘못된 order/n) → generic `EvaluateError` → 400(ADR 0038, 실사유는
+    서버 로그만). `format_avoid`/`coverage_avoid` 는 room-ABSOLUTE →
+    `_EAR_ORIGIN_ALGORITHMS` 에 미포함(이중 height-lift 없음).
+  - `GET /api/formats` → `{"formats": list_format_ids()}` (`list_formats()` 서비스
+    헬퍼, `list_specs`/`list_materials` 미러). `/api/place` 응답에 additive
+    `note`(obstacle-aware 알고리즘일 때 `OBSTACLE_AWARE_PLACEMENT_NOTE`) + 스피커별
+    `notes`(ideal-vs-actual deviation) 표면화.
+  - 뷰어(`static/index.html`+`main.js`): `#algo` 에 `format_avoid`/
+    `coverage_avoid`/`ambisonics` 옵션; `GET /api/formats` 로 채운 `#format`
+    드롭다운(format_avoid 일 때만 표시); `#clearance`(obstacle-aware) 및
+    `#order`(ambisonics) 조건부 컨트롤; `reseedLayout` 가 관련 필드를 POST 에 포함
+    하고 400 시 서버 generic 메시지 표시(무크래시); 응답 `note`/편차를
+    `#place-note` 에 렌더(D29: JS 물리 0).
 
 ### Byte-equality
 
@@ -54,7 +72,8 @@ HEURISTIC 이며 음향/SPL 주장 없음(`OBSTACLE_AWARE_PLACEMENT_NOTE` 단일
 
 ### Deferred
 
-- P7.3(서버 `PlaceRequest` 필드 + `GET /api/formats` + 뷰어 UI), P7.4(WFS 노출).
+- P7.4(WFS 노출 — `layout_radius_m` 파생 간격이 기본값에서 aliasing bound 위반 →
+  전용 `f_max`/spacing 컨트롤 필요, 별도 phase).
 
 ---
 

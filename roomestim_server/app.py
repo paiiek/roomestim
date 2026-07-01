@@ -50,6 +50,7 @@ from roomestim_server.service import (
     evaluate_request,
     export_layout,
     list_examples,
+    list_formats,
     list_materials,
     list_specs,
     load_example,
@@ -96,6 +97,12 @@ def _build_router() -> APIRouter:
         # Curated material rule-base (label/name/absorption_500hz) for the UI
         # dropdowns — real Vorländer 2020 coefficients, NO physics here (P5.9).
         return {"materials": list_materials()}
+
+    @router.get("/api/formats")
+    def get_formats() -> dict[str, object]:
+        # Immersive format catalog ids (e.g. "5.1.4") for the format_avoid UI
+        # dropdown — the exact ids PlaceRequest.format_id expects; NO physics (P7.3).
+        return {"formats": list_formats()}
 
     @router.post("/api/rooms/upload")
     def post_upload_room(request: UploadRoomRequest) -> dict[str, object]:
