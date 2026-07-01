@@ -8,10 +8,20 @@ unblocked without solving capture ingest (upload→adapter is deferred to P5.4).
 The serialiser emits GEOMETRY ONLY (floor polygon, ceiling height, listener area,
 walls-from-surfaces) — NO physics. Pure-Python (core import only, no fastapi /
 pydantic), so it stays on the right side of the ``[server]`` extra boundary.
+
+Uploaded rooms (P5.4): a room.yaml uploaded via ``POST /api/rooms/upload`` is
+parsed by core ``read_room_yaml`` and kept in a PROCESS-LOCAL, NON-PERSISTENT,
+BOUNDED registry (:data:`_UPLOADED`, cap :data:`_UPLOADED_CAP`). This is a
+DELIBERATE, bounded exception to the otherwise-stateless server — acceptable for a
+single-user localhost tool: uploaded rooms vanish on restart, are NOT shared
+across workers, and the oldest is evicted once the cap is exceeded so memory is
+bounded. Everything else (evaluate/place) stays stateless.
 """
 
 from __future__ import annotations
 
+import copy
+import threading
 from typing import Callable
 
 from roomestim.model import (
@@ -29,6 +39,7 @@ __all__ = [
     "BUILTIN_SHOEBOX_ID",
     "list_rooms",
     "get_room",
+    "register_uploaded_room",
     "room_geometry_to_dict",
 ]
 
@@ -128,15 +139,57 @@ _ROOM_BUILDERS: dict[str, Callable[[], RoomModel]] = {
     BUILTIN_SHOEBOX_ID: _build_shoebox,
 }
 
+#: Maximum number of uploaded rooms retained at once (oldest evicted past this).
+_UPLOADED_CAP = 32
+
+#: Process-local, non-persistent, bounded registry of uploaded rooms keyed by
+#: ``"uploaded:<n>"`` (insertion order preserved for oldest-first eviction). A
+#: deliberate bounded exception to the stateless server — see the module docstring.
+_UPLOADED: dict[str, RoomModel] = {}
+
+#: Monotone counter for uploaded-room ids (never reused, so a stale client id can
+#: never alias a newer upload). Not reset even after eviction.
+_UPLOADED_SEQ = 0
+
+#: Guards the mutations of :data:`_UPLOADED` / :data:`_UPLOADED_SEQ`. Sync FastAPI
+#: endpoints run in the anyio threadpool, so concurrent uploads could otherwise
+#: race on the non-atomic counter increment + eviction; the lock makes register /
+#: read atomic (cheap — held only around dict/int ops).
+_UPLOAD_LOCK = threading.Lock()
+
+
+def register_uploaded_room(room: RoomModel) -> str:
+    """Store an uploaded ``room`` and return its ``"uploaded:<n>"`` id.
+
+    Evicts the OLDEST uploaded room once the count exceeds :data:`_UPLOADED_CAP`
+    so the registry stays memory-bounded (see the module docstring for the
+    deliberate-statefulness rationale). Thread-safe via :data:`_UPLOAD_LOCK`.
+    """
+    global _UPLOADED_SEQ
+    with _UPLOAD_LOCK:
+        _UPLOADED_SEQ += 1
+        room_id = f"uploaded:{_UPLOADED_SEQ}"
+        _UPLOADED[room_id] = room
+        while len(_UPLOADED) > _UPLOADED_CAP:
+            oldest = next(iter(_UPLOADED))
+            del _UPLOADED[oldest]
+    return room_id
+
 
 def get_room(room_id: str) -> RoomModel:
-    """Return a fresh built-in :class:`RoomModel` for ``room_id``.
+    """Return a fresh :class:`RoomModel` for ``room_id`` (built-in or uploaded).
 
-    Raises ``KeyError`` for an unknown id (the caller maps it to 404 on the
-    geometry endpoint, or to a generic 400 inside the evaluate path).
+    Built-in builders are consulted FIRST (a fresh build per request), then the
+    uploaded registry (a ``deepcopy`` is returned so a stored room is never
+    mutated by a caller — preserving the no-shared-state invariant the built-in
+    builders already have). Raises ``KeyError`` for an unknown id (the caller
+    maps it to 404 on the geometry endpoint, or to a generic 400 in evaluate).
     """
-    builder = _ROOM_BUILDERS[room_id]
-    return builder()
+    builder = _ROOM_BUILDERS.get(room_id)
+    if builder is not None:
+        return builder()
+    with _UPLOAD_LOCK:  # atomic read vs a concurrent eviction
+        return copy.deepcopy(_UPLOADED[room_id])
 
 
 def _footprint_summary(room: RoomModel) -> dict[str, object]:

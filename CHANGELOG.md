@@ -82,6 +82,33 @@ walls, 물리·재질 미노출), `GET /healthz`. 내장 결정적 합성 룸 `b
   에러 봉투(미지 algo/room·too-few·malformed·out-of-bounds)·place→evaluate 라운드트립.
   **드래그 UX 자체는 human 육안 검증**(WebGL, headless 불가).
 
+### Server — specs·room.yaml 업로드·폼 컨트롤·export (P5.4, 최종 슬라이스, core/버전 무변경)
+
+P5 마지막 슬라이스: 스피커 카탈로그 노출·실 room.yaml 업로드·파라미터 폼·리포트 export.
+
+- **`GET /api/specs`**: `BUILTIN_SPEAKER_CATALOG`(model_key·price·provenance) 나열
+  → 프런트 spec 드롭다운. 물리 0.
+- **`POST /api/rooms/upload`**: room.yaml 을 **텍스트(JSON 본문 `{room_yaml}`)**로 받아
+  torch-free 코어 `read_room_yaml` 로 파싱(멀티파트 미사용 → `[server]` 의존 무변경).
+  파싱된 룸은 **bounded in-memory 레지스트리**(`uploaded:<n>`, cap 32 oldest-evict,
+  `threading.Lock` 보호, `get_room` 은 deepcopy 반환)에 저장 — 무상태 서버의 의도적·
+  경계-제한 예외(프로세스-로컬·비영속·워커 간 비공유, 정직 고지). **D29** 지오메트리
+  재유도 0. 잘못된 업로드(malformed YAML·룸 아님·스키마 위반) = 전부 client-attributable
+  → `read_room_yaml` 이 `ValueError` 로 래핑 → generic 400(누출 0, 4개 malformed 클래스
+  실증); `room_yaml` 은 ~2 MB max_length(초과 → 422 DoS 가드). 캡처파일(roomplan/usdz/
+  image) adapter 업로드는 DEFERRED(무거운 의존, room.yaml 만).
+- **폼 컨트롤**(`static/`): spec 드롭다운 + target_spl_db·drive_w·measured_rt60_s 입력
+  → `/api/evaluate` 로 공급(공백 RT60 → null → predicted), 변경 시 debounce 재평가.
+  스피커-수 selector 는 P5.3 재시드로 이미 존재.
+- **Export trade-off JSON**: 마지막 `/api/evaluate` 리포트를 **verbatim** 다운로드
+  (`_lastReport` Blob, 재계산 0 → drift 없음, `_on_export_tradeoff` 규칙 mirror).
+- **Upload UI**: `<input type=file>` → FileReader.readAsText → 업로드 → 현재 룸 교체·
+  재렌더·재평가(`currentRoomId` mutable).
+- 헤드리스 테스트(`tests/server/test_upload_and_export.py`, 11개): specs·업로드
+  라운드트립(write_room_yaml→upload→evaluate/place)·bad-yaml/not-a-room 400·malformed
+  422·distinct id·unknown-id 404/400·eviction cap·deepcopy 격리·oversize 422·main.js
+  wiring grep. **파일 다운로드+WebGL 렌더는 human 육안**.
+
 ---
 
 ## [0.60.0] — 2026-07-01

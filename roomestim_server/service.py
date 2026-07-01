@@ -19,15 +19,26 @@ from __future__ import annotations
 import dataclasses
 import logging
 import math
+import os
+import tempfile
 from typing import Any
 
 from roomestim_server.errors import EvaluateError
-from roomestim_server.rooms import get_room
-from roomestim_server.schemas import EvaluateRequest, PlaceRequest, PlacementIn
+from roomestim_server.rooms import (
+    get_room,
+    register_uploaded_room,
+    room_geometry_to_dict,
+)
+from roomestim_server.schemas import (
+    EvaluateRequest,
+    PlaceRequest,
+    PlacementIn,
+    UploadRoomRequest,
+)
 
 _LOG = logging.getLogger("roomestim_server.service")
 
-__all__ = ["evaluate_request", "place_request"]
+__all__ = ["evaluate_request", "list_specs", "place_request", "upload_room"]
 
 
 def _is_finite_positive(value: Any) -> bool:
@@ -190,3 +201,63 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
             for s in result.speakers
         ],
     }
+
+
+def list_specs() -> list[dict[str, object]]:
+    """List the built-in speaker specs (catalog metadata only — NO physics).
+
+    Returns ``{"model_key", "price", "provenance"}`` per entry in
+    ``roomestim.spec.speaker_spec.BUILTIN_SPEAKER_CATALOG`` so the frontend can
+    populate a spec dropdown. NO SPL/directivity math is done here; the catalog
+    is imported lazily so ``import roomestim_server`` stays cheap.
+    """
+    from roomestim.spec.speaker_spec import (  # noqa: PLC0415
+        BUILTIN_SPEAKER_CATALOG,
+    )
+
+    return [
+        {"model_key": key, "price": spec.price, "provenance": spec.provenance}
+        for key, spec in BUILTIN_SPEAKER_CATALOG.items()
+    ]
+
+
+def upload_room(request: UploadRoomRequest) -> dict[str, object]:
+    """Parse an uploaded room.yaml (text) via core ``read_room_yaml`` and register it.
+
+    D29: the room.yaml text is written to a temp file and parsed ENTIRELY by
+    ``roomestim.io.room_yaml_reader.read_room_yaml`` — the server adds no geometry
+    math. The parsed room is stored in the bounded uploaded-room registry and its
+    geometry (with the assigned id embedded) is returned for rendering.
+
+    Honesty (ADR 0038 / OQ-45): ALL parse/validation failures are
+    client-attributable (a bad uploaded file), so any error from the reader
+    (``read_room_yaml`` already wraps YAML + schema errors as ``ValueError``, but
+    a stray ``KeyError``/``TypeError`` on hand-mangled input is caught too) is
+    logged server-side and re-raised as a generic :class:`EvaluateError` (→ 400).
+    The temp file is ALWAYS deleted in a ``finally``.
+    """
+    from roomestim.io.room_yaml_reader import read_room_yaml  # noqa: PLC0415
+
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
+        mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+    )
+    try:
+        tmp.write(request.room_yaml)
+        tmp.close()
+        try:
+            room = read_room_yaml(tmp.name)
+        except Exception as exc:
+            # The ENTIRE operation is parsing client-supplied text, so EVERY
+            # failure is client-attributable → generic 400 (a rare non-ValueError
+            # slipping the schema — e.g. a shapely GEOSException on NaN coords —
+            # thus maps to 400, not 500). Real cause logged server-side only.
+            _LOG.warning("read_room_yaml rejected uploaded room.yaml: %s", exc)
+            raise EvaluateError() from exc
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            _LOG.warning("failed to delete temp upload file %r", tmp.name)
+
+    room_id = register_uploaded_room(room)
+    return {"room": room_geometry_to_dict(room, room_id)}

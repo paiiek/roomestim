@@ -1,17 +1,22 @@
 // D29: this file performs ZERO physics — every metric is read verbatim from the
-// /api/evaluate response, and every seeded speaker layout comes verbatim from the
-// /api/place response (core run_placement). Dragging only moves a speaker's {x,z}
-// (keeps y) — that's UI geometry, NOT physics. No SPL/angle/RT60 math here.
+// /api/evaluate response, every seeded speaker layout comes verbatim from the
+// /api/place response, the spec dropdown comes verbatim from /api/specs, and an
+// uploaded room.yaml is parsed ENTIRELY server-side by core read_room_yaml
+// (POST /api/rooms/upload). "Export trade-off JSON" downloads the exact report
+// object the server already returned — NO recompute, NO client-side physics.
+// Dragging only moves a speaker's {x,z} (keeps y) — that's UI geometry.
 //
-// immersive-layout P5.3 / ADR 0061 — draggable speakers + live re-evaluate.
-// Builds on P5.2 (static viewer): loads ONE built-in room, renders geometry +
-// speakers, and re-POSTs /api/evaluate whenever a speaker is dragged (debounced)
-// or the layout is re-seeded via /api/place. Metrics repaint from the response.
+// immersive-layout P5.4 / ADR 0061 — polish: spec dropdown + target/drive/RT60
+// controls + upload room.yaml + export last report. Builds on P5.2 (static
+// viewer) + P5.3 (draggable speakers + live re-evaluate via /api/evaluate).
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-const ROOM_ID = "builtin:shoebox";
+// Mutable current room id — starts on the built-in shoebox, is replaced by the
+// returned "uploaded:<n>" id after a successful room.yaml upload. Used by every
+// evaluate/place/geometry request so the whole viewer follows the active room.
+let currentRoomId = "builtin:shoebox";
 
 // Literal initial speaker data (NOT computed via trig). Positions sit inside the
 // 5x4x3 m origin-centred shoebox: x in [-2.5,2.5], y=1.2, z in [-2,2].
@@ -128,6 +133,20 @@ function initScene(container) {
   })();
 }
 
+// Room geometry meshes (floor, walls, listener patch) added by buildRoom —
+// tracked so an upload can clear the previous room before rebuilding.
+let roomMeshes = [];
+
+// Remove + dispose the current room geometry meshes (NOT the speakers). Called
+// before rebuilding the scene for an uploaded room.
+function clearRoomMeshes() {
+  for (const m of roomMeshes) {
+    scene.remove(m);
+    if (m.geometry) m.geometry.dispose();
+  }
+  roomMeshes = [];
+}
+
 function buildRoom(geom) {
   // Floor: a THREE.Shape from floor_polygon (map x->x, z->z), laid flat at y=0.
   const floorPts = geom.floor_polygon.map((p) => new THREE.Vector2(p.x, p.z));
@@ -139,6 +158,7 @@ function buildRoom(geom) {
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2; // shape XY-plane -> world XZ-plane
   scene.add(floor);
+  roomMeshes.push(floor);
 
   // Walls: wireframe line loops of each wall polygon (already 3-D {x,y,z}).
   const wallMat = new THREE.LineBasicMaterial({ color: 0x5a6675 });
@@ -146,7 +166,9 @@ function buildRoom(geom) {
     const pts = wall.polygon.map((p) => new THREE.Vector3(p.x, p.y, p.z));
     if (pts.length) pts.push(pts[0].clone()); // close the loop
     const g = new THREE.BufferGeometry().setFromPoints(pts);
-    scene.add(new THREE.Line(g, wallMat));
+    const line = new THREE.Line(g, wallMat);
+    scene.add(line);
+    roomMeshes.push(line);
   }
 
   // Listener-area patch: semi-transparent, hovering just above the floor.
@@ -161,6 +183,7 @@ function buildRoom(geom) {
     patch.rotation.x = -Math.PI / 2;
     patch.position.y = 0.02;
     scene.add(patch);
+    roomMeshes.push(patch);
   }
 }
 
@@ -256,7 +279,15 @@ function fmt(v, suffix = "") {
   return (typeof v === "number" ? v : String(v)) + suffix;
 }
 
+// The last SUCCESSFUL /api/evaluate report object, stored verbatim so "Export
+// trade-off JSON" downloads EXACTLY what the server returned (no recompute, no
+// drift — mirrors roomestim_web _on_export_tradeoff's write-what-was-shown rule).
+let _lastReport = null;
+
 function renderReport(report) {
+  _lastReport = report;
+  const btn = $("export");
+  if (btn) btn.disabled = false;
   setStatus(
     `${report.layout_name} · ${report.target_algorithm} · ${report.n_speakers} speakers`,
     false
@@ -351,18 +382,47 @@ function showError(message) {
 // Monotone request id so a slow older response can never overwrite a newer one.
 let _evalSeq = 0;
 
+// Read the spec/params blocks from the CURRENT form values — the single source
+// of truth shared by initial load, drag-end, re-seed, and control-change. A blank
+// RT60 field maps to null (→ core predicts RT60), NOT 0/NaN. These are forwarded
+// verbatim to /api/evaluate; the server does all physics.
+function readSpec() {
+  const sel = $("spec");
+  const key = sel && sel.value ? sel.value : "generic_surround_compact";
+  return { model_key: key, price: null };
+}
+
+function _numOrDefault(id, fallback) {
+  const raw = $(id).value;
+  if (raw === "" || raw === null || raw === undefined) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function readParams() {
+  const rt60Raw = $("rt60").value;
+  // Blank RT60 → null (predicted). A value is sent as-is; the server rejects a
+  // non-positive injection (generic 400), so no client-side physics/clamping.
+  const rt60 = rt60Raw === "" ? null : Number(rt60Raw);
+  return {
+    drive_w: _numOrDefault("drive", 10.0),
+    target_spl_db: _numOrDefault("target", 85.0),
+    measured_rt60_s: rt60 !== null && Number.isFinite(rt60) ? rt60 : null,
+  };
+}
+
 async function evaluateAndRender(speakers) {
   const seq = ++_evalSeq;
   const body = {
-    room_id: ROOM_ID,
+    room_id: currentRoomId,
     placement: {
       target_algorithm: layoutMeta.target_algorithm,
       regularity_hint: layoutMeta.regularity_hint,
       layout_name: layoutMeta.layout_name,
       speakers,
     },
-    spec: { model_key: "generic_surround_compact", price: null },
-    params: { drive_w: 10.0, target_spl_db: 85.0, measured_rt60_s: null },
+    spec: readSpec(),
+    params: readParams(),
   };
   try {
     const resp = await fetch("/api/evaluate", {
@@ -399,7 +459,7 @@ function scheduleEvaluate() {
 async function reseedLayout() {
   const algorithm = $("algo").value;
   const n = parseInt($("nspk").value, 10);
-  const body = { room_id: ROOM_ID, algorithm, n_speakers: n };
+  const body = { room_id: currentRoomId, algorithm, n_speakers: n };
   setStatus(`Re-seeding (${algorithm}, n=${n})…`, false);
   try {
     const resp = await fetch("/api/place", {
@@ -425,16 +485,112 @@ async function reseedLayout() {
   }
 }
 
+// ---- Export trade-off JSON (verbatim last report — NO recompute) ---------
+
+function exportTradeoff() {
+  if (!_lastReport) return; // no-op until a report exists (button also disabled)
+  // Download EXACTLY the dict the server returned — no physics, no re-derivation.
+  const blob = new Blob([JSON.stringify(_lastReport, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "trade-off.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---- Spec dropdown (populated verbatim from GET /api/specs) ---------------
+
+async function populateSpecs() {
+  const sel = $("spec");
+  if (!sel) return;
+  try {
+    const resp = await fetch("/api/specs");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const specs = (data && data.specs) || [];
+    sel.replaceChildren();
+    for (const s of specs) {
+      const opt = document.createElement("option");
+      opt.value = s.model_key;
+      // Label with provenance so the honesty of the numbers is visible in the UI
+      // (e.g. "generic_surround_compact (estimate)"). textContent = XSS-safe.
+      opt.textContent = `${s.model_key} (${s.provenance})`;
+      sel.appendChild(opt);
+    }
+    // Default to generic_surround_compact when present (mirrors the P5.3 default).
+    if ([...sel.options].some((o) => o.value === "generic_surround_compact")) {
+      sel.value = "generic_surround_compact";
+    }
+  } catch (err) {
+    /* leave the dropdown empty; readSpec() falls back to the default key */
+  }
+}
+
+// ---- Upload room.yaml (parsed entirely server-side by core read_room_yaml) -
+
+async function uploadRoom(file) {
+  if (!file) return;
+  let text;
+  try {
+    text = await file.text();
+  } catch (err) {
+    showError("Could not read the selected file.");
+    return;
+  }
+  setStatus(`Uploading ${file.name}…`, false);
+  try {
+    const resp = await fetch("/api/rooms/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ room_yaml: text }),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || data.ok !== true) {
+      showError(data && data.error ? data.error.message : "Upload failed.");
+      return;
+    }
+    // Switch to the uploaded room: adopt its id, rebuild the scene from the
+    // returned geometry, keep the current speakers, and re-evaluate.
+    currentRoomId = data.room.id;
+    clearRoomMeshes();
+    buildRoom(data.room);
+    evaluateAndRender(speakersFromMeshes());
+  } catch (err) {
+    showError("Upload request failed.");
+  }
+}
+
 // ---- Boot flow -----------------------------------------------------------
 
 async function main() {
   initScene($("scene"));
 
   $("reseed").addEventListener("click", reseedLayout);
+  $("export").addEventListener("click", exportTradeoff);
+  $("upload").addEventListener("change", (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    uploadRoom(file);
+    ev.target.value = ""; // allow re-uploading the same file
+  });
+
+  // Any spec/param change → debounced re-evaluate (shares scheduleEvaluate with
+  // drag-end). The form values are the single source of truth for every request.
+  for (const id of ["spec", "target", "drive", "rt60"]) {
+    $(id).addEventListener("change", () => scheduleEvaluate());
+  }
+
+  // Populate the spec dropdown before the first evaluate (so readSpec() reflects
+  // the real default). Failure is non-fatal (readSpec falls back).
+  await populateSpecs();
 
   // 1. Fetch room geometry and build the scene.
   try {
-    const geoResp = await fetch("/api/rooms/" + encodeURIComponent(ROOM_ID));
+    const geoResp = await fetch("/api/rooms/" + encodeURIComponent(currentRoomId));
     if (!geoResp.ok) {
       showError("Failed to load room geometry (HTTP " + geoResp.status + ").");
       return;

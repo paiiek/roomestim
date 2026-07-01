@@ -36,8 +36,17 @@ from roomestim_server.rooms import (
     list_rooms,
     room_geometry_to_dict,
 )
-from roomestim_server.schemas import EvaluateRequest, PlaceRequest
-from roomestim_server.service import evaluate_request, place_request
+from roomestim_server.schemas import (
+    EvaluateRequest,
+    PlaceRequest,
+    UploadRoomRequest,
+)
+from roomestim_server.service import (
+    evaluate_request,
+    list_specs,
+    place_request,
+    upload_room,
+)
 
 _LOG = logging.getLogger("roomestim_server.app")
 
@@ -64,6 +73,19 @@ def _build_router() -> APIRouter:
     @router.get("/api/rooms")
     def get_rooms() -> dict[str, object]:
         return {"rooms": list_rooms()}
+
+    @router.get("/api/specs")
+    def get_specs() -> dict[str, object]:
+        # Catalog metadata only (model_key/price/provenance) — NO physics (D29).
+        return {"specs": list_specs()}
+
+    @router.post("/api/rooms/upload")
+    def post_upload_room(request: UploadRoomRequest) -> dict[str, object]:
+        # Parse room.yaml text via core read_room_yaml (D29 — zero geometry math
+        # here). A bad file → generic EvaluateError (→ 400); the app handlers cover
+        # errors. Distinct from the GET ``/api/rooms/{id}`` route (different method).
+        result = upload_room(request)
+        return {"ok": True, **result}
 
     # ``:path`` captures the id WHOLE so ids containing a colon/slash
     # (e.g. ``builtin:shoebox``, a future ``builtin:foo/bar``) are matched

@@ -22,6 +22,7 @@ __all__ = [
     "ParamsIn",
     "EvaluateRequest",
     "PlaceRequest",
+    "UploadRoomRequest",
 ]
 
 
@@ -107,3 +108,18 @@ class PlaceRequest(BaseModel):
     n_speakers: int = Field(default=6, ge=1, le=128)
     layout_radius_m: float = 1.8
     el_deg: float = 0.0
+
+
+class UploadRoomRequest(BaseModel):
+    """``POST /api/rooms/upload`` request body — a room.yaml as raw TEXT.
+
+    The file content is sent as a JSON string field (NOT multipart) so the
+    server needs NO python-multipart dependency. The text is parsed ENTIRELY by
+    the torch-free core reader ``roomestim.io.room_yaml_reader.read_room_yaml``
+    (P5.4) — the server re-derives nothing and adds no geometry math.
+    """
+
+    # Bounded (~2 MB, far beyond any real room.yaml) so a network client cannot
+    # stream a multi-GB body into memory + temp file + yaml.safe_load — an oversize
+    # body then fails as a clean 422, not an OOM. Additive DoS guard.
+    room_yaml: str = Field(max_length=2_000_000)
