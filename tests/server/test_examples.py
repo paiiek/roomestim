@@ -105,6 +105,33 @@ def test_every_shipped_example_loads() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# ★ Frame normalisation — a captured room is recentred to the canonical Frame A
+#   (floor at y=0, listener centroid at the horizontal origin) at registration
+# --------------------------------------------------------------------------- #
+
+
+def test_captured_room_recentred_to_listener_origin() -> None:
+    """A real captured room (own world frame) comes back centred on Frame A.
+
+    The bundled ``capturedstructure_single`` living-room is authored near
+    ``x≈1.22, z≈0.04`` with the floor at ``y≈−1.02``; registration recentres it so
+    the listener centroid sits at the horizontal origin and the floor sits at y=0.
+    """
+    client = _client()
+    room = client.post("/api/examples/capturedstructure_single/load").json()["rooms"][0]
+
+    c = room["listener_area"]["centroid"]
+    assert c["x"] == pytest.approx(0.0, abs=1e-6)
+    assert c["z"] == pytest.approx(0.0, abs=1e-6)
+
+    wall_ys = [p["y"] for w in room["walls"] for p in w["polygon"]]
+    assert wall_ys
+    assert min(wall_ys) == pytest.approx(0.0, abs=1e-6)  # floor at y=0
+    # ceiling_height_m is floor-relative and unchanged by the rigid translation.
+    assert max(wall_ys) == pytest.approx(room["ceiling_height_m"], abs=1e-3)
+
+
+# --------------------------------------------------------------------------- #
 # Errors — unknown id → generic 404, no leaked internals
 # --------------------------------------------------------------------------- #
 

@@ -63,6 +63,19 @@ __all__ = [
     "upload_structure",
 ]
 
+#: Placement algorithms whose ``run_placement`` output is LISTENER-EAR-CENTRIC —
+#: i.e. built around the listener at the origin ``(0, 0, 0)`` with an el=0 ring on
+#: the ``y=0`` plane (``vbap``/``dome``: rings around the ear; ``ambisonics``: a
+#: sphere centred on the ear). To land them in the canonical Frame A (floor at
+#: ``y=0``, ear plane at ``listener_area.height_m``) the seeded speakers are lifted
+#: vertically by ``listener_area.height_m`` in the client-facing :func:`place_request`
+#: output (see the Part-2 note there). ``dbap`` (on wall/ceiling mount surfaces),
+#: ``coverage`` (on the ``y=ceiling_height_m`` ceiling plane), and ``wfs`` (a linear
+#: array at its own absolute mount ``height_m``) are ALREADY room-absolute (Frame A
+#: after the room is recentred at registration) and must NOT be lifted — lifting
+#: them would float ceiling/wall speakers above the room, re-introducing the bug.
+_EAR_ORIGIN_ALGORITHMS = frozenset({"vbap", "dome", "ambisonics"})
+
 #: Mesh filename suffixes the mesh-upload endpoint accepts (mirror of core
 #: ``MeshAdapter._SUPPORTED_SUFFIXES``). An unsupported suffix is rejected at the
 #: endpoint with a generic 400 BEFORE any decode/parse — we never write an unknown
@@ -246,6 +259,24 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
         _LOG.warning("run_placement rejected inputs: %s", exc)
         raise EvaluateError() from exc
 
+    # Part 2 (frame consistency): listener-ear-centric algorithms (vbap/dome/
+    # ambisonics) place around the ear at the origin, so an el=0 ring sits on the
+    # ``y=0`` plane. The canonical Frame A (matching the recentred room, the SEED,
+    # and ``evaluate_layout``'s ear-plane sampling at ``listener_area.height_m``)
+    # puts the ear at ``y=height_m``, so we lift these speakers by ``height_m``
+    # here — a CLIENT-FACING VIEW ADJUSTMENT only. This keeps the round-trip
+    # correct WITHOUT touching evaluate: the client sends these lifted speakers
+    # back to ``/api/evaluate``, which samples the listener at ``height_m`` and
+    # treats speaker ``y`` as absolute → both share Frame A (dy=0 for the ring →
+    # distances ≈ layout_radius, not the mismatched sqrt(radius²+height²)). Room-
+    # absolute algorithms (dbap/coverage/wfs) already emit Frame A after the room
+    # is recentred at registration and are NOT lifted (see _EAR_ORIGIN_ALGORITHMS).
+    lift = (
+        room.listener_area.height_m
+        if request.algorithm.lower() in _EAR_ORIGIN_ALGORITHMS
+        else 0.0
+    )
+
     return {
         "target_algorithm": result.target_algorithm,
         "regularity_hint": result.regularity_hint,
@@ -255,7 +286,7 @@ def place_request(request: PlaceRequest) -> dict[str, object]:
                 "channel": s.channel,
                 "position": {
                     "x": s.position.x,
-                    "y": s.position.y,
+                    "y": s.position.y + lift,
                     "z": s.position.z,
                 },
                 "aim_direction": (
@@ -455,7 +486,9 @@ def _parse_and_register(
     """
     room = _with_temp_file(text, suffix, parse_fn)
     room_id = register_uploaded_room(room)
-    return {"room": room_geometry_to_dict(room, room_id)}
+    # Serialise the STORED room (register recentres it to the canonical Frame A),
+    # NOT the pre-recentre local, so the render matches what place/evaluate see.
+    return {"room": room_geometry_to_dict(get_room(room_id), room_id)}
 
 
 def _parse_and_register_many(
@@ -476,7 +509,8 @@ def _parse_and_register_many(
     out: list[dict[str, object]] = []
     for room in rooms:
         room_id = register_uploaded_room(room)
-        out.append(room_geometry_to_dict(room, room_id))
+        # Serialise the STORED (recentred, Frame A) room so render == place/eval.
+        out.append(room_geometry_to_dict(get_room(room_id), room_id))
     return {"rooms": out}
 
 
@@ -584,7 +618,8 @@ def upload_mesh(request: UploadMeshRequest) -> dict[str, object]:
 
     room = _with_temp_bytes_file(data, suffix, MeshAdapter().parse)
     room_id = register_uploaded_room(room)
-    return {"room": room_geometry_to_dict(room, room_id)}
+    # Serialise the STORED (recentred, Frame A) room so render == place/eval.
+    return {"room": room_geometry_to_dict(get_room(room_id), room_id)}
 
 
 def list_examples() -> list[dict[str, object]]:

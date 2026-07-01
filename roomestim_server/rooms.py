@@ -21,10 +21,12 @@ bounded. Everything else (evaluate/place) stays stateless.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import threading
 from typing import Callable
 
 from roomestim.model import (
+    FREESTANDING_OBJECT_KINDS,
     ListenerArea,
     MaterialAbsorption,
     MaterialLabel,
@@ -158,13 +160,90 @@ _UPLOADED_SEQ = 0
 _UPLOAD_LOCK = threading.Lock()
 
 
+def _recenter_to_listener_origin(room: RoomModel) -> RoomModel:
+    """Rigid-translate ``room`` into the canonical listener-centric frame (Frame A).
+
+    The tool's canonical frame — matching the built-in shoebox, the viewer SEED,
+    and the ``evaluate_layout`` listener sampling (which puts the ear plane at
+    ``listener_area.height_m`` and treats speaker ``y`` as absolute) — is:
+
+    * floor at ``y = 0``;
+    * listener-area centroid at the horizontal origin ``x = z = 0``;
+    * seeded (el=0) speakers at ear height ``y = listener_area.height_m``.
+
+    Captured/uploaded rooms arrive in their OWN world frame (e.g. the real Apple
+    RoomPlan living-room floor sits near ``x≈1.22, z≈0.04`` with the floor at
+    ``y≈−1.02``), so the origin-centric SEED / placement speakers float off
+    relative to them AND ``evaluate_layout`` compares speaker↔listener across
+    mismatched frames. This normaliser removes that mismatch at the single upload
+    choke point.
+
+    The transform is a PURE RIGID TRANSLATION by ``(−dx, −dy, −dz)`` — no
+    rotation, scale, or geometry recompute — so it is physics-preserving (every
+    surface area / material / RT60 input is invariant under translation):
+
+    * ``dx = listener_area.centroid.x``, ``dz = listener_area.centroid.z``;
+    * ``dy = `` the floor height = the MINIMUM ``y`` over every ``Surface``
+      polygon point (``0`` for a degenerate surface-less room).
+
+    ``listener_area.height_m`` is floor-relative and is left UNCHANGED. Free-standing
+    object anchors (columns/furniture) are world-frame base centres and ARE
+    translated so they stay attached; door/window anchors are WALL-LOCAL
+    (:data:`WALL_ATTACHED_OBJECT_KINDS`) so they are left untouched. Object
+    width/height/depth are relative extents and never move. Returns a NEW
+    :class:`RoomModel` (the caller's input is untouched). Idempotent: an
+    already-canonical room (all offsets ``0``) is returned unchanged.
+    """
+    dx = room.listener_area.centroid.x
+    dz = room.listener_area.centroid.z
+    ys = [p.y for surf in room.surfaces for p in surf.polygon]
+    dy = min(ys) if ys else 0.0
+
+    if dx == 0.0 and dy == 0.0 and dz == 0.0:
+        return room  # already canonical (e.g. the built-in shoebox) — no-op
+
+    def _t2(p: Point2) -> Point2:
+        return Point2(p.x - dx, p.z - dz)
+
+    def _t3(p: Point3) -> Point3:
+        return Point3(p.x - dx, p.y - dy, p.z - dz)
+
+    listener = room.listener_area
+    return dataclasses.replace(
+        room,
+        floor_polygon=[_t2(p) for p in room.floor_polygon],
+        surfaces=[
+            dataclasses.replace(s, polygon=[_t3(p) for p in s.polygon])
+            for s in room.surfaces
+        ],
+        listener_area=dataclasses.replace(
+            listener,
+            polygon=[_t2(p) for p in listener.polygon],
+            centroid=_t2(listener.centroid),
+        ),
+        objects=[
+            dataclasses.replace(o, anchor=_t3(o.anchor))
+            if o.kind in FREESTANDING_OBJECT_KINDS
+            else o
+            for o in room.objects
+        ],
+    )
+
+
 def register_uploaded_room(room: RoomModel) -> str:
     """Store an uploaded ``room`` and return its ``"uploaded:<n>"`` id.
+
+    The room is first normalised to the canonical listener-centric frame (Frame A)
+    via :func:`_recenter_to_listener_origin` — this single choke point catches
+    EVERY uploaded room (room.yaml / RoomPlan / CapturedStructure / mesh /
+    load_example) so the viewer render, the SEED, and ``evaluate_layout`` all agree
+    on one frame (floor at ``y=0``, listener centroid at the horizontal origin).
 
     Evicts the OLDEST uploaded room once the count exceeds :data:`_UPLOADED_CAP`
     so the registry stays memory-bounded (see the module docstring for the
     deliberate-statefulness rationale). Thread-safe via :data:`_UPLOAD_LOCK`.
     """
+    room = _recenter_to_listener_origin(room)
     global _UPLOADED_SEQ
     with _UPLOAD_LOCK:
         _UPLOADED_SEQ += 1

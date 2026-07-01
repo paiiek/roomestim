@@ -71,7 +71,13 @@ def test_place_defaults_apply() -> None:
 
 
 def test_place_physics_parity() -> None:
-    """API speaker positions == a direct in-process ``run_placement`` call."""
+    """API speaker positions == a direct ``run_placement`` call, lifted to ear height.
+
+    ``vbap`` is listener-ear-centric (el=0 ring on the ``y=0`` plane); the server
+    lifts it by ``listener_area.height_m`` into the canonical Frame A (floor at 0,
+    ear plane at ``height_m``) as a client-facing view adjustment. So x/z round-trip
+    verbatim (no invented placement math) and y == the core value + ``height_m``.
+    """
     resp = _client().post(
         "/api/place",
         json={"room_id": BUILTIN_SHOEBOX_ID, "algorithm": "vbap", "n_speakers": 6},
@@ -79,9 +85,10 @@ def test_place_physics_parity() -> None:
     api_speakers = resp.json()["placement"]["speakers"]
 
     room = get_room(BUILTIN_SHOEBOX_ID)
+    lift = room.listener_area.height_m
     direct = run_placement(room, "vbap", 6, 1.8, 0.0)
     direct_positions = [
-        {"x": s.position.x, "y": s.position.y, "z": s.position.z}
+        {"x": s.position.x, "y": s.position.y + lift, "z": s.position.z}
         for s in direct.speakers
     ]
     api_positions = [s["position"] for s in api_speakers]
@@ -97,6 +104,45 @@ def test_place_physics_parity() -> None:
         for s in direct.speakers
     ]
     assert [s["aim_direction"] for s in api_speakers] == direct_aims
+
+
+# --------------------------------------------------------------------------- #
+# ★ Frame consistency — ear-origin algorithms lifted to ear height; room-absolute
+#   algorithms left untouched (Frame A: floor at y=0, ear plane at height_m)
+# --------------------------------------------------------------------------- #
+
+
+def test_place_ear_origin_lifted_to_ear_height() -> None:
+    """vbap (listener-ear-centric, el=0) seeds at ear height y ≈ height_m, centred."""
+    height_m = get_room(BUILTIN_SHOEBOX_ID).listener_area.height_m
+    resp = _client().post(
+        "/api/place",
+        json={"room_id": BUILTIN_SHOEBOX_ID, "algorithm": "vbap", "n_speakers": 6},
+    )
+    speakers = resp.json()["placement"]["speakers"]
+    for s in speakers:
+        assert s["position"]["y"] == pytest.approx(height_m)
+    # ring centred on the horizontal origin (listener centroid)
+    assert sum(s["position"]["x"] for s in speakers) == pytest.approx(0.0, abs=1e-9)
+    assert sum(s["position"]["z"] for s in speakers) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_place_coverage_not_lifted_stays_on_ceiling() -> None:
+    """coverage is room-absolute (ceiling plane) — it must NOT be lifted to y≈4.2.
+
+    Lifting a ceiling/wall placement by height_m would float it above the room and
+    re-introduce the very bug this fix removes; only ear-origin algorithms lift.
+    """
+    ceiling = get_room(BUILTIN_SHOEBOX_ID).ceiling_height_m
+    resp = _client().post(
+        "/api/place",
+        json={"room_id": BUILTIN_SHOEBOX_ID, "algorithm": "coverage", "n_speakers": 4},
+    )
+    assert resp.status_code == 200
+    speakers = resp.json()["placement"]["speakers"]
+    assert speakers
+    for s in speakers:
+        assert s["position"]["y"] == pytest.approx(ceiling)
 
 
 # --------------------------------------------------------------------------- #
