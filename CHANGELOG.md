@@ -40,6 +40,26 @@ walls, 물리·재질 미노출), `GET /healthz`. 내장 결정적 합성 룸 `b
   extra 부재 env 포터블; 카논 miniforge env 에는 fastapi 설치돼 default 게이트
   in-gate 합류). 프런트엔드(Three.js 렌더+드래그)는 P5.2/P5.3 로 연기.
 
+### Server — 프런트엔드 뷰어 (P5.2, static Three.js, core/버전 무변경)
+
+`roomestim_server` 에 정적 3-D 뷰어 추가 (드래그는 P5.3 로 연기 — orbit 카메라만).
+`GET /` = `index.html` 셸, `/static` StaticFiles 마운트(기존 `/api/*`·`/healthz`
+라우트 미잠식). 로드 시 `GET /api/rooms/{id}` 로 룸 지오메트리(바닥/벽/청취영역)
++ 리터럴 seed 스피커 6개를 렌더하고, `POST /api/evaluate` 를 1회 호출해 4축 리포트
++ **상시 면책 배너**(`note`·`spl_provenance`·`rt60.source`)를 그린다.
+
+- **D29 — JS 물리 0**: 뷰어는 SPL/각도/RT60 수식을 전혀 계산하지 않는다. 모든 수치는
+  `/api/evaluate` 응답에서 verbatim 으로 읽고, seed 위치는 리터럴 UI 데이터(트리그
+  계산 없음). 리포트 렌더는 전부 `textContent`(XSS-safe), 에러 봉투(`{"ok": false}`)
+  graceful 처리. 독립 리뷰가 모든 중첩 계약 키를 `tradeoff_to_dict` 산출과 대조 검증.
+- **Three.js 벤더링(오프라인/공급망)**: `three@0.160.0`(MIT) `three.module.js` +
+  `OrbitControls.js` 를 `static/vendor/` 에 로컬 벤더링, ES-module importmap 로 로컬
+  서빙 — 빌드 스텝·npm·외부 CDN·로드-시 페치 0. 현장(air-gapped) AV 설치서도 동작.
+- 헤드리스 테스트(`tests/server/test_static_and_rooms.py`): `GET /` HTML·`/static`
+  서빙·마운트가 `/healthz`·`/api/evaluate` 미잠식·벤더 three 로컬 서빙(CDN URL 부재)·
+  main.js 가 실 계약 키(중첩 per-axis 포함) 참조. **3-D 렌더 자체는 human 육안 검증**
+  (headless WebGL 불가 — 플랜 §7 명시).
+
 ---
 
 ## [0.60.0] — 2026-07-01

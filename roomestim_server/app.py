@@ -18,10 +18,12 @@ ONLY lazily via :func:`roomestim_server.create_app`, so ``import roomestim`` and
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from roomestim_server.errors import (
     GENERIC_INTERNAL_MESSAGE,
@@ -39,12 +41,21 @@ from roomestim_server.service import evaluate_request
 
 _LOG = logging.getLogger("roomestim_server.app")
 
+#: The P5.2 static frontend (index.html + main.js) lives beside this module.
+_STATIC_DIR = Path(__file__).parent / "static"
+
 __all__ = ["create_app"]
 
 
 def _build_router() -> APIRouter:
     """Construct the API router (endpoints close over the core service)."""
     router = APIRouter()
+
+    @router.get("/")
+    def index() -> FileResponse:
+        # Serve the static viewer shell (P5.2). The Three.js/main.js assets are
+        # served by the ``/static`` StaticFiles mount added in create_app().
+        return FileResponse(_STATIC_DIR / "index.html", media_type="text/html")
 
     @router.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -143,5 +154,9 @@ def create_app() -> FastAPI:
                 "error": {"code": "INTERNAL", "message": GENERIC_INTERNAL_MESSAGE},
             },
         )
+
+    # Mount the static frontend LAST — a distinct ``/static`` prefix that does not
+    # shadow the ``/api/*``, ``/healthz`` or ``/`` routes registered above.
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
     return app
