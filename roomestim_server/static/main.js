@@ -141,7 +141,13 @@ let renderer, scene, camera, controls;
 // its channel + aim_direction in userData so a drag only mutates x,z.
 let speakerMeshes = [];
 const _sphereGeo = new THREE.SphereGeometry(0.12, 20, 16);
-const _speakerMat = new THREE.MeshStandardMaterial({ color: 0xe0b341 });
+// P6.F: depthTest:false so speaker markers never get occluded by the semi-opaque
+// object obstacle boxes (color 0x8a5a3a) — the installer must always see every
+// speaker, even one placed inside/behind furniture. Paired with a high renderOrder
+// on the marker mesh (setSpeakers) so it also paints AFTER the transparent boxes.
+const _speakerMat = new THREE.MeshStandardMaterial({
+  color: 0xe0b341, depthTest: false,
+});
 
 // Invisible larger pick-target parented to each speaker so a click reliably hits
 // the speaker even though the visible marker is only 0.12 m (P6.E item 4). The
@@ -156,13 +162,8 @@ let _pickMeshes = [];
 // drawn texture — the channel int on a speaker, the object kind on an obstacle.
 // D29: the text is JUST the channel int / kind string already in the data; no
 // physics. XSS-safe: drawn with canvas fillText, never innerHTML.
-const _KIND_LABELS = {
-  column: "기둥/column",
-  sofa: "소파/sofa",
-  table: "테이블/table",
-  bed: "침대/bed",
-  storage: "수납/storage",
-};
+// P6.F: object labels are ENGLISH ONLY — the raw kind string (e.g. "table"),
+// no bilingual Korean prefix.
 
 function _makeLabelSprite(txt, color) {
   const text = String(txt);
@@ -369,7 +370,7 @@ function buildRoom(geom) {
     box.position.set(obj.anchor.x, obj.anchor.y + h / 2, obj.anchor.z);
     // On-scene kind label just above the box top (P6.E item 3) — child sprite so
     // it tracks the box; disposed with the box in clearRoomMeshes.
-    const label = _makeLabelSprite(_KIND_LABELS[obj.kind] || obj.kind, "#f0d9b0");
+    const label = _makeLabelSprite(obj.kind, "#f0d9b0"); // P6.F: English kind only
     label.position.set(0, h / 2 + 0.18, 0);
     box.add(label);
     box.userData.label = label;
@@ -395,10 +396,15 @@ function setSpeakers(list) {
     m.position.set(s.position.x, s.position.y, s.position.z);
     m.userData.channel = s.channel;
     m.userData.aim_direction = s.aim_direction ?? null;
+    // P6.F: draw the marker (and its channel label) AFTER the transparent object
+    // boxes so it is never hidden behind furniture — depthTest:false (on _speakerMat
+    // and the label sprite material) plus this high renderOrder keep speakers on top.
+    m.renderOrder = 10;
 
     // On-scene channel-number label above the marker (P6.E item 3).
     const label = _makeLabelSprite(s.channel, "#ffffff");
     label.position.set(0, 0.32, 0);
+    label.renderOrder = 11; // P6.F: above the marker so the channel number stays legible
     m.add(label);
     m.userData.label = label;
 
