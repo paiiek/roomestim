@@ -50,6 +50,7 @@ from roomestim_server.service import (
     evaluate_request,
     export_layout,
     list_examples,
+    list_materials,
     list_specs,
     load_example,
     place_request,
@@ -89,6 +90,12 @@ def _build_router() -> APIRouter:
     def get_specs() -> dict[str, object]:
         # Catalog metadata only (model_key/price/provenance) — NO physics (D29).
         return {"specs": list_specs()}
+
+    @router.get("/api/materials")
+    def get_materials() -> dict[str, object]:
+        # Curated material rule-base (label/name/absorption_500hz) for the UI
+        # dropdowns — real Vorländer 2020 coefficients, NO physics here (P5.9).
+        return {"materials": list_materials()}
 
     @router.post("/api/rooms/upload")
     def post_upload_room(request: UploadRoomRequest) -> dict[str, object]:

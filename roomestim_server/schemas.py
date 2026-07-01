@@ -20,6 +20,7 @@ __all__ = [
     "PlacementIn",
     "SpecIn",
     "ParamsIn",
+    "MaterialsOverrideIn",
     "EvaluateRequest",
     "PlaceRequest",
     "UploadRoomRequest",
@@ -85,6 +86,25 @@ class ParamsIn(BaseModel):
     min_separation_deg: float | None = None
 
 
+class MaterialsOverrideIn(BaseModel):
+    """Optional per-kind material override (P5.9 — label-based, curated rule-base).
+
+    Each field is a :class:`roomestim.model.MaterialLabel` NAME (e.g. ``"CARPET"``,
+    ``"GLASS"``) or null/absent. When set, EVERY surface of the matching kind
+    (``floor`` → floor surfaces, ``walls`` → wall surfaces, ``ceiling`` → ceiling
+    surfaces) has its ``material`` / ``absorption_500hz`` / ``absorption_bands`` set
+    from the core rule-base (:data:`MaterialAbsorption` / :data:`MaterialAbsorptionBands`)
+    so the predicted RT60 reflects the choice. An unknown name → generic 400. All
+    fields null/absent → no change (byte-equal to an evaluate without ``materials``).
+
+    Custom numeric α input is intentionally NOT exposed here (deferred, label-only).
+    """
+
+    floor: str | None = None
+    walls: str | None = None
+    ceiling: str | None = None
+
+
 class EvaluateRequest(BaseModel):
     """``POST /api/evaluate`` request body."""
 
@@ -92,6 +112,9 @@ class EvaluateRequest(BaseModel):
     placement: PlacementIn
     spec: SpecIn = Field(default_factory=SpecIn)
     params: ParamsIn = Field(default_factory=ParamsIn)
+    # Optional per-kind material override (P5.9). None/absent → no change (the
+    # evaluate path is byte-identical to today), keeping the change purely additive.
+    materials: MaterialsOverrideIn | None = None
 
 
 class PlaceRequest(BaseModel):

@@ -35,6 +35,7 @@ from roomestim_server.rooms import (
 from roomestim_server.schemas import (
     EvaluateRequest,
     LayoutExportRequest,
+    MaterialsOverrideIn,
     PlaceRequest,
     PlacementIn,
     UploadMeshRequest,
@@ -54,6 +55,7 @@ __all__ = [
     "evaluate_request",
     "export_layout",
     "list_examples",
+    "list_materials",
     "list_specs",
     "load_example",
     "place_request",
@@ -159,6 +161,62 @@ def _build_placement(placement: PlacementIn) -> Any:
     )
 
 
+#: Override-field name → the ``Surface.kind`` it targets (P5.9). ``walls`` (plural,
+#: matches the UI label) maps to the singular ``"wall"`` surface kind.
+_MATERIAL_OVERRIDE_KINDS: dict[str, str] = {
+    "floor": "floor",
+    "walls": "wall",
+    "ceiling": "ceiling",
+}
+
+
+def _apply_material_overrides(
+    room: "RoomModel", materials: MaterialsOverrideIn
+) -> None:
+    """Set floor/wall/ceiling surface materials IN PLACE from the curated rule-base.
+
+    For each provided override field the label NAME is resolved to a
+    :class:`roomestim.model.MaterialLabel` (unknown name → generic 400, logged, no
+    leak) and EVERY surface of the matching kind has its ``material`` /
+    ``absorption_500hz`` / ``absorption_bands`` set from the core tables so the
+    downstream ``predict_rt60_default`` (keyed by ``surf.material``) reflects the
+    choice. ``room`` MUST be a caller-owned copy (``get_room`` guarantees this —
+    fresh build for built-ins, deepcopy for uploaded); ``Surface`` is frozen, so the
+    surfaces list is rebuilt element-wise via :func:`dataclasses.replace`. A
+    null/absent field is a no-op → an all-null override leaves the room byte-equal.
+    """
+    from roomestim.model import (  # noqa: PLC0415
+        MaterialAbsorption,
+        MaterialAbsorptionBands,
+        MaterialLabel,
+    )
+
+    resolved: dict[str, MaterialLabel] = {}
+    for field, target_kind in _MATERIAL_OVERRIDE_KINDS.items():
+        name = getattr(materials, field)
+        if name is None:
+            continue
+        try:
+            resolved[target_kind] = MaterialLabel[name]
+        except KeyError as exc:
+            _LOG.warning("evaluate: unknown material label %r", name)
+            raise EvaluateError() from exc
+
+    if not resolved:
+        return  # all fields null → no change (byte-equal)
+
+    for i, surf in enumerate(room.surfaces):
+        label = resolved.get(surf.kind)
+        if label is None:
+            continue
+        room.surfaces[i] = dataclasses.replace(
+            surf,
+            material=label,
+            absorption_500hz=MaterialAbsorption[label],
+            absorption_bands=MaterialAbsorptionBands[label],
+        )
+
+
 def evaluate_request(request: EvaluateRequest) -> dict[str, object]:
     """Resolve the request to core objects and return ``tradeoff_to_dict(...)``.
 
@@ -181,6 +239,14 @@ def evaluate_request(request: EvaluateRequest) -> dict[str, object]:
     except KeyError as exc:
         _LOG.warning("evaluate: unknown room_id %r", request.room_id)
         raise EvaluateError() from exc
+
+    # P5.9 — optional per-kind material override (curated rule-base, label-only).
+    # Applied to the room copy get_room returns (a fresh build for built-ins, a
+    # deepcopy for uploaded rooms — never shared state) BEFORE evaluate, so the
+    # predicted RT60 reflects the new materials. Absent → room is untouched (the
+    # evaluate path is byte-identical to today).
+    if request.materials is not None:
+        _apply_material_overrides(room, request.materials)
 
     # Resolve the built-in spec (unknown key → generic 400).
     spec_in = request.spec
@@ -362,6 +428,32 @@ def list_specs() -> list[dict[str, object]]:
     return [
         {"model_key": key, "price": spec.price, "provenance": spec.provenance}
         for key, spec in BUILTIN_SPEAKER_CATALOG.items()
+    ]
+
+
+def list_materials() -> list[dict[str, object]]:
+    """List the curated material rule-base for the UI dropdowns (P5.9 — NO physics).
+
+    Returns ``{"label", "name", "absorption_500hz"}`` per
+    :class:`roomestim.model.MaterialLabel` — ``label`` is the enum NAME (what the
+    override field expects back), ``name`` is a human-readable label, and
+    ``absorption_500hz`` is the REAL 500 Hz coefficient from
+    :data:`roomestim.model.MaterialAbsorption` (Vorländer 2020) so the UI can show
+    each material's honest α. NO RT60/absorption math is done here; the tables are
+    imported lazily so ``import roomestim_server`` stays cheap.
+    """
+    from roomestim.model import (  # noqa: PLC0415
+        MaterialAbsorption,
+        MaterialLabel,
+    )
+
+    return [
+        {
+            "label": label.name,
+            "name": label.name.replace("_", " ").title(),
+            "absorption_500hz": MaterialAbsorption[label],
+        }
+        for label in MaterialLabel
     ]
 
 

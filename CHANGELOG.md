@@ -231,6 +231,36 @@ y=0(귀-원점)로 반환해 **재시드 시 스피커가 바닥으로 떨어지
   200|400, never 500/leak)·bad base64/미지원 확장자/garbage bytes 400·oversize 422·
   room.yaml 업로드 회귀. **core & 버전 0.61.0 무변경**(server-only).
 
+### Server — per-kind 재질 편집 (P5.9, curated rule-base, core/버전 무변경)
+
+사용자가 바닥/벽/천장 재질을 curated 10-재질 목록에서 선택하면 룸의 예측 RT60
+(trade-off 리포트의 `rt60`)이 그에 맞춰 갱신된다. **label 기반만** — 커스텀 수치 α
+입력은 별도 결정까지 연기(label-only). 코어(`roomestim/`) 무변경, 버전 `0.61.0`
+유지, 물리 재유도 0(모든 계수는 코어 룰베이스에서 읽음).
+
+- **`GET /api/materials`** (`/api/specs` 패턴 미러): `roomestim.model.MaterialLabel`
+  10개 각각 `{"label": <NAME>, "name": <human>, "absorption_500hz": <500 Hz α>}`
+  반환 — α 는 `MaterialAbsorption`(Vorländer 2020)의 REAL 계수. UI 드롭다운 구동.
+- **evaluate 재질 override**: `EvaluateRequest` 에 OPTIONAL `materials`
+  (`MaterialsOverrideIn`: `floor`/`walls`/`ceiling`, 각 MaterialLabel NAME 또는
+  null) 추가. 설정 시 `get_room` 이 돌려준 **복사본**(built-in=fresh build,
+  uploaded=deepcopy — 공유 상태 아님)에서 해당 kind 의 모든 `Surface` 의
+  `material`/`absorption_500hz`/`absorption_bands` 를 코어 테이블
+  (`MaterialAbsorption`/`MaterialAbsorptionBands`)로 IN-PLACE 재설정(`Surface` 는
+  frozen → `dataclasses.replace`) 후 evaluate → 예측 RT60 반영. 미지 라벨 이름 →
+  서버측 로깅 후 generic 400(누출 0). `materials` 부재/all-null → **byte-equal**
+  (순수 additive, 기존 테스트 무회귀).
+- **UI**(`static/`): floor/walls/ceiling `<select>` 3개(`GET /api/materials` 로
+  채움, `이름 (α=<계수>)` 표시, 첫 옵션 `— (keep)` = override 없음) → `change` 시
+  기존 debounced 재평가에 배선, 요청 body 에 `materials:{floor,walls,ceiling}` 포함.
+  D29 — JS 물리 0(서버/코어가 RT60 계산, JS 는 라벨만 전송).
+- 헤드리스 테스트(`tests/server/test_materials.py`): 카탈로그 10개+실 α·바닥 carpet
+  vs glass → 예측 RT60 **변화(방향 무단언)**(★멀티밴드 ISM 예측기라 500 Hz α 만으로는
+  단조 아님 — carpet 은 저역 흡수가 wood/glass 보다 낮아 바닥-단독 교체 시 오히려 근소
+  LONGER; 방향 단언은 all-surface MELAMINE_FOAM 0.07 s ≪ WALL_CONCRETE 5.6 s 같은 대신호
+  로만)·미지 라벨 400 no-leak·omitted/all-null byte-equal 회귀. **core & 버전 0.61.0
+  무변경**(server-only).
+
 ---
 
 ## [0.60.0] — 2026-07-01

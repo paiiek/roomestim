@@ -141,6 +141,13 @@
           <label for="rt60">measured RT60 (s)</label>
           <input id="rt60" type="number" step="0.05" min="0" placeholder="predicted" />
 
+          <label for="mat-floor">floor material</label>
+          <select id="mat-floor"><!-- populated from GET /api/materials --></select>
+          <label for="mat-walls">walls material</label>
+          <select id="mat-walls"><!-- populated from GET /api/materials --></select>
+          <label for="mat-ceiling">ceiling material</label>
+          <select id="mat-ceiling"><!-- populated from GET /api/materials --></select>
+
           <label for="upload">upload room.yaml</label>
           <input id="upload" type="file" accept=".yaml,.yml" />
           <label for="upload-roomplan">RoomPlan JSON (.json)</label>

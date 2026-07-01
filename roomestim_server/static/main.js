@@ -422,6 +422,22 @@ function readParams() {
   };
 }
 
+// Read the per-kind material override from the three dropdowns (P5.9). Each value
+// is a MaterialLabel NAME or "" (the "— (keep)" option = no override → null). The
+// server applies the curated rule-base and recomputes RT60; NO physics in JS.
+function readMaterials() {
+  const pick = (id) => {
+    const sel = $(id);
+    const v = sel && sel.value ? sel.value : "";
+    return v === "" ? null : v;
+  };
+  return {
+    floor: pick("mat-floor"),
+    walls: pick("mat-walls"),
+    ceiling: pick("mat-ceiling"),
+  };
+}
+
 async function evaluateAndRender(speakers) {
   const seq = ++_evalSeq;
   const body = {
@@ -434,6 +450,7 @@ async function evaluateAndRender(speakers) {
     },
     spec: readSpec(),
     params: readParams(),
+    materials: readMaterials(),
   };
   try {
     const resp = await fetch("/api/evaluate", {
@@ -582,6 +599,40 @@ async function populateSpecs() {
     }
   } catch (err) {
     /* leave the dropdown empty; readSpec() falls back to the default key */
+  }
+}
+
+// ---- Material dropdowns (populated verbatim from GET /api/materials) --------
+// Each of the floor/walls/ceiling <select>s gets a "— (keep)" first option
+// (value "" → no override) followed by every curated material, labelled with its
+// REAL 500 Hz absorption α (honest coefficients). D29: JS runs NO physics — the
+// chosen label NAMEs are POSTed to /api/evaluate, where core recomputes RT60.
+
+async function populateMaterials() {
+  const ids = ["mat-floor", "mat-walls", "mat-ceiling"];
+  if (ids.some((id) => !$(id))) return;
+  try {
+    const resp = await fetch("/api/materials");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const materials = (data && data.materials) || [];
+    for (const id of ids) {
+      const sel = $(id);
+      sel.replaceChildren();
+      const keep = document.createElement("option");
+      keep.value = "";
+      keep.textContent = "— (keep)";
+      sel.appendChild(keep);
+      for (const m of materials) {
+        const opt = document.createElement("option");
+        opt.value = m.label; // MaterialLabel NAME (what the override expects)
+        // Show the honest α so the physical meaning is visible. textContent = XSS-safe.
+        opt.textContent = `${m.name} (α=${m.absorption_500hz})`;
+        sel.appendChild(opt);
+      }
+    }
+  } catch (err) {
+    /* leave the dropdowns at "— (keep)"; readMaterials() then sends nulls */
   }
 }
 
@@ -791,13 +842,18 @@ async function main() {
 
   // Any spec/param change → debounced re-evaluate (shares scheduleEvaluate with
   // drag-end). The form values are the single source of truth for every request.
-  for (const id of ["spec", "target", "drive", "rt60"]) {
+  for (const id of [
+    "spec", "target", "drive", "rt60",
+    "mat-floor", "mat-walls", "mat-ceiling",
+  ]) {
     $(id).addEventListener("change", () => scheduleEvaluate());
   }
 
-  // Populate the spec + example dropdowns before the first evaluate. Failure is
-  // non-fatal (the spec dropdown falls back to the default key; examples stay empty).
+  // Populate the spec + material + example dropdowns before the first evaluate.
+  // Failure is non-fatal (spec falls back to the default key; materials stay at
+  // "— (keep)" → no override; examples stay empty).
   await populateSpecs();
+  await populateMaterials();
   await populateExamples();
 
   // 1. Fetch room geometry and build the scene.
