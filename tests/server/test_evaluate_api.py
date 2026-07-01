@@ -252,6 +252,38 @@ def test_malformed_body_wrong_type_422() -> None:
     assert resp.json()["error"]["code"] == "VALIDATION"
 
 
+def test_grid_resolution_too_fine_rejected_422() -> None:
+    """A sub-floor ``grid_resolution_m`` is rejected at the schema (DoS guard).
+
+    Without the ``ge=0.05`` bound a tiny positive (1e-6) would blow the SPL grid
+    to ~1e6 x 1e6 cells and hang/OOM the worker. It must be refused BEFORE the
+    engine runs — a 422, never a 200 or a long-running request.
+    """
+    body = _valid_body()
+    body["params"] = {
+        "drive_w": 10.0,
+        "target_spl_db": 85.0,
+        "grid_resolution_m": 1e-6,
+    }
+    resp = _client().post("/api/evaluate", json=body)
+    assert resp.status_code == 422
+    assert resp.json()["ok"] is False
+    _assert_no_internals(resp.text)
+
+
+def test_grid_resolution_reasonable_value_accepted() -> None:
+    """A sane ``grid_resolution_m`` (above the floor) passes and evaluates."""
+    body = _valid_body()
+    body["params"] = {
+        "drive_w": 10.0,
+        "target_spl_db": 85.0,
+        "grid_resolution_m": 0.25,
+    }
+    resp = _client().post("/api/evaluate", json=body)
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+
+
 # --------------------------------------------------------------------------- #
 # /healthz
 # --------------------------------------------------------------------------- #

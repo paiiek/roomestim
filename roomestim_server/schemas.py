@@ -70,7 +70,12 @@ class ParamsIn(BaseModel):
     drive_w: float = 10.0
     target_spl_db: float = 85.0
     measured_rt60_s: float | None = None
-    grid_resolution_m: float | None = None
+    # Lower-bounded (≥0.05 m) so a network client cannot pass a tiny positive
+    # value (e.g. 1e-6) that explodes the SPL-grid cell count (nx·nz, one
+    # Shapely covers() per cell) into a per-request DoS. null → core default
+    # (0.5 m). The floor is 10× finer than the core default — ample for an
+    # interactive viewer while capping the worst-case lattice.
+    grid_resolution_m: float | None = Field(default=None, ge=0.05)
     min_separation_deg: float | None = None
 
 
