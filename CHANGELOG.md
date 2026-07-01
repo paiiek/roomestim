@@ -5,6 +5,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.62.0] — 2026-07-01
+
+**Eyring RT60 이제 per-surface α 를 존중 (custom-α core fix)** (MINOR — Eyring
+경로 동작 변경, label 룸은 byte-equal). ADR 0062.
+
+### Changed
+
+- `predict_rt60_default` / `predict_rt60_default_per_band` 의 **Eyring 분기**
+  (non-shoebox 룸 + ISM lower-bound target)가 이제 `dict[MaterialLabel, float]`
+  테이블 룩업(`MaterialAbsorption[label]`) 대신 **surface 별
+  `absorption_500hz` / `absorption_bands`** 로 α 를 유도한다. P5.9 로 편집한
+  재질과 adapter 가 저장한 divergent α (`moge`·`image`·`room_yaml_reader`·
+  `ace_challenge`·`reconstruct/walls`)가 드디어 non-shoebox 룸의 RT60 에 반영된다.
+  ISM(shoebox) 경로는 이미 per-surface 라 무변경.
+- `predict_rt60_default(room, surface_areas_by_material, ...)` / `_per_band` 의
+  public signature 는 그대로. `surface_areas_by_material` 는 여전히 받되 Eyring
+  값을 더 이상 좌우하지 않는다(α 는 `room` 에서 유도) — docstring 명시.
+
+### Added
+
+- `roomestim.reconstruct.materials.eyring_rt60_from_pairs(volume_m3, pairs)` —
+  `(area, α_500)` 그룹 pair 로 500 Hz Eyring RT60 계산 (additive; label-dict
+  `eyring_rt60` 무변경·유지).
+- `roomestim.reconstruct.materials.eyring_rt60_per_band_from_pairs(volume_m3, pairs)`
+  — `(area, bands_or_None, α_500)` pair 로 per-band Eyring RT60 계산.
+
+### Fixed
+
+- 편집한 재질(custom α)이 non-shoebox(=대부분의 실 캡처) 룸에서 RT60 에
+  아무 영향이 없던 문제. 이제 per-surface α 가 Eyring mean 에 들어간다.
+
+### Byte-equality
+
+- 표준 "label" 룸(모든 surface 의 α == `MaterialAbsorption[material]`)은
+  predictor 가 surface 를 `(material, α)` 로 그룹핑 후 pre-summed area 에 α 를
+  곱해 옛 `Σ_material (Σarea_m) * table[m]` 합산을 동일 FP 로 재현 → **byte-equal**
+  (단일밴드·per-band 모두 L-형 label 룸에서 실증). per-band 의 `absorption_bands is
+  None` 은 predictor 가 `MaterialAbsorptionBands[material]`(테이블)로 해소 후
+  그룹핑하므로 per-band 데이터 저장 여부와 무관하게 byte-equal.
+
+---
+
 ## [0.61.0] — 2026-07-01
 
 **임머시브 레이아웃 FastAPI `/api/evaluate` 서버 (P5.1, 헤드리스 MVP)** (MINOR,

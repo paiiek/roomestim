@@ -18,6 +18,8 @@ codepaths; Eyring is callable-level only at v0.4.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from roomestim.model import MaterialAbsorption, MaterialLabel
 
 __all__ = [
@@ -26,7 +28,9 @@ __all__ = [
     "SABINE_REFERENCE_SHOEBOX_RT60_S",
     "SABINE_REFERENCE_SHOEBOX_RT60_PER_BAND_S",
     "eyring_rt60",
+    "eyring_rt60_from_pairs",
     "eyring_rt60_per_band",
+    "eyring_rt60_per_band_from_pairs",
     "sabine_rt60",
     "sabine_rt60_per_band",
 ]
@@ -231,6 +235,127 @@ def eyring_rt60_per_band(
             raise ValueError(
                 f"eyring_rt60_per_band: alpha_bar={alpha_bar:.4f} >= 1.0 in band {band_hz} Hz; "
                 "Eyring undefined for fully-absorptive alpha_bar"
+            )
+        out[band_hz] = 0.161 * volume_m3 / (-s_total * math.log(1.0 - alpha_bar))
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Per-surface Eyring (v0.62.0) — honors per-surface α on the Eyring path
+# --------------------------------------------------------------------------- #
+#
+# The label-dict variants above look up ``MaterialAbsorption[label]`` (the
+# TABLE) and therefore DISCARD any per-surface custom ``absorption_500hz`` /
+# ``absorption_bands`` a surface may carry. The Eyring predictor branch (used
+# for non-shoebox / captured rooms and as the ISM lower-bound target) routes
+# through these ``*_from_pairs`` variants instead so edited / adapter-divergent
+# materials actually affect RT60 (ADR 0062). Byte-equality for standard "label"
+# rooms is preserved by the CALLER grouping surfaces by ``(material, α)`` and
+# pre-summing each group's area before calling here — so a label room collapses
+# to one ``(area_sum, table_α)`` pair per material and reproduces the label-dict
+# ``Σ_material (Σarea_m) * table[m]`` summation with identical FP association.
+
+
+def eyring_rt60_from_pairs(
+    volume_m3: float,
+    pairs: Sequence[tuple[float, float]],
+) -> float:
+    """Eyring RT60 at 500 Hz from ``(area_m2, alpha_500)`` surface-group pairs.
+
+    Identical math and guards to :func:`eyring_rt60`, but the absorption comes
+    from the caller-supplied per-surface (or per-group) α rather than a
+    ``MaterialLabel`` table lookup:
+
+        S_total   = Σ area_i
+        alpha_bar = Σ (area_i * α_i) / S_total
+        RT60      = 0.161 * V / (-S_total * ln(1 - alpha_bar))
+
+    Byte-equality: when the caller groups surfaces by ``(material, α)`` and
+    pre-sums each group's area, a "label" room (every surface's α equals its
+    ``MaterialAbsorption[material]``) yields exactly one pair per material and
+    reproduces :func:`eyring_rt60`'s per-material summation bit-for-bit.
+
+    Raises
+    ------
+    ValueError
+        If ``pairs`` is empty / ``S_total <= 0`` (no surfaces), if the total
+        absorption is zero (all-reflective room), or if the weighted mean
+        absorption ``alpha_bar >= 1.0`` (Eyring undefined).
+    """
+    import math
+
+    s_total: float = sum(area for area, _ in pairs)
+    if s_total <= 0.0:
+        raise ValueError(
+            "eyring_rt60_from_pairs: pairs is empty / S_total is zero"
+        )
+    weighted_alpha_sum: float = 0.0
+    for area, alpha in pairs:
+        weighted_alpha_sum += area * alpha
+    if weighted_alpha_sum <= 0.0:
+        raise ValueError(
+            "eyring_rt60_from_pairs: total absorption is zero; cannot compute finite RT60"
+        )
+    alpha_bar: float = weighted_alpha_sum / s_total
+    if alpha_bar >= 1.0:
+        raise ValueError(
+            f"eyring_rt60_from_pairs: alpha_bar={alpha_bar:.4f} >= 1.0; "
+            "Eyring undefined for fully-absorptive alpha_bar"
+        )
+    return 0.161 * volume_m3 / (-s_total * math.log(1.0 - alpha_bar))
+
+
+def eyring_rt60_per_band_from_pairs(
+    volume_m3: float,
+    pairs: Sequence[tuple[float, tuple[float, ...] | None, float]],
+) -> dict[int, float]:
+    """Per-octave-band Eyring RT60 from per-surface-group pairs.
+
+    Each pair is ``(area_m2, absorption_bands_or_None, alpha_500_fallback)``.
+    For every band the per-band coefficient is ``absorption_bands[band_idx]``
+    when the group carries per-band data, else the ``alpha_500_fallback`` scalar
+    broadcast across all bands (mirrors the single-band α when a surface lacks
+    per-band data).
+
+    Byte-equality: the CALLER resolves each group's band data before calling —
+    a label surface with ``absorption_bands is None`` is passed the material's
+    :data:`roomestim.model.MaterialAbsorptionBands` tuple (NOT ``None``), which
+    is exactly what :func:`eyring_rt60_per_band` uses, so a label room is
+    reproduced bit-for-bit. The ``alpha_500_fallback`` branch only fires for a
+    genuinely band-less group.
+
+    Returns ``{band_hz: rt60_seconds}`` for each band in
+    :data:`roomestim.model.OCTAVE_BANDS_HZ`.
+
+    Raises :class:`ValueError` per band if pairs are empty/zero, if the per-band
+    absorption is zero, or if the per-band ``alpha_bar >= 1``.
+    """
+    import math
+
+    from roomestim.model import OCTAVE_BANDS_HZ
+
+    s_total: float = sum(area for area, _, _ in pairs)
+    if s_total <= 0.0:
+        raise ValueError(
+            "eyring_rt60_per_band_from_pairs: pairs is empty / S_total is zero"
+        )
+
+    out: dict[int, float] = {}
+    for band_idx, band_hz in enumerate(OCTAVE_BANDS_HZ):
+        weighted_alpha_sum: float = 0.0
+        for area, bands, alpha_500 in pairs:
+            coefficient = float(bands[band_idx]) if bands is not None else alpha_500
+            weighted_alpha_sum += area * coefficient
+        if weighted_alpha_sum <= 0.0:
+            raise ValueError(
+                f"eyring_rt60_per_band_from_pairs: total absorption is zero in band "
+                f"{band_hz} Hz; cannot compute finite RT60"
+            )
+        alpha_bar: float = weighted_alpha_sum / s_total
+        if alpha_bar >= 1.0:
+            raise ValueError(
+                f"eyring_rt60_per_band_from_pairs: alpha_bar={alpha_bar:.4f} >= 1.0 in band "
+                f"{band_hz} Hz; Eyring undefined for fully-absorptive alpha_bar"
             )
         out[band_hz] = 0.161 * volume_m3 / (-s_total * math.log(1.0 - alpha_bar))
     return out

@@ -56,8 +56,8 @@ from roomestim.model import (
 from roomestim.reconstruct._disclosure import RT60_DISCLOSURE
 from roomestim.reconstruct.image_source import image_source_rt60
 from roomestim.reconstruct.materials import (
-    eyring_rt60,
-    eyring_rt60_per_band,
+    eyring_rt60_from_pairs,
+    eyring_rt60_per_band_from_pairs,
 )
 
 PredictorName = Literal["image_source", "eyring"]
@@ -303,6 +303,79 @@ def _objects_to_surfaces(objects: list[Object]) -> list[Surface]:
     return extra
 
 
+# --------------------------------------------------------------------------- #
+# v0.62.0 per-surface Eyring routing (ADR 0062)
+# --------------------------------------------------------------------------- #
+
+
+def _eyring_surface_set(room: RoomModel) -> list[Surface]:
+    """The exact surface set the label-dict folds for the Eyring path.
+
+    ``room.surfaces`` plus the free-standing object faces from
+    :func:`_objects_to_surfaces` (NO door/window α overrides — that preserves
+    the pre-v0.62.0 Eyring parity, which never applied overrides either). The
+    object extraction is wrapped defensively to mirror the label-dict builders
+    in ``roomestim.design.tradeoff`` / ``roomestim_web.report`` (a malformed
+    object degrades to no extra surfaces rather than aborting the RT60).
+    """
+    extra: list[Surface] = []
+    if room.objects:
+        try:
+            extra = _objects_to_surfaces(list(room.objects))
+        except Exception:  # noqa: BLE001 — mirror label-dict defensive fold
+            extra = []
+    return list(room.surfaces) + extra
+
+
+def _eyring_pairs_500(room: RoomModel) -> list[tuple[float, float]]:
+    """Group surfaces by ``(material, α_500)`` into ``(area_sum, α_500)`` pairs.
+
+    Grouping (not one pair per surface) is what preserves byte-equality with the
+    pre-v0.62.0 label-dict Eyring: for a "label" room every surface of material
+    ``m`` shares the single α ``MaterialAbsorption[m]`` → one group per material
+    → ``area_sum * α`` reproduces ``Σarea_m * table[m]`` bit-for-bit (same
+    accumulation order: ``room.surfaces`` then object faces). A surface carrying
+    a divergent (edited / adapter) α forms its own group so its α enters the
+    Eyring mean — the intended custom-α behaviour.
+    """
+    groups: dict[tuple[MaterialLabel, float], float] = {}
+    for surf in _eyring_surface_set(room):
+        key = (surf.material, float(surf.absorption_500hz))
+        groups[key] = groups.get(key, 0.0) + polygon_area_3d(surf.polygon)
+    return [(area, alpha) for (_mat, alpha), area in groups.items()]
+
+
+def _eyring_pairs_per_band(
+    room: RoomModel,
+) -> list[tuple[float, tuple[float, ...] | None, float]]:
+    """Group surfaces into ``(area_sum, bands, α_500)`` pairs for per-band Eyring.
+
+    Grouping key is ``(material, resolved_bands, α_500)`` where ``resolved_bands``
+    is the surface's ``absorption_bands`` if present, else
+    ``MaterialAbsorptionBands[material]`` (the TABLE) — exactly the coefficient
+    the pre-v0.62.0 :func:`eyring_rt60_per_band` used, so a label room is
+    byte-equal regardless of whether its surfaces stored per-band data. A surface
+    with custom ``absorption_bands`` forms its own group (custom α honoured).
+    """
+    groups: dict[
+        tuple[MaterialLabel, tuple[float, ...] | None, float], float
+    ] = {}
+    for surf in _eyring_surface_set(room):
+        bands = surf.absorption_bands
+        # Resolve None → the material's TABLE bands (exactly what the pre-v0.62.0
+        # eyring_rt60_per_band used); every MaterialLabel has a bands entry, so
+        # this never yields None and the α_500 broadcast fallback in the helper
+        # stays inert for known materials (byte-equal parity).
+        resolved: tuple[float, ...] = (
+            tuple(bands) if bands is not None else MaterialAbsorptionBands[surf.material]
+        )
+        key = (surf.material, resolved, float(surf.absorption_500hz))
+        groups[key] = groups.get(key, 0.0) + polygon_area_3d(surf.polygon)
+    return [
+        (area, bands, alpha) for (_mat, bands, alpha), area in groups.items()
+    ]
+
+
 def _objects_to_wall_alpha_overrides(
     objects: list[Object],
     walls: list[Surface],
@@ -470,7 +543,10 @@ def predict_rt60_default(
         Parsed :class:`roomestim.model.RoomModel`.
     surface_areas_by_material:
         ``dict[MaterialLabel, float]`` mapping (area sums per material).
-        Used by the Eyring fallback when ISM cannot fire.
+        Accepted for backward compatibility but, since v0.62.0 (ADR 0062), NO
+        LONGER drives the Eyring value: the Eyring branch derives α per-surface
+        from ``room`` (``room.surfaces`` + object faces) so edited / adapter
+        materials are honoured. Label rooms remain byte-equal.
     prefer_ism:
         If False, skip the ISM branch and always use Eyring (escape hatch).
 
@@ -517,7 +593,8 @@ def predict_rt60_default(
             )
             # FIX-1 / D74: escalate max_order until the ISM result meets the
             # Eyring diffuse-field lower bound; fall back to Eyring at the cap.
-            eyring_target = eyring_rt60(volume_m3, surface_areas_by_material)
+            # v0.62.0: Eyring lower bound derives from per-surface α (ADR 0062).
+            eyring_target = eyring_rt60_from_pairs(volume_m3, _eyring_pairs_500(room))
             used_order = max_order
             rt60 = image_source_rt60(
                 volume_m3=volume_m3,
@@ -556,7 +633,8 @@ def predict_rt60_default(
         except (ValueError, IndexError) as exc:
             # Robust guard (D47): column / override ISM mapping failed —
             # fall back to Eyring with explanatory rationale.
-            rt60 = eyring_rt60(volume_m3, surface_areas_by_material)
+            # v0.62.0: per-surface α Eyring (ADR 0062).
+            rt60 = eyring_rt60_from_pairs(volume_m3, _eyring_pairs_500(room))
             return RT60Prediction(
                 rt60_s=rt60,
                 rt60_per_band_s={},
@@ -584,7 +662,8 @@ def predict_rt60_default(
             rationale=rationale,
         )
 
-    rt60 = eyring_rt60(volume_m3, surface_areas_by_material)
+    # v0.62.0: non-shoebox Eyring from per-surface α (ADR 0062).
+    rt60 = eyring_rt60_from_pairs(volume_m3, _eyring_pairs_500(room))
     return RT60Prediction(
         rt60_s=rt60,
         rt60_per_band_s={},
@@ -600,7 +679,13 @@ def predict_rt60_default_per_band(
     prefer_ism: bool = True,
     max_order: int = 50,
 ) -> RT60Prediction:
-    """Per-octave-band variant of :func:`predict_rt60_default`."""
+    """Per-octave-band variant of :func:`predict_rt60_default`.
+
+    As in the single-band variant, ``surface_areas_by_material`` is accepted for
+    backward compatibility but no longer drives the Eyring value since v0.62.0
+    (ADR 0062): the Eyring branch derives per-surface α / bands from ``room``.
+    Label rooms remain byte-equal.
+    """
     volume_m3 = room_volume(room)
 
     if prefer_ism and is_rectilinear_shoebox(room):
@@ -626,7 +711,10 @@ def predict_rt60_default_per_band(
             # FIX-1 / D74: per-band Eyring lower-bound targets; escalate the ISM
             # max_order per band until each band meets its bound, else fall back
             # to that band's Eyring value (honest per-band substitution).
-            eyring_band = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
+            # v0.62.0: per-surface α/bands Eyring lower bound (ADR 0062).
+            eyring_band = eyring_rt60_per_band_from_pairs(
+                volume_m3, _eyring_pairs_per_band(room)
+            )
             # Both dicts are keyed by the same OCTAVE_BANDS_HZ set (both produced
             # from per_band_alphas / surface_areas_by_material over the same
             # OCTAVE_BANDS_HZ constant).  Assert equality so a mismatch is loud,
@@ -670,7 +758,10 @@ def predict_rt60_default_per_band(
                 rt60_band[band_hz] = value
         except (ValueError, IndexError) as exc:
             # Robust guard (D47): column / override ISM mapping failed.
-            rt60_band_fb = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
+            # v0.62.0: per-surface α/bands Eyring (ADR 0062).
+            rt60_band_fb = eyring_rt60_per_band_from_pairs(
+                volume_m3, _eyring_pairs_per_band(room)
+            )
             return RT60Prediction(
                 rt60_s=rt60_band_fb.get(500, 0.0),
                 rt60_per_band_s=rt60_band_fb,
@@ -708,7 +799,10 @@ def predict_rt60_default_per_band(
             rationale=rationale,
         )
 
-    rt60_band = eyring_rt60_per_band(volume_m3, surface_areas_by_material)
+    # v0.62.0: non-shoebox per-band Eyring from per-surface α/bands (ADR 0062).
+    rt60_band = eyring_rt60_per_band_from_pairs(
+        volume_m3, _eyring_pairs_per_band(room)
+    )
     return RT60Prediction(
         rt60_s=rt60_band.get(500, 0.0),
         rt60_per_band_s=rt60_band,
