@@ -253,6 +253,58 @@ def test_evaluate_report_block_unchanged_by_install() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# ★ P6.D — per-speaker direct-field SPL at the listener (core parity)
+# --------------------------------------------------------------------------- #
+
+
+def test_evaluate_install_spl_present() -> None:
+    """Every install entry carries a finite ``spl_at_listener_db`` on the shoebox."""
+    import math
+
+    body = _valid_body()
+    install = _client().post("/api/evaluate", json=body).json()["install"]
+    for entry in install["speakers"]:
+        spl = entry["spl_at_listener_db"]
+        assert isinstance(spl, float)
+        assert math.isfinite(spl)
+
+
+def test_evaluate_install_spl_parity() -> None:
+    """install ``spl_at_listener_db`` == a direct core call for the same layout.
+
+    Proves the server delegates the SPL to core
+    ``per_speaker_direct_spl_at_listener`` (D29 — no acoustics re-derived) and that
+    no client/server drift can creep in, matched by channel.
+    """
+    from roomestim.spec.speaker_spec import per_speaker_direct_spl_at_listener
+
+    body = _valid_body()
+    install = _client().post("/api/evaluate", json=body).json()["install"]
+
+    room = get_room(BUILTIN_SHOEBOX_ID)
+    spec = BUILTIN_SPEAKER_CATALOG["generic_surround_compact"]
+    placement = PlacementResult(
+        target_algorithm="vbap",
+        regularity_hint="ring",
+        layout_name="live-edit",
+        speakers=[
+            PlacedSpeaker(channel=1, position=Point3(1.8, 1.2, 1.8)),
+            PlacedSpeaker(channel=2, position=Point3(-1.8, 1.2, 1.8)),
+        ],
+    )
+    expected = dict(
+        per_speaker_direct_spl_at_listener(
+            spec,
+            drive_w=10.0,
+            speakers=placement.speakers,
+            listener_area=room.listener_area,
+        )
+    )
+    for entry in install["speakers"]:
+        assert entry["spl_at_listener_db"] == expected[entry["channel"]]
+
+
+# --------------------------------------------------------------------------- #
 # Errors — generic body, no leaked internals
 # --------------------------------------------------------------------------- #
 

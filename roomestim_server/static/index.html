@@ -90,6 +90,9 @@
     #install-table th { color: var(--muted); font-weight: 600; }
     #install-table td:first-child, #install-table th:first-child { text-align: left; }
     #install-table tbody:empty { display: none; }
+    /* Highlight the most-recently-moved speaker's row (P6.D). */
+    #install-table tr.moved td { background: #26364d; color: #fff; }
+    #install-table tr.moved td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 
     #controls {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
@@ -211,6 +214,7 @@
               <th>x (m)</th><th>y (m)</th><th>z (m)</th>
               <th>ht (m)</th>
               <th>az (°)</th><th>el (°)</th><th>dist (m)</th>
+              <th>SPL @listener (dB)</th>
               <th>wall</th><th>corner</th>
             </tr>
           </thead>

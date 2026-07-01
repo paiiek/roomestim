@@ -5,6 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.63.0] — 2026-07-01
+
+**스피커별 개별 직접음장 SPL (청취 지점) — 설치 가이드용** (MINOR — 신규
+public 함수, 기존 SPL 함수·골든 byte-equal). ADR 0063.
+
+### Added
+
+- `roomestim.spec.speaker_spec.per_speaker_direct_spl_at_listener(specs, *,
+  drive_w, speakers, listener_area)` — 각 스피커가 청취자 귀 지점
+  `(centroid.x, listener_area.height_m, centroid.z)` 에서 단독으로 기여하는
+  직접음장 SPL 을 `[(channel, direct_spl_db), …]` 로 반환. 물리 재사용:
+  거리/off-axis 유도는 `spl_field_over_area` 의 per-point 계산을 그대로
+  미러(동일 `cos_off` 클램프·degenerate `dist<=0 -> 1e-6` fallback·
+  `assert_finite` 가드)해 한 점(귀)에서만 평가하고, `direct_field_spl_db` 로
+  SPL 을 계산한다. **새 음향은 발명하지 않음.** 채널별 스펙은 기존
+  `_spec_for_channel` 로 resolve. DIRECT FIELD ONLY — 측정값 아님
+  (`SPL_DIRECT_FIELD_NOTE` 계승; 반사음장/room-gain 미모델, 단순화 지향성).
+  `drive_w` 비유한/비양수 → `ValueError`.
+- server `/api/evaluate` 의 additive `install` 블록에 speaker 별
+  `spl_at_listener_db` 필드(위 core 함수 위임, 채널 매칭). SPL 계산 실패 시
+  해당 필드만 null 로 degrade(geometry 는 불변) — evaluate 를 절대 깨지 않고
+  원시 예외를 누출하지 않음(ADR 0038). `report` 는 verbatim 유지.
+- viewer: 설치 테이블에 "SPL @listener (dB)" 열 추가 + 방금 옮긴 스피커의 행
+  하이라이트(드래그-엔드에 채널 기록, 재시드 시 해제). D29 — JS 물리 0,
+  모든 수치는 서버 계산.
+
+### Byte-equality
+
+- 기존 `direct_field_spl_db` / `spl_field_over_area` / 카탈로그/로더 및 그
+  골든은 무변경(순수 additive). `install` 블록의 geometry 필드도 P6.C 와
+  byte-equal, `report` 는 verbatim engine dict 그대로.
+
+---
+
 ## [0.62.0] — 2026-07-01
 
 **Eyring RT60 이제 per-surface α 를 존중 (custom-α core fix)** (MINOR — Eyring

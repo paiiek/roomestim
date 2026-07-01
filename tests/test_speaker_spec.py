@@ -21,6 +21,7 @@ from roomestim.spec.speaker_spec import (
     format_spl_field_lines,
     load_speaker_catalog,
     load_speaker_spec,
+    per_speaker_direct_spl_at_listener,
     spl_field_over_area,
     spl_field_to_dict,
 )
@@ -467,3 +468,131 @@ def test_load_speaker_spec_malformed_price_raises(tmp_path) -> None:  # type: ig
     )
     with pytest.raises(ValueError):
         load_speaker_spec(p)
+
+
+# --------------------------------------------------------------------------- #
+# per_speaker_direct_spl_at_listener (P6.D) — individual contribution at the ear
+# --------------------------------------------------------------------------- #
+def test_per_speaker_spl_parity_hand_computed() -> None:
+    """Result == direct_field_spl_db with a HAND-computed distance + off-axis.
+
+    Not a tautology: distance (2.0) and off-axis (45°) are derived by hand from the
+    geometry, NOT by re-running the module's helpers. Speaker at (0,1.2,2.0) aimed
+    along (1,0,-1); the ear is (0,1.2,0), so speaker→ear = (0,0,-2) (unit (0,0,-1))
+    and cos(off) = ((0,0,-1)·(1,0,-1)/√2) = 1/√2 → 45°.
+    """
+    spec = _spec()
+    listener = _square_area()  # ear at (0, 1.2, 0)
+    sp = PlacedSpeaker(
+        channel=7,
+        position=Point3(0.0, 1.2, 2.0),
+        aim_direction=Point3(1.0, 0.0, -1.0),
+    )
+    expected_spl = direct_field_spl_db(
+        spec, drive_w=8.0, distance_m=2.0, off_axis_deg=45.0
+    )
+    result = per_speaker_direct_spl_at_listener(
+        spec, drive_w=8.0, speakers=[sp], listener_area=listener
+    )
+    assert len(result) == 1
+    ch, spl = result[0]
+    assert ch == 7
+    assert spl == pytest.approx(expected_spl, abs=1e-9)
+
+
+def test_per_speaker_spl_golden_on_axis() -> None:
+    """Pinned value: on-axis, 2 m, 1 W → sensitivity − 20·log10(2) = 90 − 6.0206."""
+    spec = _spec()  # sensitivity 90 dB
+    listener = _square_area()  # ear at (0, 1.2, 0)
+    # Aim straight at the ear (default aim), 2 m away along +z → off-axis 0.
+    sp = PlacedSpeaker(channel=1, position=Point3(0.0, 1.2, 2.0))
+    result = per_speaker_direct_spl_at_listener(
+        spec, drive_w=1.0, speakers=[sp], listener_area=listener
+    )
+    assert result[0][0] == 1
+    assert result[0][1] == pytest.approx(83.9794, abs=1e-3)
+
+
+def test_per_speaker_spl_matches_field_term_single_speaker() -> None:
+    """One speaker's contribution equals its term inside spl_field_over_area.
+
+    With a single speaker the field ENERGY sum is just that speaker's SPL, so the
+    at-ear per-speaker value must reproduce spl_field_over_area's math at the sample
+    point. Uses a degenerate 1-cell listener area so the single sample IS the ear
+    centroid, giving an exact equality (proves the off-axis derivation is mirrored).
+    """
+    spec = _spec()
+    # Tiny listener patch centred on the origin → one sample at the centroid.
+    poly = [
+        Point2(-0.1, -0.1),
+        Point2(0.1, -0.1),
+        Point2(0.1, 0.1),
+        Point2(-0.1, 0.1),
+    ]
+    listener = ListenerArea(polygon=poly, centroid=Point2(0.0, 0.0), height_m=1.2)
+    sp = PlacedSpeaker(
+        channel=3,
+        position=Point3(1.5, 1.2, 1.5),
+        aim_direction=Point3(-1.0, 0.0, -1.0),
+    )
+    field = spl_field_over_area(
+        spec, drive_w=5.0, speakers=[sp], listener_area=listener, grid_resolution_m=1.0
+    )
+    per = per_speaker_direct_spl_at_listener(
+        spec, drive_w=5.0, speakers=[sp], listener_area=listener
+    )
+    # single sample, single speaker → field max == that speaker's at-ear SPL.
+    assert per[0][1] == pytest.approx(field.max_spl_db, abs=1e-9)
+
+
+def test_per_speaker_spl_per_channel_specs() -> None:
+    """A ``dict[channel -> SpeakerSpec]`` resolves each speaker's own spec."""
+    specs = {
+        1: _spec(sensitivity_db_1w1m=90.0),
+        2: _spec(sensitivity_db_1w1m=100.0),
+    }
+    listener = _square_area()
+    speakers = [
+        PlacedSpeaker(channel=1, position=Point3(0.0, 1.2, 2.0)),
+        PlacedSpeaker(channel=2, position=Point3(0.0, 1.2, 2.0)),
+    ]
+    result = dict(
+        per_speaker_direct_spl_at_listener(
+            specs, drive_w=1.0, speakers=speakers, listener_area=listener
+        )
+    )
+    # Same geometry, +10 dB more sensitive → exactly +10 dB SPL.
+    assert result[2] - result[1] == pytest.approx(10.0, abs=1e-9)
+
+
+def test_per_speaker_spl_empty_speakers_is_empty() -> None:
+    assert (
+        per_speaker_direct_spl_at_listener(
+            _spec(), drive_w=1.0, speakers=[], listener_area=_square_area()
+        )
+        == []
+    )
+
+
+def test_per_speaker_spl_rejects_non_positive_drive() -> None:
+    spec = _spec()
+    listener = _square_area()
+    sp = PlacedSpeaker(channel=1, position=Point3(0.0, 1.2, 2.0))
+    with pytest.raises(ValueError):
+        per_speaker_direct_spl_at_listener(
+            spec, drive_w=0.0, speakers=[sp], listener_area=listener
+        )
+    with pytest.raises(ValueError):
+        per_speaker_direct_spl_at_listener(
+            spec, drive_w=-3.0, speakers=[sp], listener_area=listener
+        )
+
+
+def test_per_speaker_spl_rejects_non_finite_drive() -> None:
+    spec = _spec()
+    listener = _square_area()
+    sp = PlacedSpeaker(channel=1, position=Point3(0.0, 1.2, 2.0))
+    with pytest.raises(ValueError):
+        per_speaker_direct_spl_at_listener(
+            spec, drive_w=float("inf"), speakers=[sp], listener_area=listener
+        )

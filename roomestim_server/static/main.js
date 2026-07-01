@@ -306,6 +306,10 @@ const _dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const _hitPoint = new THREE.Vector3();
 let _dragged = null;
 let _dragMoved = false;
+// Channel of the most-recently-moved speaker (P6.D) — its install-table row is
+// highlighted after re-render. Null when nothing has been dragged since the last
+// re-seed. Set on drag-end, cleared on re-seed.
+let _movedChannel = null;
 
 function _updatePointer(ev) {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -342,6 +346,9 @@ function initDrag() {
 
   function endDrag(ev) {
     if (!_dragged) return;
+    // Record which channel just moved (BEFORE clearing _dragged) so renderInstall
+    // can highlight its row (P6.D). userData.channel is set when the mesh is built.
+    if (_dragMoved && _dragged.userData) _movedChannel = _dragged.userData.channel;
     _dragged = null;
     controls.enabled = true;
     try {
@@ -493,8 +500,16 @@ function renderInstall(install) {
     row.appendChild(_installCell(fmtN(s.az_deg, 1)));
     row.appendChild(_installCell(fmtN(s.el_deg, 1)));
     row.appendChild(_installCell(fmtN(s.dist_m, 2)));
+    // Per-speaker direct-field SPL at the listener (server-computed, P6.D) — the
+    // browser only formats it (D29: NO acoustics in JS).
+    row.appendChild(_installCell(fmtN(s.spl_at_listener_db, 1)));
     row.appendChild(_installCell(wall));
     row.appendChild(_installCell(corner));
+    // Highlight the most-recently-moved speaker's row so the installer sees
+    // exactly what changed (P6.D).
+    if (_movedChannel !== null && s.channel === _movedChannel) {
+      row.className = "moved";
+    }
     body.appendChild(row);
   }
 }
@@ -614,6 +629,7 @@ async function reseedLayout() {
   const algorithm = $("algo").value;
   const n = parseInt($("nspk").value, 10);
   const body = { room_id: currentRoomId, algorithm, n_speakers: n };
+  _movedChannel = null; // a fresh layout has no "just-moved" speaker to highlight
   setStatus(`Re-seeding (${algorithm}, n=${n})…`, false);
   try {
     const resp = await fetch("/api/place", {

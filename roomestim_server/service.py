@@ -189,8 +189,12 @@ def _wall_plan_segment(surf: Any) -> tuple[float, float, float, float] | None:
     return best if best_d > 0.0 else None
 
 
-def _build_install_block(room: "RoomModel", placement: Any) -> dict[str, object]:
-    """Per-speaker installer guide (GEOMETRY ONLY — D29, no physics/acoustics).
+def _build_install_block(
+    room: "RoomModel",
+    placement: Any,
+    spl_by_channel: dict[int, float] | None = None,
+) -> dict[str, object]:
+    """Per-speaker installer guide (geometry + optional per-speaker SPL — D29).
 
     For each placed speaker emit its verbatim world ``position`` + mounting
     ``height_m`` (= ``position.y``), the listener-relative ``az_deg``/``el_deg``/
@@ -205,6 +209,13 @@ def _build_install_block(room: "RoomModel", placement: Any) -> dict[str, object]
       with ``wall_offset_m`` = perpendicular plan-view distance to that wall segment;
     * ``nearest_corner`` — index into ``floor_polygon``, with ``corner_dist_m`` =
       plan-view distance to that floor vertex.
+
+    When ``spl_by_channel`` is supplied (P6.D), each speaker also gets
+    ``spl_at_listener_db`` = that channel's INDIVIDUAL direct-field SPL at the
+    listener ear point (from core
+    :func:`roomestim.spec.speaker_spec.per_speaker_direct_spl_at_listener` — direct
+    field only, NOT a measurement; see ``SPL_DIRECT_FIELD_NOTE``). A missing channel
+    (or ``spl_by_channel=None``) leaves the field ``None``.
 
     All angle/distance numbers are computed here (server-side) so the browser only
     renders them. ``az_deg``/``el_deg`` are the pipeline (az, el) in DEGREES.
@@ -259,6 +270,11 @@ def _build_install_block(room: "RoomModel", placement: Any) -> dict[str, object]
                 "wall_offset_m": wall_offset_m,
                 "nearest_corner": nearest_corner,
                 "corner_dist_m": corner_dist_m,
+                "spl_at_listener_db": (
+                    None
+                    if spl_by_channel is None
+                    else spl_by_channel.get(s.channel)
+                ),
             }
         )
 
@@ -427,13 +443,36 @@ def evaluate_request(request: EvaluateRequest) -> dict[str, object]:
         raise EvaluateError() from exc
 
     report_dict = tradeoff_to_dict(report)
-    # ADDITIVE per-speaker installer guide (P6.C, geometry only, D29). Built from
-    # the same room + placement so it matches the render/export; guarded so any
-    # failure degrades to install=None (never crashes a valid evaluate, never
-    # leaks a raw exception — ADR 0038).
+    # ADDITIVE per-speaker installer guide (P6.C geometry + P6.D per-speaker SPL,
+    # D29). Built from the SAME room + placement + spec + drive so it matches the
+    # render/export/report. The per-speaker direct-field SPL is delegated to core
+    # ``per_speaker_direct_spl_at_listener`` (NO acoustics re-derived here); it is
+    # computed under its own guard so a failure degrades ONLY spl_at_listener_db to
+    # null (channel-keyed) — never the geometry. The whole install build is then
+    # guarded again so any failure degrades to install=None (never crashes a valid
+    # evaluate, never leaks a raw exception — ADR 0038).
+    spl_by_channel: dict[int, float] | None
+    try:
+        from roomestim.spec.speaker_spec import (  # noqa: PLC0415
+            per_speaker_direct_spl_at_listener,
+        )
+
+        spl_by_channel = {
+            ch: spl
+            for ch, spl in per_speaker_direct_spl_at_listener(
+                spec,
+                drive_w=float(params.drive_w),
+                speakers=placement.speakers,
+                listener_area=room.listener_area,
+            )
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        _LOG.warning("evaluate: per-speaker SPL compute failed: %s", exc)
+        spl_by_channel = None
+
     install: dict[str, object] | None
     try:
-        install = _build_install_block(room, placement)
+        install = _build_install_block(room, placement, spl_by_channel)
     except Exception as exc:  # pragma: no cover - defensive (geometry is total)
         _LOG.warning("evaluate: install block build failed: %s", exc)
         install = None

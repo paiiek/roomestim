@@ -49,6 +49,7 @@ __all__ = [
     "directivity_atten_db",
     "direct_field_spl_db",
     "spl_field_over_area",
+    "per_speaker_direct_spl_at_listener",
     "spl_field_to_dict",
     "format_spl_field_lines",
     "load_speaker_spec",
@@ -314,6 +315,68 @@ def spl_field_over_area(
         exceeds_max_spl=max_spl > min_spec_max_spl,
         note=SPL_DIRECT_FIELD_NOTE,
     )
+
+
+def per_speaker_direct_spl_at_listener(
+    specs: SpeakerSpec | dict[int, SpeakerSpec],
+    *,
+    drive_w: float,
+    speakers: list[PlacedSpeaker],
+    listener_area: ListenerArea,
+) -> list[tuple[int, float]]:
+    """Each speaker's INDIVIDUAL direct-field SPL (dB) at the listener ear point.
+
+    Returns ``[(channel, direct_spl_db), …]`` in ``speakers`` order — how much
+    every single speaker contributes on its own at the listener, so an installer
+    can see exactly what one speaker adds (and what moving it does). This is the
+    SAME per-point math as :func:`spl_field_over_area`, evaluated at ONE point (the
+    listener ear point) instead of energy-summing over a grid: for each speaker
+
+        ear = (centroid.x, listener_area.height_m, centroid.z)
+        (dx, dy, dz) = ear - speaker.position
+        dist = ||(dx, dy, dz)||
+        off_axis = angle between _aim_unit_vector(speaker) and (dx, dy, dz)
+        spl = direct_field_spl_db(spec, drive_w, distance_m=dist, off_axis_deg)
+
+    The off-axis derivation mirrors :func:`spl_field_over_area` EXACTLY (same
+    ``cos_off`` clamp, same degenerate ``dist<=0 -> 1e-6``/on-axis fallback, same
+    ``assert_finite`` guard) so the single-point value equals that speaker's term
+    inside the field sum. ``specs`` resolves per channel via
+    :func:`_spec_for_channel`. DIRECT FIELD ONLY, NOT a measurement — see
+    :data:`SPL_DIRECT_FIELD_NOTE` (no reverb / room gain; simplified directivity).
+    Raises ``ValueError`` if ``drive_w`` is non-finite or non-positive.
+    """
+    assert_finite(drive_w, field="drive_w")
+    if drive_w <= 0.0:
+        raise ValueError(f"drive_w must be > 0, got {drive_w}")
+
+    ear_x = listener_area.centroid.x
+    ear_y = listener_area.height_m
+    ear_z = listener_area.centroid.z
+
+    out: list[tuple[int, float]] = []
+    for sp in speakers:
+        spec = _spec_for_channel(specs, sp.channel)
+        aim = _aim_unit_vector(sp, listener_area)
+        dx = ear_x - sp.position.x
+        dy = ear_y - sp.position.y
+        dz = ear_z - sp.position.z
+        dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if dist <= 0.0:
+            # Ear coincides with the speaker; clamp to a tiny radius so the
+            # inverse-square term stays finite (mirrors spl_field_over_area).
+            dist = 1e-6
+            cos_off = 1.0
+        else:
+            dot = aim[0] * dx + aim[1] * dy + aim[2] * dz
+            cos_off = max(-1.0, min(1.0, dot / dist))
+        assert_finite(cos_off, field="cos_off")
+        off_axis_deg = math.degrees(math.acos(cos_off))
+        spl = direct_field_spl_db(
+            spec, drive_w=drive_w, distance_m=dist, off_axis_deg=off_axis_deg
+        )
+        out.append((sp.channel, spl))
+    return out
 
 
 def spl_field_to_dict(score: SPLFieldScore) -> dict[str, object]:
