@@ -447,12 +447,65 @@ function renderReport(report) {
   ]);
 }
 
+// ---- Per-speaker install guide table (P6.C) ------------------------------
+
+// Format a server-computed number to `d` decimals (display only — D29: NO physics
+// in JS, this just rounds for readability); null/undefined → em-dash.
+function fmtN(v, d) {
+  if (v === null || v === undefined || typeof v !== "number") return "—";
+  return v.toFixed(d);
+}
+
+function _installCell(text, cls) {
+  const td = document.createElement("td");
+  if (cls) td.className = cls;
+  td.textContent = text; // textContent = XSS-safe
+  return td;
+}
+
+// Render the per-speaker install TABLE from data.install.speakers. EVERY number
+// comes verbatim from the server block (positions, az/el/dist, wall/corner
+// offsets) — the browser only formats + lays them out. Absent/null install (or a
+// malformed block) blanks the table without crashing.
+function renderInstall(install) {
+  const body = $("install-body");
+  if (!body) return;
+  body.replaceChildren();
+  const speakers = install && Array.isArray(install.speakers) ? install.speakers : null;
+  if (!speakers) return;
+  for (const s of speakers) {
+    const pos = s.position || {};
+    const row = document.createElement("tr");
+    // channel · world x/y/z · height · az/el/dist · wall (idx@offset) · corner.
+    const wall =
+      s.nearest_wall_index === null || s.nearest_wall_index === undefined
+        ? "—"
+        : `#${s.nearest_wall_index} @ ${fmtN(s.wall_offset_m, 2)}m`;
+    const corner =
+      s.nearest_corner === null || s.nearest_corner === undefined
+        ? "—"
+        : `#${s.nearest_corner} @ ${fmtN(s.corner_dist_m, 2)}m`;
+    row.appendChild(_installCell(fmt(s.channel)));
+    row.appendChild(_installCell(fmtN(pos.x, 2)));
+    row.appendChild(_installCell(fmtN(pos.y, 2)));
+    row.appendChild(_installCell(fmtN(pos.z, 2)));
+    row.appendChild(_installCell(fmtN(s.height_m, 2)));
+    row.appendChild(_installCell(fmtN(s.az_deg, 1)));
+    row.appendChild(_installCell(fmtN(s.el_deg, 1)));
+    row.appendChild(_installCell(fmtN(s.dist_m, 2)));
+    row.appendChild(_installCell(wall));
+    row.appendChild(_installCell(corner));
+    body.appendChild(row);
+  }
+}
+
 // Standing honesty line kept visible even on error (the banner is "persistent" —
 // HARD CONSTRAINT 1); the specific failure goes to #status, not over the banner.
 const STANDING_DISCLAIMER =
   "Immersive trade-off — relative comparison guidance (not a guaranteed measurement).";
 
 function showError(message) {
+  renderInstall(null); // blank the install table on a failed evaluate (no stale rows)
   setStatus(message || "Request failed.", true);
   setDisclaimer(
     STANDING_DISCLAIMER + "\nEvaluation failed — see the status panel for details.",
@@ -538,6 +591,7 @@ async function evaluateAndRender(speakers) {
       return;
     }
     renderReport(data.report);
+    renderInstall(data.install); // P6.C — per-speaker positions (server-computed)
   } catch (err) {
     if (seq !== _evalSeq) return;
     showError("Evaluation request failed.");

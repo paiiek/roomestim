@@ -197,8 +197,14 @@ def _build_router() -> APIRouter:
     def post_evaluate(request: EvaluateRequest) -> dict[str, object]:
         # EvaluateError (→ 400) and any uncaught error (→ 500) are handled by the
         # app-level exception handlers; the success path returns the envelope.
-        report = evaluate_request(request)
-        return {"ok": True, "report": report}
+        # ``report`` is the verbatim engine dict; ``install`` (P6.C) is the additive
+        # per-speaker installer guide (geometry only, or None if it could not build).
+        result = evaluate_request(request)
+        return {
+            "ok": True,
+            "report": result["report"],
+            "install": result["install"],
+        }
 
     @router.post("/api/place")
     def post_place(request: PlaceRequest) -> dict[str, object]:

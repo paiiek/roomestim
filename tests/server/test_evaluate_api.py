@@ -164,6 +164,95 @@ def test_evaluate_moved_speaker_changes_report_and_stays_parity() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# ★ P6.C — per-speaker install guide (server geometry; D29 parity)
+# --------------------------------------------------------------------------- #
+
+
+def test_evaluate_install_block_shape() -> None:
+    """The response carries an ``install`` block with one entry per speaker."""
+    body = _valid_body()
+    resp = _client().post("/api/evaluate", json=body)
+    assert resp.status_code == 200
+    data = resp.json()
+    install = data["install"]
+    assert install is not None
+    speakers = install["speakers"]
+    assert len(speakers) == len(body["placement"]["speakers"])  # type: ignore[index]
+    for entry, sent in zip(speakers, body["placement"]["speakers"]):  # type: ignore[arg-type]
+        # position is verbatim from the placement.
+        assert entry["position"] == sent["position"]
+        assert entry["height_m"] == sent["position"]["y"]
+        assert entry["channel"] == sent["channel"]
+        # geometry fields present + sane types.
+        assert entry["dist_m"] > 0.0
+        assert isinstance(entry["az_deg"], float)
+        assert isinstance(entry["el_deg"], float)
+        # mounting hints (shoebox has walls + corners → non-null here).
+        assert isinstance(entry["nearest_wall_index"], int)
+        assert entry["wall_offset_m"] >= 0.0
+        assert isinstance(entry["nearest_corner"], int)
+        assert entry["corner_dist_m"] >= 0.0
+
+
+def test_evaluate_install_az_el_dist_parity() -> None:
+    """install az/el/dist == a direct ``cartesian_to_pipeline`` for the same layout.
+
+    Proves the server does not re-derive the trig by hand and that no client/server
+    drift can creep in — the SAME sign-flip authority the engine/layout.yaml use.
+    """
+    import math
+
+    from roomestim.coords import cartesian_to_pipeline
+
+    body = _valid_body()
+    install = _client().post("/api/evaluate", json=body).json()["install"]
+
+    room = get_room(BUILTIN_SHOEBOX_ID)
+    ear_x = room.listener_area.centroid.x
+    ear_y = room.listener_area.height_m
+    ear_z = room.listener_area.centroid.z
+
+    sent = body["placement"]["speakers"]  # type: ignore[index]
+    for entry, s in zip(install["speakers"], sent):  # type: ignore[arg-type]
+        p = s["position"]
+        az, el, dist = cartesian_to_pipeline(
+            p["x"] - ear_x, p["y"] - ear_y, p["z"] - ear_z
+        )
+        assert entry["az_deg"] == math.degrees(az)
+        assert entry["el_deg"] == math.degrees(el)
+        assert entry["dist_m"] == dist
+
+
+def test_evaluate_report_block_unchanged_by_install() -> None:
+    """``install`` is purely additive — ``report`` is byte-identical to core.
+
+    (Same assertion as the physics-parity test, re-stated to lock that adding the
+    install block did NOT perturb the verbatim engine report.)
+    """
+    body = _valid_body()
+    api_report = _client().post("/api/evaluate", json=body).json()["report"]
+
+    room = get_room(BUILTIN_SHOEBOX_ID)
+    spec = BUILTIN_SPEAKER_CATALOG["generic_surround_compact"]
+    placement = PlacementResult(
+        target_algorithm="vbap",
+        regularity_hint="ring",
+        layout_name="live-edit",
+        speakers=[
+            PlacedSpeaker(channel=1, position=Point3(1.8, 1.2, 1.8)),
+            PlacedSpeaker(channel=2, position=Point3(-1.8, 1.2, 1.8)),
+        ],
+    )
+    direct = tradeoff_to_dict(
+        evaluate_layout(
+            room, placement, spec, listener_area=room.listener_area,
+            drive_w=10.0, target_spl_db=85.0,
+        )
+    )
+    assert api_report == direct
+
+
+# --------------------------------------------------------------------------- #
 # Errors — generic body, no leaked internals
 # --------------------------------------------------------------------------- #
 

@@ -147,6 +147,124 @@ def _is_finite_positive(value: Any) -> bool:
     return math.isfinite(f) and f > 0.0
 
 
+def _plan_dist_point_to_segment(
+    px: float, pz: float, ax: float, az: float, bx: float, bz: float
+) -> float:
+    """Perpendicular plan-view distance from ``(px,pz)`` to segment ``A→B`` (metres).
+
+    Pure 2-D geometry (the floor plane; y is dropped): the projection parameter is
+    clamped to ``[0,1]`` so a speaker beyond a wall's ends measures to the nearer
+    endpoint, not the infinite line. A degenerate (zero-length) segment falls back
+    to the point-to-endpoint distance.
+    """
+    dx = bx - ax
+    dz = bz - az
+    denom = dx * dx + dz * dz
+    if denom <= 0.0:
+        return math.hypot(px - ax, pz - az)
+    t = ((px - ax) * dx + (pz - az) * dz) / denom
+    t = max(0.0, min(1.0, t))
+    cx = ax + t * dx
+    cz = az + t * dz
+    return math.hypot(px - cx, pz - cz)
+
+
+def _wall_plan_segment(surf: Any) -> tuple[float, float, float, float] | None:
+    """Collapse a wall :class:`Surface` to its plan-view segment ``(ax,az,bx,bz)``.
+
+    A wall polygon is a vertical rectangle; projected to the floor plane its four
+    corners collapse onto a single line segment. The two most-distant projected
+    ``(x,z)`` vertices are that segment's endpoints (robust to vertex order /
+    duplicated corners). Returns ``None`` if the wall has no extent in plan view.
+    """
+    pts = [(p.x, p.z) for p in surf.polygon]
+    best: tuple[float, float, float, float] | None = None
+    best_d = -1.0
+    for i in range(len(pts)):
+        for j in range(i + 1, len(pts)):
+            d = (pts[i][0] - pts[j][0]) ** 2 + (pts[i][1] - pts[j][1]) ** 2
+            if d > best_d:
+                best_d = d
+                best = (pts[i][0], pts[i][1], pts[j][0], pts[j][1])
+    return best if best_d > 0.0 else None
+
+
+def _build_install_block(room: "RoomModel", placement: Any) -> dict[str, object]:
+    """Per-speaker installer guide (GEOMETRY ONLY — D29, no physics/acoustics).
+
+    For each placed speaker emit its verbatim world ``position`` + mounting
+    ``height_m`` (= ``position.y``), the listener-relative ``az_deg``/``el_deg``/
+    ``dist_m`` via the SINGLE sign-flip authority
+    :func:`roomestim.coords.cartesian_to_pipeline` (fed the vector from the listener
+    ear point ``(centroid.x, listener_area.height_m, centroid.z)`` to the speaker —
+    exactly what the engine / layout.yaml use, so no client/server drift), and a
+    mounting hint an installer can lay out with a tape measure:
+
+    * ``nearest_wall_index`` — index into the room's WALL surfaces (same order as
+      ``room_geometry_to_dict``'s ``walls`` list, so the viewer can cross-reference),
+      with ``wall_offset_m`` = perpendicular plan-view distance to that wall segment;
+    * ``nearest_corner`` — index into ``floor_polygon``, with ``corner_dist_m`` =
+      plan-view distance to that floor vertex.
+
+    All angle/distance numbers are computed here (server-side) so the browser only
+    renders them. ``az_deg``/``el_deg`` are the pipeline (az, el) in DEGREES.
+    """
+    from roomestim.coords import cartesian_to_pipeline  # noqa: PLC0415
+
+    listener = room.listener_area
+    ear_x = listener.centroid.x
+    ear_y = listener.height_m
+    ear_z = listener.centroid.z
+
+    wall_segments = [
+        seg
+        for surf in room.surfaces
+        if surf.kind == "wall"
+        for seg in (_wall_plan_segment(surf),)
+    ]
+    corners = [(p.x, p.z) for p in room.floor_polygon]
+
+    speakers_out: list[dict[str, object]] = []
+    for s in placement.speakers:
+        px, py, pz = s.position.x, s.position.y, s.position.z
+        az, el, dist = cartesian_to_pipeline(px - ear_x, py - ear_y, pz - ear_z)
+
+        nearest_wall_index: int | None = None
+        wall_offset_m: float | None = None
+        for wi, seg in enumerate(wall_segments):
+            if seg is None:
+                continue
+            off = _plan_dist_point_to_segment(px, pz, seg[0], seg[1], seg[2], seg[3])
+            if wall_offset_m is None or off < wall_offset_m:
+                wall_offset_m = off
+                nearest_wall_index = wi
+
+        nearest_corner: int | None = None
+        corner_dist_m: float | None = None
+        for ci, (cx, cz) in enumerate(corners):
+            cd = math.hypot(px - cx, pz - cz)
+            if corner_dist_m is None or cd < corner_dist_m:
+                corner_dist_m = cd
+                nearest_corner = ci
+
+        speakers_out.append(
+            {
+                "channel": s.channel,
+                "position": {"x": px, "y": py, "z": pz},
+                "height_m": py,
+                "az_deg": math.degrees(az),
+                "el_deg": math.degrees(el),
+                "dist_m": dist,
+                "nearest_wall_index": nearest_wall_index,
+                "wall_offset_m": wall_offset_m,
+                "nearest_corner": nearest_corner,
+                "corner_dist_m": corner_dist_m,
+            }
+        )
+
+    return {"speakers": speakers_out}
+
+
 def _build_placement(placement: PlacementIn) -> Any:
     """Build a core ``PlacementResult`` from the validated placement block."""
     from roomestim.model import PlacedSpeaker, Point3, PlacementResult  # noqa: PLC0415
@@ -228,7 +346,16 @@ def _apply_material_overrides(
 
 
 def evaluate_request(request: EvaluateRequest) -> dict[str, object]:
-    """Resolve the request to core objects and return ``tradeoff_to_dict(...)``.
+    """Resolve the request to core objects and return ``{report, install}``.
+
+    ``report`` is the VERBATIM ``tradeoff_to_dict(evaluate_layout(...))`` (byte-for-
+    byte the engine output — no physics re-derived here). ``install`` is an ADDITIVE
+    server-side per-speaker installer guide (:func:`_build_install_block`, geometry
+    only, D29) built from the SAME resolved room + placement so the on-screen
+    positions/angles match what the viewer renders and what layout.yaml exports; it
+    NEVER folds into ``report``. Building it is defensive: any failure degrades to
+    ``install: None`` (logged, no raw leak — ADR 0038) so a valid evaluate always
+    returns.
 
     Raises :class:`EvaluateError` (→ 400, generic) for any client-attributable
     failure: unknown ``room_id``, unknown spec ``model_key``, or a core
@@ -299,7 +426,19 @@ def evaluate_request(request: EvaluateRequest) -> dict[str, object]:
         _LOG.warning("evaluate_layout rejected inputs: %s", exc)
         raise EvaluateError() from exc
 
-    return tradeoff_to_dict(report)
+    report_dict = tradeoff_to_dict(report)
+    # ADDITIVE per-speaker installer guide (P6.C, geometry only, D29). Built from
+    # the same room + placement so it matches the render/export; guarded so any
+    # failure degrades to install=None (never crashes a valid evaluate, never
+    # leaks a raw exception — ADR 0038).
+    install: dict[str, object] | None
+    try:
+        install = _build_install_block(room, placement)
+    except Exception as exc:  # pragma: no cover - defensive (geometry is total)
+        _LOG.warning("evaluate: install block build failed: %s", exc)
+        install = None
+
+    return {"report": report_dict, "install": install}
 
 
 def place_request(request: PlaceRequest) -> dict[str, object]:

@@ -78,6 +78,19 @@
     #status { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
     #status.error { color: var(--err); }
 
+    #install-note { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    #install-table {
+      width: 100%; border-collapse: collapse; font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+    #install-table th, #install-table td {
+      padding: 2px 4px; text-align: right; border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    #install-table th { color: var(--muted); font-weight: 600; }
+    #install-table td:first-child, #install-table th:first-child { text-align: left; }
+    #install-table tbody:empty { display: none; }
+
     #controls {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
       margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
@@ -188,6 +201,21 @@
 
         <h2>RT60 context</h2>
         <div id="axis-rt60"></div>
+
+        <h2>스피커 설치 위치 (Install guide)</h2>
+        <div id="install-note">Exact per-speaker positions — updates live on drag / re-seed.</div>
+        <table id="install-table">
+          <thead>
+            <tr>
+              <th>ch</th>
+              <th>x (m)</th><th>y (m)</th><th>z (m)</th>
+              <th>ht (m)</th>
+              <th>az (°)</th><th>el (°)</th><th>dist (m)</th>
+              <th>wall</th><th>corner</th>
+            </tr>
+          </thead>
+          <tbody id="install-body"></tbody>
+        </table>
       </div>
     </div>
   </div>
