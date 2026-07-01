@@ -5,6 +5,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.64.0] — 2026-07-01
+
+**장애물-인지 최적 스피커 배치 (P7)** — 설치 현장의 기둥/가구를 피해 스피커를
+배치하는 신규 core 기능 라인. MINOR bump 한 번(0.63.0→0.64.0)을 P7 전 phase가
+공유한다(P7.1 Mode B + P7.2 Mode A). 신규 의존성 0(shapely/numpy/math), additive
+— 기존 caller·layout.yaml 골든 byte-equal. 전부 DETERMINISTIC GEOMETRIC
+HEURISTIC 이며 음향/SPL 주장 없음(`OBSTACLE_AWARE_PLACEMENT_NOTE` 단일 진실원천).
+
+### Added
+
+- **P7.1 — obstacle 지오메트리 + Mode B `coverage_avoid`.** `roomestim/geom/
+  obstacle.py` (`object_footprint`/`freestanding_footprints`/`plan_clearance_m`/
+  `position_is_clear`/`line_of_sight_blocked`, 평면 axis-aligned 박스, 내부=0
+  거리, door/window 제외); `place_dbap` 에 `candidate_filter` 옵션 추가(None →
+  BYTE-EQUAL); `roomestim/place/obstacle_aware.py::place_coverage_avoid` = DBAP
+  커버리지 + 장애물/시야 후보 필터; `coverage_avoid` dispatch 분기 +
+  `clearance_m=0.30` kwarg; `TargetAlgorithm.COVERAGE_AVOID`.
+- **P7.2 — 포맷 각도 카탈로그 + Mode A `format_avoid`.**
+  - `roomestim/place/formats.py` (신규, ANGLES ONLY): `FormatChannel`/
+    `ImmersiveFormat`/`FORMAT_CATALOG`/`get_format`/`list_format_ids`.
+    포맷 `5.1`·`7.1`·`5.1.2`·`5.1.4`·`7.1.4`·`9.1.6` (채널수=포맷 id: 6/8/8/10/
+    12/16). Bed/surround 방위각 = PUBLIC **ITU-R BS.775** (L/R ±30, C 0, surround
+    ±110; 7.1 side ±90/back ±150), 높이 채널 고도 = 기존 상수
+    `standards.HEIGHT_EL_IDEAL_DEG`(45°) 재사용(중복 하드코딩 없음), 높이/wide
+    방위각 = PUBLIC **Dolby Atmos Home** 가이드(front height ±45, top-middle ±90,
+    rear height ±135, wide ±60). PUBLIC 가이드로만 재구성 — 유료(CTA/CEDIA RP22)
+    표준 미주장(repo 의 RP22-paywalled 정직성 선례 계승); LFE 는 무지향(front 0/0
+    nominal, 채널수 정합용).
+  - `roomestim/place/obstacle_aware.py::place_format_avoid`: 각 채널의 이상점 =
+    `ear + coords.yaml_speaker_to_cartesian(az, el, radius)` (ear = 청취영역
+    centroid+height). 이상점이 clear(+시야) 면 deviation 0 수락, 아니면 오프셋
+    `Δaz∈{±step..±az_max}`·`Δel∈{0,±step..±el_max}` 를 `hypot(Δaz,Δel)` 오름차순
+    안정정렬로 스캔해 최초로 clear 되는 최소 각도 nudge 수락. 창 내에서 못 풀면
+    이상 각도 유지 + `UNRESOLVED` 플래그(무단 이동/누락 없음, 포맷 완결). 채널별
+    `PlacedSpeaker.notes` = ideal-vs-actual az/el + deviation + `[CLEARED|
+    UNRESOLVED]`. 결정론적(고정 step + 안정정렬), `math`-only.
+  - `format_avoid` dispatch 분기(`format_id` kwarg; None → ValueError 로 포맷
+    id 목록 안내) + `run_placement` room-awareness docstring 확장;
+    `TargetAlgorithm.FORMAT_AVOID` (`x_target_algorithm` 라운드트립).
+
+### Byte-equality
+
+- 모든 신규 `run_placement` kwarg(`clearance_m`/`format_id`)는 기본값이 no-op →
+  기존 caller(room-blind vbap/wfs/ambisonics, dbap, coverage)와 모든 기존
+  `layout.yaml` 골든이 byte-equal(패리티 테스트로 실증). DBAP 는
+  `candidate_filter=None` 에서 byte-equal.
+
+### Deferred
+
+- P7.3(서버 `PlaceRequest` 필드 + `GET /api/formats` + 뷰어 UI), P7.4(WFS 노출).
+
+---
+
 ## [0.63.0] — 2026-07-01
 
 **스피커별 개별 직접음장 SPL (청취 지점) — 설치 가이드용** (MINOR — 신규

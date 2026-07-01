@@ -25,6 +25,7 @@ def run_placement(
     coverage_overlap_mode: str = "background",
     coverage_grid_type: str = "square",
     clearance_m: float = 0.30,
+    format_id: str | None = None,
 ) -> PlacementResult:
     """Dispatch to the right placement function and return a PlacementResult.
 
@@ -53,11 +54,24 @@ def run_placement(
     line to the listener is blocked by one. It is a DETERMINISTIC GEOMETRIC
     HEURISTIC with NO SPL claim (axis-aligned boxes, no diffraction/height) —
     see ``OBSTACLE_AWARE_PLACEMENT_NOTE``.
+    ``format_avoid`` is format-anchored AND obstacle-aware: it lays out a
+    standard immersive format's channels (``format_id``, e.g. ``5.1.4``) at
+    their canonical listener-relative angles (public ITU-R BS.775 bed/surround +
+    Dolby Atmos Home height angles — NOT a paywalled standard, NOT inferred from
+    the room) and nudges each channel by the SMALLEST angular offset (stepped,
+    deterministic scan — not a global optimum) that clears every free-standing
+    object footprint by ``clearance_m`` and, unless line-of-sight is disabled,
+    is not occluded plan-view. A channel that cannot be cleared within the
+    search window is LEFT at its ideal angle and flagged ``UNRESOLVED`` — it is
+    NEVER silently moved. ``n_speakers`` is DERIVED from the format (the passed
+    ``n_speakers`` is ignored for this path). Also a DETERMINISTIC GEOMETRIC
+    HEURISTIC with NO SPL claim — see ``OBSTACLE_AWARE_PLACEMENT_NOTE``.
 
     The four ``coverage_*`` keyword arguments are only consumed by the
-    ``coverage`` branch and ``clearance_m`` only by ``coverage_avoid``; all
-    default to the standard behaviour, so every existing caller (room-blind
-    vbap/wfs/ambisonics, dbap, coverage) is byte-equal.
+    ``coverage`` branch, ``clearance_m`` by ``coverage_avoid``/``format_avoid``,
+    and ``format_id`` only by ``format_avoid``; all default to the standard
+    behaviour, so every existing caller (room-blind vbap/wfs/ambisonics, dbap,
+    coverage) is byte-equal.
     """
     if algorithm == "coverage":
         from typing import cast
@@ -180,6 +194,22 @@ def run_placement(
         from roomestim.place.obstacle_aware import place_coverage_avoid
 
         return place_coverage_avoid(room, n_speakers, clearance_m=clearance_m)
+
+    if algorithm == "format_avoid":
+        from roomestim.place.formats import list_format_ids
+        from roomestim.place.obstacle_aware import place_format_avoid
+
+        if format_id is None:
+            raise ValueError(
+                "format_avoid requires format_id (e.g. '5.1.4'); "
+                f"one of {list_format_ids()}"
+            )
+        return place_format_avoid(
+            room,
+            format_id=format_id,
+            layout_radius_m=layout_radius_m,
+            clearance_m=clearance_m,
+        )
 
     if algorithm == "ambisonics":
         if order is None:

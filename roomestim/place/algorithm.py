@@ -24,3 +24,8 @@ class TargetAlgorithm(str, Enum):
     #: candidate rejection; geometric heuristic, NO SPL claim; see
     #: ``roomestim.place.obstacle_aware`` / ``OBSTACLE_AWARE_PLACEMENT_NOTE``).
     COVERAGE_AVOID = "COVERAGE_AVOID"
+    #: P7 — obstacle-aware format placement (canonical format angles nudged by
+    #: the smallest angular offset that clears obstacles; geometric heuristic,
+    #: NO SPL claim; see ``roomestim.place.obstacle_aware.place_format_avoid`` /
+    #: ``OBSTACLE_AWARE_PLACEMENT_NOTE``).
+    FORMAT_AVOID = "FORMAT_AVOID"

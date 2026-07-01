@@ -17,14 +17,18 @@ Mode A in P7.2.
 
 from __future__ import annotations
 
+import math
+
+from roomestim.coords import yaml_speaker_to_cartesian
 from roomestim.geom.obstacle import (
     freestanding_footprints,
     line_of_sight_blocked,
     position_is_clear,
 )
-from roomestim.model import PlacementResult, Point3, RoomModel, Surface
+from roomestim.model import PlacedSpeaker, PlacementResult, Point3, RoomModel, Surface
 from roomestim.place.algorithm import TargetAlgorithm
 from roomestim.place.dbap import place_dbap
+from roomestim.place.formats import get_format
 
 #: Single source of truth for the obstacle-aware placement honesty framing.
 #: Referenced (never retyped) by the dispatch docstring and the server response.
@@ -119,4 +123,133 @@ def place_coverage_avoid(
     )
 
 
-__all__ = ["OBSTACLE_AWARE_PLACEMENT_NOTE", "place_coverage_avoid"]
+def _signed_offsets(max_deg: float, step_deg: float) -> list[float]:
+    """``[0, +step, -step, +2step, -2step, …]`` up to ``±max_deg`` (inclusive).
+
+    Insertion order is the deterministic tie-break for the stable sort in
+    :func:`place_format_avoid` (equal-magnitude offsets keep this order).
+    """
+    if step_deg <= 0.0:
+        raise ValueError(f"search_step_deg must be > 0; got {step_deg}")
+    n = int(round(max_deg / step_deg)) if max_deg > 0.0 else 0
+    offsets: list[float] = [0.0]
+    for k in range(1, n + 1):
+        offsets.append(k * step_deg)
+        offsets.append(-k * step_deg)
+    return offsets
+
+
+def place_format_avoid(
+    room: RoomModel,
+    *,
+    format_id: str,
+    layout_radius_m: float = 1.8,
+    clearance_m: float = 0.30,
+    az_search_max_deg: float = 45.0,
+    el_search_max_deg: float = 15.0,
+    search_step_deg: float = 1.0,
+    check_line_of_sight: bool = True,
+    layout_name: str = "format_avoid",
+) -> PlacementResult:
+    """Format-anchored, obstacle-avoiding placement (Mode A).
+
+    Each channel of ``format_id`` (a key of
+    :data:`roomestim.place.formats.FORMAT_CATALOG`) starts at its canonical
+    listener-relative angle: the ideal world point is
+    ``ear + yaml_speaker_to_cartesian(az_deg, el_deg, layout_radius_m)`` where
+    ``ear = (centroid.x, listener_area.height_m, centroid.z)`` — the same ear
+    point as the server install block, so headless and server results do not
+    drift. Angles pass through :func:`roomestim.coords.yaml_speaker_to_cartesian`
+    (never hand-rolled trig).
+
+    A channel is accepted at deviation 0 when its ideal point is clear of every
+    free-standing object footprint by ``clearance_m`` (plan-view) AND — unless
+    ``check_line_of_sight`` is disabled — its plan-view line to the ear is not
+    blocked. Otherwise a DETERMINISTIC increasing-deviation stepped scan tries
+    angular offsets ``Δaz ∈ {±step..±az_search_max}`` × ``Δel ∈ {0,±step..
+    ±el_search_max}`` sorted ascending by ``hypot(Δaz, Δel)`` (stable sort) and
+    accepts the FIRST offset that clears — the smallest angular nudge. A channel
+    that cannot be cleared within the search window is LEFT at its ideal angle
+    and flagged ``UNRESOLVED`` in its note; it is NEVER silently moved or dropped
+    (the format stays complete). Per-channel ideal-vs-actual az/el + deviation +
+    ``[CLEARED|UNRESOLVED]`` is recorded in :attr:`~roomestim.model.PlacedSpeaker.notes`.
+
+    Room-absolute (Frame A); makes NO acoustic/SPL claim. ``n_speakers`` is
+    DERIVED from the format. Raises ``ValueError`` (→ generic 400 at the server)
+    for an unknown ``format_id``. See :data:`OBSTACLE_AWARE_PLACEMENT_NOTE`.
+    """
+    fmt = get_format(format_id)
+    footprints = freestanding_footprints(room)
+    listener = room.listener_area
+    ear = Point3(
+        x=listener.centroid.x,
+        y=listener.height_m,
+        z=listener.centroid.z,
+    )
+
+    # Deterministic offset grid, sorted ascending by combined angular deviation.
+    az_offsets = _signed_offsets(az_search_max_deg, search_step_deg)
+    el_offsets = _signed_offsets(el_search_max_deg, search_step_deg)
+    offsets: list[tuple[float, float]] = [
+        (d_az, d_el) for d_az in az_offsets for d_el in el_offsets
+    ]
+    offsets.sort(key=lambda o: math.hypot(o[0], o[1]))  # stable -> deterministic
+
+    def _point_at(az_deg: float, el_deg: float) -> Point3:
+        dx, dy, dz = yaml_speaker_to_cartesian(az_deg, el_deg, layout_radius_m)
+        return Point3(x=ear.x + dx, y=ear.y + dy, z=ear.z + dz)
+
+    def _clears(pt: Point3) -> bool:
+        if not position_is_clear(pt.x, pt.z, footprints, clearance_m=clearance_m):
+            return False
+        if check_line_of_sight and line_of_sight_blocked(pt, ear, footprints):
+            return False
+        return True
+
+    speakers: list[PlacedSpeaker] = []
+    for idx, ch in enumerate(fmt.channels, start=1):
+        accepted: Point3 | None = None
+        d_az_acc = 0.0
+        d_el_acc = 0.0
+        for d_az, d_el in offsets:
+            pt = _point_at(ch.az_deg + d_az, ch.el_deg + d_el)
+            if _clears(pt):
+                accepted = pt
+                d_az_acc = d_az
+                d_el_acc = d_el
+                break
+
+        if accepted is None:
+            # Nothing in the window clears -> keep the ideal point, flag it.
+            actual = _point_at(ch.az_deg, ch.el_deg)
+            act_az, act_el = ch.az_deg, ch.el_deg
+            dev = 0.0
+            status = "UNRESOLVED"
+        else:
+            actual = accepted
+            act_az = ch.az_deg + d_az_acc
+            act_el = ch.el_deg + d_el_acc
+            dev = math.hypot(d_az_acc, d_el_acc)
+            status = "CLEARED"
+
+        note = (
+            f"{format_id}/{ch.name}: ideal az={ch.az_deg:+.1f} el={ch.el_deg:+.1f} "
+            f"-> actual az={act_az:+.1f} el={act_el:+.1f} dev={dev:.1f}deg [{status}]"
+        )
+        speakers.append(
+            PlacedSpeaker(channel=idx, position=actual, notes=note)
+        )
+
+    return PlacementResult(
+        target_algorithm=TargetAlgorithm.FORMAT_AVOID.value,
+        regularity_hint="IRREGULAR",
+        speakers=speakers,
+        layout_name=layout_name,
+    )
+
+
+__all__ = [
+    "OBSTACLE_AWARE_PLACEMENT_NOTE",
+    "place_coverage_avoid",
+    "place_format_avoid",
+]
