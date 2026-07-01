@@ -24,6 +24,7 @@ __all__ = [
     "PlaceRequest",
     "UploadRoomRequest",
     "UploadRoomPlanRequest",
+    "UploadStructureRequest",
 ]
 
 
@@ -146,3 +147,28 @@ class UploadRoomPlanRequest(BaseModel):
     # richly-furnished multi-surface capture is legitimately larger than a
     # hand-authored room.yaml while still far below any adversarial payload.
     roomplan_json: str = Field(max_length=5_000_000)
+
+
+class UploadStructureRequest(BaseModel):
+    """``POST /api/rooms/upload/structure`` request body — an Apple RoomPlan
+    ``CapturedStructure`` (multi-room) JSON export as raw TEXT.
+
+    Like :class:`UploadRoomRequest` / :class:`UploadRoomPlanRequest`, the file
+    content is sent as a JSON string field (NOT multipart) so the server needs NO
+    python-multipart dependency. The text is parsed ENTIRELY by the torch-free
+    core adapter ``roomestim.adapters.roomplan_structure.parse_structure``
+    (json+numpy+shapely, all already core deps) — the server re-derives nothing
+    and adds no geometry math. The adapter splits the export into N single-room
+    ``RoomModel`` objects (one per ``section``); RoomPlan is metric-native, so
+    ``scale_anchor`` is unused (D29).
+    """
+
+    # Bounded (~10 MB) so a network client cannot stream a multi-GB body into
+    # memory + temp file + json.load — an oversize body then fails as a clean 422,
+    # not an OOM (mirrors the room.yaml / RoomPlan-sidecar guards). The cap is
+    # larger (~2× the single-sidecar cap) because a CapturedStructure enumerates
+    # EVERY section plus all walls/doors/windows/openings/objects of the whole
+    # capture as verbose JSON — the real multi-room fixture is ~252 KB, so 10 MB
+    # is generous headroom for a large multi-room scan while still far below any
+    # adversarial payload.
+    structure_json: str = Field(max_length=10_000_000)

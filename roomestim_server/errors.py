@@ -14,6 +14,7 @@ from __future__ import annotations
 
 __all__ = [
     "EvaluateError",
+    "GENERIC_EXAMPLE_NOT_FOUND_MESSAGE",
     "GENERIC_INVALID_REQUEST_MESSAGE",
     "GENERIC_INTERNAL_MESSAGE",
     "GENERIC_ROOM_NOT_FOUND_MESSAGE",
@@ -41,6 +42,9 @@ GENERIC_INTERNAL_MESSAGE = (
 
 #: Generic 404 message — unknown room id on ``GET /api/rooms/{id}``.
 GENERIC_ROOM_NOT_FOUND_MESSAGE = "룸을 찾을 수 없습니다. (Room not found.)"
+
+#: Generic 404 message — unknown example id on ``POST /api/examples/{id}/load``.
+GENERIC_EXAMPLE_NOT_FOUND_MESSAGE = "예시를 찾을 수 없습니다. (Example not found.)"
 
 #: Generic 422 message — malformed request body (field-level ``fields`` list is
 #: safe to return, but the message stays generic). KR + EN, NO internals.

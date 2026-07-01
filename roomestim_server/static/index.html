@@ -89,7 +89,8 @@
     }
     #controls input#nspk { width: 56px; }
     #controls input#target, #controls input#drive, #controls input#rt60 { width: 72px; }
-    #controls input#upload, #controls input#upload-roomplan { max-width: 160px; }
+    #controls input#upload, #controls input#upload-roomplan,
+    #controls input#upload-structure { max-width: 160px; }
     #controls button:disabled { opacity: .5; cursor: not-allowed; }
     #controls button {
       background: var(--accent); color: #0e1013; border: none; border-radius: 4px;
@@ -143,6 +144,16 @@
           <input id="upload" type="file" accept=".yaml,.yml" />
           <label for="upload-roomplan">RoomPlan JSON (.json)</label>
           <input id="upload-roomplan" type="file" accept=".json" />
+          <label for="upload-structure">CapturedStructure (.json)</label>
+          <input id="upload-structure" type="file" accept=".json" />
+
+          <label for="examples">예시 불러오기</label>
+          <select id="examples"><!-- populated from GET /api/examples on load --></select>
+          <span id="room-picker-wrap" style="display:none">
+            <label for="room-picker">room</label>
+            <select id="room-picker"><!-- populated for multi-room results --></select>
+          </span>
+
           <button id="export" type="button" disabled>Export trade-off JSON</button>
         </div>
 

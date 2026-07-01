@@ -2,15 +2,19 @@
 // /api/evaluate response, every seeded speaker layout comes verbatim from the
 // /api/place response, the spec dropdown comes verbatim from /api/specs, and an
 // uploaded room.yaml is parsed ENTIRELY server-side by core read_room_yaml
-// (POST /api/rooms/upload), and an uploaded Apple RoomPlan JSON sidecar is parsed
-// ENTIRELY server-side by core RoomPlanAdapter (POST /api/rooms/upload/roomplan).
-// "Export trade-off JSON" downloads the exact report
-// object the server already returned — NO recompute, NO client-side physics.
-// Dragging only moves a speaker's {x,z} (keeps y) — that's UI geometry.
+// (POST /api/rooms/upload), an uploaded Apple RoomPlan JSON sidecar by core
+// RoomPlanAdapter (POST /api/rooms/upload/roomplan), an uploaded Apple
+// CapturedStructure multi-room export by core parse_structure
+// (POST /api/rooms/upload/structure → N rooms), and the bundled examples by the
+// same server paths (GET /api/examples + POST /api/examples/{id}/load).
+// "Export trade-off JSON" downloads the exact report object the server already
+// returned — NO recompute, NO client-side physics. Dragging only moves a
+// speaker's {x,z} (keeps y) — that's UI geometry. The room-picker just re-selects
+// among the already-parsed, already-registered rooms (no physics).
 //
-// immersive-layout P5.4 / ADR 0061 — polish: spec dropdown + target/drive/RT60
-// controls + upload room.yaml + export last report. Builds on P5.2 (static
-// viewer) + P5.3 (draggable speakers + live re-evaluate via /api/evaluate).
+// immersive-layout P5.6 / ADR 0061 — multi-room CapturedStructure upload + bundled
+// example loader + room-picker. Builds on P5.2 (static viewer) + P5.3 (draggable
+// speakers + live re-evaluate) + P5.4 (spec/params/export) + P5.5 (RoomPlan single).
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -533,13 +537,86 @@ async function populateSpecs() {
   }
 }
 
-// ---- Upload a room (parsed entirely server-side by the torch-free core) ---
-// Two text formats share ONE switch flow: room.yaml (POST /api/rooms/upload,
-// core read_room_yaml) and an Apple RoomPlan JSON sidecar
-// (POST /api/rooms/upload/roomplan, core RoomPlanAdapter). D29: NO parsing or
-// geometry math runs in the browser — the file text is posted verbatim.
+// ---- Load / upload a room (parsed entirely server-side by torch-free core) --
+// Text formats share ONE switch flow: room.yaml (POST /api/rooms/upload, core
+// read_room_yaml), an Apple RoomPlan JSON sidecar (POST /api/rooms/upload/roomplan,
+// core RoomPlanAdapter → single room), an Apple CapturedStructure multi-room export
+// (POST /api/rooms/upload/structure, core parse_structure → N rooms), and the
+// bundled examples (POST /api/examples/{id}/load). D29: NO parsing or geometry math
+// runs in the browser — the file/example text is parsed verbatim server-side.
 
-async function _uploadAndSwitch(file, url, fieldName) {
+// The rooms returned by the LAST multi-room result, indexed by the room-picker.
+let _pickerRooms = [];
+
+// Adopt a returned room geometry as the active room, rebuild the scene, keep the
+// current speakers, and re-evaluate. Shared by every load/upload/pick path.
+function switchToRoom(geom) {
+  currentRoomId = geom.id;
+  clearRoomMeshes();
+  buildRoom(geom);
+  evaluateAndRender(speakersFromMeshes());
+}
+
+// Populate (or hide) the room-picker from a list of returned room geometries.
+function populateRoomPicker(rooms) {
+  const sel = $("room-picker");
+  const wrap = $("room-picker-wrap");
+  if (!sel || !wrap) return;
+  _pickerRooms = rooms || [];
+  sel.replaceChildren();
+  if (_pickerRooms.length <= 1) {
+    wrap.style.display = "none";
+    return;
+  }
+  _pickerRooms.forEach((geom, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = geom.name || geom.id; // textContent = XSS-safe
+    sel.appendChild(opt);
+  });
+  sel.value = "0";
+  wrap.style.display = "";
+}
+
+// Route a successful load/upload response to the viewer: a single room ({room})
+// behaves exactly as before; a multi-room result ({rooms:[...]}) fills the picker
+// and loads the first room. Each room already carries its uploaded:<n> id.
+function handleLoadResult(data) {
+  if (Array.isArray(data.rooms)) {
+    if (!data.rooms.length) {
+      showError("No rooms in the loaded capture.");
+      return;
+    }
+    populateRoomPicker(data.rooms);
+    switchToRoom(data.rooms[0]);
+  } else if (data.room) {
+    populateRoomPicker([]); // single room → hide the picker
+    switchToRoom(data.room);
+  }
+}
+
+// POST a JSON payload to a load/upload endpoint and route the result. Any error
+// surfaces the server's generic message (no client-side parsing/physics).
+async function _postAndSwitch(url, payload, statusLabel) {
+  setStatus(statusLabel, false);
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || data.ok !== true) {
+      showError(data && data.error ? data.error.message : "Load failed.");
+      return;
+    }
+    handleLoadResult(data);
+  } catch (err) {
+    showError("Load request failed.");
+  }
+}
+
+async function _uploadFile(file, url, fieldName) {
   if (!file) return;
   let text;
   try {
@@ -548,35 +625,54 @@ async function _uploadAndSwitch(file, url, fieldName) {
     showError("Could not read the selected file.");
     return;
   }
-  setStatus(`Uploading ${file.name}…`, false);
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ [fieldName]: text }),
-    });
-    const data = await resp.json().catch(() => null);
-    if (!resp.ok || !data || data.ok !== true) {
-      showError(data && data.error ? data.error.message : "Upload failed.");
-      return;
-    }
-    // Switch to the uploaded room: adopt its id, rebuild the scene from the
-    // returned geometry, keep the current speakers, and re-evaluate.
-    currentRoomId = data.room.id;
-    clearRoomMeshes();
-    buildRoom(data.room);
-    evaluateAndRender(speakersFromMeshes());
-  } catch (err) {
-    showError("Upload request failed.");
-  }
+  return _postAndSwitch(url, { [fieldName]: text }, `Uploading ${file.name}…`);
 }
 
 function uploadRoom(file) {
-  return _uploadAndSwitch(file, "/api/rooms/upload", "room_yaml");
+  return _uploadFile(file, "/api/rooms/upload", "room_yaml");
 }
 
 function uploadRoomPlan(file) {
-  return _uploadAndSwitch(file, "/api/rooms/upload/roomplan", "roomplan_json");
+  return _uploadFile(file, "/api/rooms/upload/roomplan", "roomplan_json");
+}
+
+function uploadStructure(file) {
+  return _uploadFile(file, "/api/rooms/upload/structure", "structure_json");
+}
+
+function loadExample(exampleId) {
+  if (!exampleId) return;
+  return _postAndSwitch(
+    "/api/examples/" + encodeURIComponent(exampleId) + "/load",
+    {},
+    `Loading example ${exampleId}…`
+  );
+}
+
+// Populate the "load example" dropdown verbatim from GET /api/examples.
+async function populateExamples() {
+  const sel = $("examples");
+  if (!sel) return;
+  try {
+    const resp = await fetch("/api/examples");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const examples = (data && data.examples) || [];
+    sel.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "— load example —";
+    sel.appendChild(placeholder);
+    for (const ex of examples) {
+      const opt = document.createElement("option");
+      opt.value = ex.id;
+      opt.textContent = ex.name || ex.id; // textContent = XSS-safe
+      if (ex.description) opt.title = ex.description;
+      sel.appendChild(opt);
+    }
+  } catch (err) {
+    /* leave the dropdown with just the placeholder */
+  }
 }
 
 // ---- Boot flow -----------------------------------------------------------
@@ -596,6 +692,18 @@ async function main() {
     uploadRoomPlan(file);
     ev.target.value = ""; // allow re-uploading the same file
   });
+  $("upload-structure").addEventListener("change", (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    uploadStructure(file);
+    ev.target.value = ""; // allow re-uploading the same file
+  });
+  $("examples").addEventListener("change", (ev) => {
+    loadExample(ev.target.value);
+  });
+  $("room-picker").addEventListener("change", (ev) => {
+    const i = parseInt(ev.target.value, 10);
+    if (Number.isInteger(i) && _pickerRooms[i]) switchToRoom(_pickerRooms[i]);
+  });
 
   // Any spec/param change → debounced re-evaluate (shares scheduleEvaluate with
   // drag-end). The form values are the single source of truth for every request.
@@ -603,9 +711,10 @@ async function main() {
     $(id).addEventListener("change", () => scheduleEvaluate());
   }
 
-  // Populate the spec dropdown before the first evaluate (so readSpec() reflects
-  // the real default). Failure is non-fatal (readSpec falls back).
+  // Populate the spec + example dropdowns before the first evaluate. Failure is
+  // non-fatal (the spec dropdown falls back to the default key; examples stay empty).
   await populateSpecs();
+  await populateExamples();
 
   // 1. Fetch room geometry and build the scene.
   try {

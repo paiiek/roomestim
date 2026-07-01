@@ -150,6 +150,21 @@ exclude = ["tests*"]
 
 [tool.setuptools.package-data]
 roomestim = ["proto/*.json", "vision/horizonnet/LICENSE", "vision/horizonnet/NOTICE", "py.typed"]
+# P5.6 / ADR 0061: ship the roomestim_server DATA files (server-only, no core /
+# version change) so a built wheel is a working viewer. Two data trees:
+#  * static/  — the P5.2 Three.js viewer shell + vendored three.js (MIT). NOTE:
+#    this was NOT previously declared and did NOT ship in the wheel (default
+#    include-package-data needs a VCS plugin / MANIFEST that this project lacks);
+#    declared explicitly here so the frontend actually ships.
+#  * examples/ — the P5.6 bundled capture files (synthetic RoomPlan sidecar + two
+#    REAL Apple CapturedStructure exports, MIT-attributed via ATTRIBUTION.md) so
+#    the viewer can be click-tested without the user's own capture.
+roomestim_server = [
+    "static/*",
+    "static/**/*",
+    "examples/*.json",
+    "examples/*.md",
+]
 # py.typed: PEP 561 marker — roomestim is mypy --strict clean across 63 files;
 # the marker advertises types to the named downstream consumer spatial_engine.
 # Last pre-publish code gap in ADR 0007.

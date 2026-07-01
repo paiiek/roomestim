@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from roomestim_server.errors import (
+    GENERIC_EXAMPLE_NOT_FOUND_MESSAGE,
     GENERIC_INTERNAL_MESSAGE,
     GENERIC_ROOM_NOT_FOUND_MESSAGE,
     GENERIC_VALIDATION_MESSAGE,
@@ -41,13 +42,17 @@ from roomestim_server.schemas import (
     PlaceRequest,
     UploadRoomPlanRequest,
     UploadRoomRequest,
+    UploadStructureRequest,
 )
 from roomestim_server.service import (
     evaluate_request,
+    list_examples,
     list_specs,
+    load_example,
     place_request,
     upload_room,
     upload_roomplan,
+    upload_structure,
 )
 
 _LOG = logging.getLogger("roomestim_server.app")
@@ -98,6 +103,44 @@ def _build_router() -> APIRouter:
         # route: different method, and exact paths win over the path-param route).
         result = upload_roomplan(request)
         return {"ok": True, **result}
+
+    @router.post("/api/rooms/upload/structure")
+    def post_upload_structure(request: UploadStructureRequest) -> dict[str, object]:
+        # Parse an Apple CapturedStructure (multi-room) export via core
+        # parse_structure (D29 — zero geometry math here; torch-free
+        # json+numpy+shapely splitter). Returns {"rooms": [...]} (one per section,
+        # each with its own uploaded:<n> id). A bad body → generic EvaluateError
+        # (→ 400). EXACT POST path (not shadowed by the GET path-param route).
+        result = upload_structure(request)
+        return {"ok": True, **result}
+
+    @router.get("/api/examples")
+    def get_examples() -> dict[str, object]:
+        # Bundled example-capture manifest (metadata only — files parsed only on
+        # load). No physics (D29).
+        return {"examples": list_examples()}
+
+    @router.post("/api/examples/{example_id}/load")
+    def post_load_example(example_id: str) -> JSONResponse:
+        # Load a bundled example by id via the SAME parse+register path as an
+        # upload: {"room": ...} for a roomplan example, {"rooms": [...]} for a
+        # structure example. Unknown id → generic 404 (mirrors the /api/rooms/{id}
+        # 404 shape); a broken shipped example → generic 400 via EvaluateError
+        # (handled by the app-level handler). Distinct exact path — no route clash.
+        try:
+            result = load_example(example_id)
+        except KeyError:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "ok": False,
+                    "error": {
+                        "code": "EXAMPLE_NOT_FOUND",
+                        "message": GENERIC_EXAMPLE_NOT_FOUND_MESSAGE,
+                    },
+                },
+            )
+        return JSONResponse(content={"ok": True, **result})
 
     # ``:path`` captures the id WHOLE so ids containing a colon/slash
     # (e.g. ``builtin:shoebox``, a future ``builtin:foo/bar``) are matched

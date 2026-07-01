@@ -136,6 +136,44 @@ JSON 은 텍스트 기반 + torch-free(`roomestim.adapters.roomplan` = json+nump
   fixture)·id 라운드트립(GET + `/api/evaluate`)·malformed/not-a-room/비-객체 400·missing
   422·oversize 422·room.yaml 업로드 회귀 가드. core & 버전 무변경(server-only, P5.2~5.4 미러).
 
+### Server — RoomPlan 멀티룸(CapturedStructure) 업로드 + 예시 로더 + room-picker (P5.6, core/버전 무변경)
+
+P5.5(단일룸)를 실제 Apple **`CapturedStructure`(멀티룸)** ingest 로 확장 + 사용자가
+자기 파일 없이도 브라우저에서 클릭 테스트할 수 있게 **예시 캡처 3종을 번들**. torch-free
+코어 `roomestim.adapters.roomplan_structure.parse_structure`(json+numpy+shapely, 셋 다
+이미 core 의존)가 export 를 섹션당 1개 `RoomModel`(멀티룸 fixture → 4룸, 단일 → 1룸)로
+분해 — 멀티파트/새 의존 없음.
+
+- **`POST /api/rooms/upload/structure`**: CapturedStructure 를 **텍스트(JSON 본문
+  `{structure_json}`)**로 받아 `parse_structure` 로 분해, 각 `RoomModel` 을 room.yaml/
+  RoomPlan 업로드와 **동일** bounded 레지스트리(`uploaded:<n>`)에 등록, `{"rooms": [...]}`
+  (섹션 순서 보존)를 반환 — 각 룸 id 는 `/api/evaluate`·`/api/place` 에서 그대로 사용 가능.
+  **D29** 지오메트리 재유도 0.
+- **`GET /api/examples`** + **`POST /api/examples/{id}/load`**: 번들 예시 매니페스트(id/
+  name/format/description)를 나열하고, 선택 시 서버가 파일을 읽어 **업로드와 동일한 파싱
+  경로**로 dispatch — `roomplan` 포맷 → `{"room": ...}`(단일), `structure` 포맷 →
+  `{"rooms": [...]}`(멀티). 미지 id → generic 404 `EXAMPLE_NOT_FOUND`(누출 0).
+- **번들 예시(`roomestim_server/examples/`)**: `lab_room_synthetic.json`(자체 합성 RoomPlan
+  사이드카) + `capturedstructure_single.json`·`capturedstructure_multiroom.json`(**실제 Apple
+  export, MIT** — theLodgeBots/open3dFloorplan, `examples/ATTRIBUTION.md` 동봉). pyproject
+  `package-data` 에 `roomestim_server = ["examples/*.json", "examples/*.md"]` 추가로 휠 동봉.
+- **공유 헬퍼 리팩터**: temp-file 쓰기 + `finally` unlink + generic-`EvaluateError`-on-any-exc
+  규율을 `_with_temp_file(text, suffix, fn)` 단일 지점으로 추출 → 단일룸 `_parse_and_register`
+  는 **byte-equal** 유지, 신규 멀티룸 `_parse_and_register_many` 가 동일 규율 재사용.
+- **정직성 (ADR 0038)**: malformed JSON·sections[] 부재·비-객체·잘못된 확장자 = 전부
+  client-attributable → `ValueError` → generic 400(raw 예외/traceback 누출 0). 깨진 번들
+  예시(shipped-broken)도 서버 버그이나 generic 400 으로만 노출(내부 미노출; 테스트가 모든
+  번들 예시 파싱을 가드). `structure_json` 은 ~10 MB max_length(멀티룸 fixture ~252 KB →
+  넉넉하지만 bounded; 초과 → 422 DoS 가드).
+- **UI**(`static/`): CapturedStructure(.json) 업로드 인풋 + "예시 불러오기" 드롭다운(GET
+  `/api/examples`) + **room-picker**(멀티룸 결과 시 표시, 이미 파싱·등록된 룸 중 재선택 —
+  JS 물리 0, D29). 단일룸 결과는 기존과 동일 동작.
+- 헤드리스 테스트(`tests/server/test_upload_structure.py` + `test_examples.py`): 멀티룸→4룸
+  각 retrievable+evaluable·단일→1룸·malformed/no-sections/비-객체 400·missing 422·oversize
+  422·단일룸 업로드 회귀 가드; 예시 매니페스트 나열·포맷별 shape·모든 번들 예시 로드 가드·
+  미지 id 404. **core & 버전 0.61.0 무변경**(server-only, P5.2~5.5 미러); 번들 실 예시는
+  MIT-attributed.
+
 ---
 
 ## [0.60.0] — 2026-07-01
