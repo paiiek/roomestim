@@ -58,10 +58,49 @@ function setStatus(text, isError) {
   el.classList.toggle("error", !!isError);
 }
 
-function setDisclaimer(text, isError) {
+// Whether the disclaimer's full text is expanded — persisted across re-renders so
+// a re-evaluate doesn't collapse a banner the installer just opened (P6.E item 1).
+let _disclaimerExpanded = false;
+
+// Render the persistent honesty banner as a COLLAPSIBLE block (P6.E item 1): a
+// compact always-visible one-line `summary` (keeps the honesty essentials — SPL
+// provenance + RT60 source + "relative comparison guidance (not a measurement)")
+// plus a "▸ 자세히 (details)" toggle that expands the full `full` text. The honesty
+// info is never deleted — collapsing only hides the long form; the summary keeps
+// the essentials visible even on the error path. textContent = XSS-safe.
+function setDisclaimer(summary, full, isError) {
   const el = $("disclaimer");
-  el.textContent = text;
+  el.replaceChildren();
   el.classList.toggle("error", !!isError);
+
+  const row = document.createElement("div");
+  row.className = "disc-summary";
+  const text = document.createElement("span");
+  text.className = "disc-summary-text";
+  text.textContent = summary;
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "disc-toggle";
+
+  const fullEl = document.createElement("div");
+  fullEl.className = "disc-full";
+  fullEl.textContent = full;
+
+  const applyState = () => {
+    fullEl.style.display = _disclaimerExpanded ? "" : "none";
+    toggle.textContent = _disclaimerExpanded ? "▾ 접기 (less)" : "▸ 자세히 (details)";
+    toggle.setAttribute("aria-expanded", _disclaimerExpanded ? "true" : "false");
+  };
+  toggle.addEventListener("click", () => {
+    _disclaimerExpanded = !_disclaimerExpanded;
+    applyState();
+  });
+  applyState();
+
+  row.appendChild(text);
+  row.appendChild(toggle);
+  el.appendChild(row);
+  el.appendChild(fullEl);
 }
 
 function metricRow(key, value, cls) {
@@ -103,6 +142,70 @@ let renderer, scene, camera, controls;
 let speakerMeshes = [];
 const _sphereGeo = new THREE.SphereGeometry(0.12, 20, 16);
 const _speakerMat = new THREE.MeshStandardMaterial({ color: 0xe0b341 });
+
+// Invisible larger pick-target parented to each speaker so a click reliably hits
+// the speaker even though the visible marker is only 0.12 m (P6.E item 4). The
+// raycaster tests THESE, then maps hit.object.userData.speaker back to the marker.
+// Shared geometry/material — never per-instance disposed. material.visible=false
+// means it never renders, but THREE.Raycaster still intersects it.
+const _pickGeo = new THREE.SphereGeometry(0.3, 12, 8);
+const _pickMat = new THREE.MeshBasicMaterial({ visible: false });
+let _pickMeshes = [];
+
+// On-scene marking labels (P6.E item 3): a THREE.Sprite carrying a small canvas-
+// drawn texture — the channel int on a speaker, the object kind on an obstacle.
+// D29: the text is JUST the channel int / kind string already in the data; no
+// physics. XSS-safe: drawn with canvas fillText, never innerHTML.
+const _KIND_LABELS = {
+  column: "기둥/column",
+  sofa: "소파/sofa",
+  table: "테이블/table",
+  bed: "침대/bed",
+  storage: "수납/storage",
+};
+
+function _makeLabelSprite(txt, color) {
+  const text = String(txt);
+  const canvas = document.createElement("canvas");
+  const fontPx = 64;
+  let ctx = canvas.getContext("2d");
+  ctx.font = `bold ${fontPx}px system-ui, sans-serif`;
+  const pad = 20;
+  const textW = Math.max(1, Math.ceil(ctx.measureText(text).width));
+  canvas.width = textW + pad * 2;
+  canvas.height = fontPx + pad * 2;
+  // Resizing a canvas resets its 2-D context, so re-acquire + re-set the font.
+  ctx = canvas.getContext("2d");
+  ctx.font = `bold ${fontPx}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(14,16,19,0.72)"; // legibility pill behind the glyphs
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = color || "#ffffff";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  const worldH = 0.26; // metres tall on screen; width tracks the text aspect ratio
+  sprite.scale.set(worldH * (canvas.width / canvas.height), worldH, 1);
+  return sprite;
+}
+
+// Dispose a mesh's attached label sprite (texture + material) and detach it, so a
+// scene rebuild leaks no GPU resources. Safe on meshes with no label.
+function _disposeLabel(mesh) {
+  const label = mesh.userData && mesh.userData.label;
+  if (!label) return;
+  if (label.material) {
+    if (label.material.map) label.material.map.dispose();
+    label.material.dispose();
+  }
+  mesh.remove(label);
+  mesh.userData.label = null;
+}
 
 function initScene(container) {
   scene = new THREE.Scene();
@@ -156,6 +259,7 @@ let ceilingMeshes = [];
 // before rebuilding the scene for an uploaded room.
 function clearRoomMeshes() {
   for (const m of roomMeshes) {
+    _disposeLabel(m); // dispose any on-box kind label sprite (P6.E item 3)
     scene.remove(m);
     if (m.geometry) m.geometry.dispose();
   }
@@ -263,6 +367,12 @@ function buildRoom(geom) {
     const boxGeo = new THREE.BoxGeometry(w, h, d);
     const box = new THREE.Mesh(boxGeo, _objectMat);
     box.position.set(obj.anchor.x, obj.anchor.y + h / 2, obj.anchor.z);
+    // On-scene kind label just above the box top (P6.E item 3) — child sprite so
+    // it tracks the box; disposed with the box in clearRoomMeshes.
+    const label = _makeLabelSprite(_KIND_LABELS[obj.kind] || obj.kind, "#f0d9b0");
+    label.position.set(0, h / 2 + 0.18, 0);
+    box.add(label);
+    box.userData.label = label;
     scene.add(box);
     roomMeshes.push(box);
   }
@@ -274,13 +384,30 @@ function buildRoom(geom) {
 // aim_direction} entries. Positions/aim are literal UI data (from SEED or the
 // /api/place response), never computed here.
 function setSpeakers(list) {
-  for (const m of speakerMeshes) scene.remove(m);
+  for (const m of speakerMeshes) {
+    _disposeLabel(m); // dispose the channel label sprite before dropping the mesh
+    scene.remove(m);
+  }
   speakerMeshes = [];
+  _pickMeshes = []; // pick spheres are children of the removed meshes — drop refs
   for (const s of list) {
     const m = new THREE.Mesh(_sphereGeo, _speakerMat);
     m.position.set(s.position.x, s.position.y, s.position.z);
     m.userData.channel = s.channel;
     m.userData.aim_direction = s.aim_direction ?? null;
+
+    // On-scene channel-number label above the marker (P6.E item 3).
+    const label = _makeLabelSprite(s.channel, "#ffffff");
+    label.position.set(0, 0.32, 0);
+    m.add(label);
+    m.userData.label = label;
+
+    // Invisible larger pick-target so drags reliably hit the small marker (item 4).
+    const pick = new THREE.Mesh(_pickGeo, _pickMat);
+    pick.userData.speaker = m; // map a raycast hit back to the speaker marker
+    m.add(pick);
+    _pickMeshes.push(pick);
+
     scene.add(m);
     speakerMeshes.push(m);
   }
@@ -323,9 +450,11 @@ function initDrag() {
   canvas.addEventListener("pointerdown", (ev) => {
     _updatePointer(ev);
     _raycaster.setFromCamera(_pointer, camera);
-    const hits = _raycaster.intersectObjects(speakerMeshes, false);
+    // Raycast the invisible larger pick-spheres (item 4), then map the hit back to
+    // the speaker marker. Objects/ceiling are NOT in _pickMeshes → non-draggable.
+    const hits = _raycaster.intersectObjects(_pickMeshes, false);
     if (!hits.length) return;
-    _dragged = hits[0].object;
+    _dragged = hits[0].object.userData.speaker;
     _dragMoved = false;
     // Horizontal plane through the speaker's current height: y = const.
     _dragPlane.set(new THREE.Vector3(0, 1, 0), -_dragged.position.y);
@@ -384,9 +513,15 @@ function renderReport(report) {
   );
 
   // Honesty banner: surface note + spl_provenance + rt60.source (mirror the
-  // Gradio _build_disclaimer wording; NOT buried).
+  // Gradio _build_disclaimer wording; NOT buried). Compact summary keeps the
+  // essentials visible; the toggle expands the full text (P6.E item 1).
   const rt60 = report.rt60 || {};
+  const summary =
+    `SPL provenance: ${fmt(report.spl_provenance)} · ` +
+    `RT60 source: ${fmt(rt60.source)} · ` +
+    "relative comparison guidance (not a measurement)";
   setDisclaimer(
+    summary,
     "Immersive trade-off — relative comparison guidance (not a guaranteed measurement).\n" +
       "Drag a speaker to move it; metrics update on release.\n" +
       `SPL provenance: ${fmt(report.spl_provenance)} ` +
@@ -523,6 +658,7 @@ function showError(message) {
   renderInstall(null); // blank the install table on a failed evaluate (no stale rows)
   setStatus(message || "Request failed.", true);
   setDisclaimer(
+    STANDING_DISCLAIMER,
     STANDING_DISCLAIMER + "\nEvaluation failed — see the status panel for details.",
     true
   );
@@ -791,11 +927,23 @@ let _pickerRooms = [];
 
 // Adopt a returned room geometry as the active room, rebuild the scene, keep the
 // current speakers, and re-evaluate. Shared by every load/upload/pick path.
+// When "방 변경 시 자동 재배치" (auto re-place) is CHECKED (default), a room switch
+// re-runs the SAME flow as the Re-seed button (POST /api/place with the current
+// algo + n, then setSpeakers + evaluate) so the layout adapts to the new space.
+// When unchecked, the previous behaviour holds — keep the current speakers and
+// just re-evaluate them against the new room. NOTE: room-BLIND algorithms
+// (vbap/dome) return the same ring regardless of the room; only dbap/coverage
+// actually adapt (surfaced in the checkbox tooltip).
 function switchToRoom(geom) {
   currentRoomId = geom.id;
   clearRoomMeshes();
   buildRoom(geom);
-  evaluateAndRender(speakersFromMeshes());
+  const auto = $("auto-reseed");
+  if (auto && auto.checked) {
+    reseedLayout(); // re-place for the new room (place + setSpeakers + evaluate)
+  } else {
+    evaluateAndRender(speakersFromMeshes());
+  }
 }
 
 // Populate (or hide) the room-picker from a list of returned room geometries.

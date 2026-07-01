@@ -94,6 +94,30 @@ def test_main_js_references_real_contract() -> None:
         assert token in text, f"main.js missing contract identifier: {token}"
 
 
+def test_p6e_viewer_wiring_present() -> None:
+    # P6.E viewer-only additions (string-grep, no JS execution): the honest algo
+    # option VALUES + dome, the auto-reseed checkbox, and the drag pick-sphere +
+    # on-scene label helpers. Guards against an accidental rename/removal.
+    html = (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    for token in (
+        'value="vbap"',
+        'value="dome"',  # NEW option (already works via /api/place)
+        'value="dbap"',
+        'value="coverage"',
+        'id="auto-reseed"',
+        "room-blind",  # honesty label on the algorithm options
+    ):
+        assert token in html, f"index.html missing P6.E marker: {token}"
+    js = (_STATIC_DIR / "main.js").read_text(encoding="utf-8")
+    for token in (
+        "auto-reseed",       # item 2: auto re-place on room change
+        "_pickMeshes",       # item 4: enlarged invisible pick target
+        "_makeLabelSprite",  # item 3: on-scene channel/kind labels
+        "disc-summary",      # item 1: collapsible disclaimer summary
+    ):
+        assert token in js, f"main.js missing P6.E marker: {token}"
+
+
 def test_evaluate_still_routes_after_mount() -> None:
     # The /static mount must NOT shadow the POST /api/evaluate route either.
     body = {

@@ -51,9 +51,21 @@
     #disclaimer {
       padding: 8px 16px; border-bottom: 1px solid var(--line);
       background: #23201a; color: var(--warn);
-      font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+      font-size: 12px; line-height: 1.5;
     }
     #disclaimer.error { background: #2a1c1c; color: var(--err); }
+    /* Collapsible disclaimer (P6.E item 1): one-line honesty summary always
+       visible; ".disc-full" holds the long text and toggles on the button. */
+    .disc-summary { display: flex; gap: 8px; align-items: baseline; }
+    .disc-summary-text { flex: 1; min-width: 0; }
+    .disc-toggle {
+      flex: none; background: transparent; color: inherit;
+      border: 1px solid currentColor; border-radius: 4px;
+      padding: 0 6px; font-size: 11px; cursor: pointer; opacity: .85;
+      white-space: nowrap;
+    }
+    .disc-toggle:hover { opacity: 1; }
+    .disc-full { margin-top: 6px; white-space: pre-wrap; }
 
     #main { display: flex; flex: 1; min-height: 0; }
     #scene { flex: 1; min-width: 0; position: relative; background: #0e1013; }
@@ -139,13 +151,18 @@
         <div id="controls">
           <label for="algo">algorithm</label>
           <select id="algo">
-            <option value="vbap">vbap</option>
-            <option value="dbap">dbap</option>
-            <option value="coverage">coverage</option>
+            <option value="vbap">vbap — 고정 링·방 무시 (room-blind ring)</option>
+            <option value="dome">dome — 2단 링·방 무시 (room-blind, adds height)</option>
+            <option value="dbap">dbap — 방 적응 (room-aware: walls/ceiling)</option>
+            <option value="coverage">coverage — 천장 그리드·방 적응 (room-aware)</option>
           </select>
           <label for="nspk">n</label>
           <input id="nspk" type="number" min="2" max="32" value="6" />
           <button id="reseed" type="button">Re-seed layout</button>
+          <label for="auto-reseed"
+            title="체크 시 방을 바꾸면 현재 알고리즘·개수로 자동 재배치. 단 room-blind(vbap/dome)은 방이 바뀌어도 배치 불변 — dbap/coverage만 방에 적응합니다.">방 변경 시 자동 재배치 (auto re-place on room change)</label>
+          <input id="auto-reseed" type="checkbox" checked
+            title="room-blind(vbap/dome)은 방 무시; dbap/coverage만 방에 적응" />
 
           <label for="spec">speaker</label>
           <select id="spec"><!-- populated from GET /api/specs on load --></select>
