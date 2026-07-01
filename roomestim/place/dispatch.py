@@ -24,6 +24,7 @@ def run_placement(
     coverage_ear_height_m: float | None = None,
     coverage_overlap_mode: str = "background",
     coverage_grid_type: str = "square",
+    clearance_m: float = 0.30,
 ) -> PlacementResult:
     """Dispatch to the right placement function and return a PlacementResult.
 
@@ -45,10 +46,18 @@ def run_placement(
     AND its end-to-end SH decode/route is engine-gated and UNCONFIRMED (see
     ``AMBISONICS_RIG_DISCLOSURE``). Use ``dbap`` or ``coverage`` for
     geometry-aware placement.
+    ``coverage_avoid`` is room-geometry-aware AND obstacle-aware: it extends
+    ``dbap`` (same wall/ceiling candidates + greedy max-min coverage) with a
+    plan-view filter that removes candidates inside — or closer than
+    ``clearance_m`` to — a free-standing object footprint, or whose plan-view
+    line to the listener is blocked by one. It is a DETERMINISTIC GEOMETRIC
+    HEURISTIC with NO SPL claim (axis-aligned boxes, no diffraction/height) —
+    see ``OBSTACLE_AWARE_PLACEMENT_NOTE``.
 
     The four ``coverage_*`` keyword arguments are only consumed by the
-    ``coverage`` branch and default to the placement's standard behaviour, so
-    every existing caller (room-blind vbap/wfs/ambisonics, dbap) is byte-equal.
+    ``coverage`` branch and ``clearance_m`` only by ``coverage_avoid``; all
+    default to the standard behaviour, so every existing caller (room-blind
+    vbap/wfs/ambisonics, dbap, coverage) is byte-equal.
     """
     if algorithm == "coverage":
         from typing import cast
@@ -166,6 +175,11 @@ def run_placement(
                     f"Y = ceil(baseline_len/(c/(2*f_max))) + 1 = {min_safe_n})."
                 ) from exc
             raise
+
+    if algorithm == "coverage_avoid":
+        from roomestim.place.obstacle_aware import place_coverage_avoid
+
+        return place_coverage_avoid(room, n_speakers, clearance_m=clearance_m)
 
     if algorithm == "ambisonics":
         if order is None:

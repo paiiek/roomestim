@@ -220,7 +220,7 @@ def create_app() -> FastAPI:
     """Build the FastAPI app: router + the generic-message exception handlers."""
     app = FastAPI(
         title="roomestim immersive-layout server",
-        version="0.63.0",
+        version="0.64.0",
         description=(
             "Stateless REST API over the frozen 4-axis immersive-layout "
             "trade-off engine (no physics in this layer)."

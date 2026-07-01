@@ -222,6 +222,30 @@ def test_place_n_speakers_out_of_bounds_422() -> None:
 # --------------------------------------------------------------------------- #
 
 
+def test_place_coverage_avoid_ok() -> None:
+    """coverage_avoid (P7.1) dispatches through run_placement with default clearance.
+
+    PlaceRequest.algorithm is a free string forwarded to core; the request-field
+    wiring for ``clearance_m`` is P7.3, so the core default (0.30 m) applies here.
+    The built-in shoebox has no obstacles, so the filter is a pass-through and the
+    room-absolute placement is returned un-lifted (coverage_avoid ∉ ear-origin set).
+    """
+    resp = _client().post(
+        "/api/place",
+        json={
+            "room_id": BUILTIN_SHOEBOX_ID,
+            "algorithm": "coverage_avoid",
+            "n_speakers": 8,
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    placement = body["placement"]
+    assert placement["target_algorithm"] == "COVERAGE_AVOID"
+    assert len(placement["speakers"]) == 8
+
+
 def test_place_then_evaluate_round_trip() -> None:
     client = _client()
     placement = client.post(

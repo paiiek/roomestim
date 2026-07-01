@@ -14,18 +14,24 @@ from roomestim.place.coverage_grid import (
     place_coverage_grid_for_room,
 )
 from roomestim.place.dbap import place_dbap
+from roomestim.place.obstacle_aware import (
+    OBSTACLE_AWARE_PLACEMENT_NOTE,
+    place_coverage_avoid,
+)
 from roomestim.place.vbap import place_vbap_dome, place_vbap_ring
 from roomestim.place.wfs import place_wfs
 
 __all__ = [
     "AMBISONICS_RIG_DISCLOSURE",
     "COVERAGE_GRID_NOTE",
+    "OBSTACLE_AWARE_PLACEMENT_NOTE",
     "CoverageGridResult",
     "TargetAlgorithm",
     "coverage_result_to_placement",
     "coverage_to_dict",
     "format_coverage_lines",
     "place_ambisonics",
+    "place_coverage_avoid",
     "place_coverage_grid",
     "place_coverage_grid_for_room",
     "place_vbap_ring",

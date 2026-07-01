@@ -32,6 +32,7 @@ surface), and the listener-area coverage min/max gain ratio (linear) is
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 from shapely.geometry import Point as ShapelyPoint
@@ -274,6 +275,7 @@ def place_dbap(
     layout_name: str = "dbap_coverage",
     samples_per_dim: int = 5,
     inset_m: float = 0.10,
+    candidate_filter: Callable[[Point3], bool] | None = None,
 ) -> PlacementResult:
     """DBAP greedy coverage placement on ``mount_surfaces`` (A7).
 
@@ -292,6 +294,13 @@ def place_dbap(
         25 listener samples).
     inset_m:
         Surface-edge inset for candidate sampling (m). Default 0.10 m.
+    candidate_filter:
+        Optional predicate applied to each 3D candidate AFTER surface sampling;
+        candidates for which it returns ``False`` are dropped from the pool
+        (used by ``place_coverage_avoid`` for obstacle/line-of-sight rejection).
+        ``None`` (the default) keeps the full pool, so this call is BYTE-EQUAL
+        to the pre-P7.1 behaviour — every existing caller and DBAP golden is
+        unchanged.
     """
     if n_speakers < 1:
         raise ValueError(f"n_speakers must be >=1, got {n_speakers}")
@@ -305,6 +314,8 @@ def place_dbap(
                 surface, inset_m=inset_m, samples_per_dim=samples_per_dim
             )
         )
+    if candidate_filter is not None:
+        candidates = [c for c in candidates if candidate_filter(c)]
     if not candidates:
         raise ValueError(
             "DBAP candidate pool is empty after inset; check mount_surfaces and inset_m"
