@@ -36,8 +36,8 @@ from roomestim_server.rooms import (
     list_rooms,
     room_geometry_to_dict,
 )
-from roomestim_server.schemas import EvaluateRequest
-from roomestim_server.service import evaluate_request
+from roomestim_server.schemas import EvaluateRequest, PlaceRequest
+from roomestim_server.service import evaluate_request, place_request
 
 _LOG = logging.getLogger("roomestim_server.app")
 
@@ -91,6 +91,13 @@ def _build_router() -> APIRouter:
         # app-level exception handlers; the success path returns the envelope.
         report = evaluate_request(request)
         return {"ok": True, "report": report}
+
+    @router.post("/api/place")
+    def post_place(request: PlaceRequest) -> dict[str, object]:
+        # Seed a layout via core run_placement (D29 — zero placement math here).
+        # EvaluateError (→ 400) / uncaught (→ 500) handled by the app handlers.
+        placement = place_request(request)
+        return {"ok": True, "placement": placement}
 
     return router
 

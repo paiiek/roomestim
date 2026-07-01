@@ -1,10 +1,12 @@
 // D29: this file performs ZERO physics — every metric is read verbatim from the
-// /api/evaluate response; seed positions are literal UI data.
+// /api/evaluate response, and every seeded speaker layout comes verbatim from the
+// /api/place response (core run_placement). Dragging only moves a speaker's {x,z}
+// (keeps y) — that's UI geometry, NOT physics. No SPL/angle/RT60 math here.
 //
-// immersive-layout P5.2 / ADR 0061 — static Three.js viewer (orbit camera only,
-// no drag yet; drag is P5.3). Loads ONE built-in room, renders its geometry +
-// literal seed speakers, POSTs the seed layout to /api/evaluate once, and paints
-// the returned 4-axis report + honesty banner. No SPL/angle/RT60 math here.
+// immersive-layout P5.3 / ADR 0061 — draggable speakers + live re-evaluate.
+// Builds on P5.2 (static viewer): loads ONE built-in room, renders geometry +
+// speakers, and re-POSTs /api/evaluate whenever a speaker is dragged (debounced)
+// or the layout is re-seeded via /api/place. Metrics repaint from the response.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -21,6 +23,14 @@ const SEED = [
   { channel: 5, position: { x: -1.5, y: 1.2, z: -1.8 }, aim_direction: null }, // BL
   { channel: 6, position: { x: 1.5, y: 1.2, z: -1.8 }, aim_direction: null },  // BR
 ];
+
+// Mutable layout metadata forwarded verbatim into the /api/evaluate placement
+// block; re-seeding via /api/place overwrites it from the core response.
+let layoutMeta = {
+  target_algorithm: "vbap",
+  regularity_hint: "ring",
+  layout_name: "live-edit",
+};
 
 // ---- DOM helpers ---------------------------------------------------------
 
@@ -72,6 +82,12 @@ function renderGeneric(containerId, obj) {
 
 let renderer, scene, camera, controls;
 
+// Speaker meshes are the source of truth for live positions. Each mesh carries
+// its channel + aim_direction in userData so a drag only mutates x,z.
+let speakerMeshes = [];
+const _sphereGeo = new THREE.SphereGeometry(0.12, 20, 16);
+const _speakerMat = new THREE.MeshStandardMaterial({ color: 0xe0b341 });
+
 function initScene(container) {
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0e1013);
@@ -102,6 +118,8 @@ function initScene(container) {
     camera.updateProjectionMatrix();
     renderer.setSize(cw, ch);
   });
+
+  initDrag();
 
   (function animate() {
     requestAnimationFrame(animate);
@@ -146,14 +164,89 @@ function buildRoom(geom) {
   }
 }
 
-function addSpeakers(seed) {
-  const sphereGeo = new THREE.SphereGeometry(0.12, 20, 16);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xe0b341 });
-  for (const s of seed) {
-    const m = new THREE.Mesh(sphereGeo, mat);
+// Replace the on-screen speaker meshes from a list of {channel, position,
+// aim_direction} entries. Positions/aim are literal UI data (from SEED or the
+// /api/place response), never computed here.
+function setSpeakers(list) {
+  for (const m of speakerMeshes) scene.remove(m);
+  speakerMeshes = [];
+  for (const s of list) {
+    const m = new THREE.Mesh(_sphereGeo, _speakerMat);
     m.position.set(s.position.x, s.position.y, s.position.z);
+    m.userData.channel = s.channel;
+    m.userData.aim_direction = s.aim_direction ?? null;
     scene.add(m);
+    speakerMeshes.push(m);
   }
+}
+
+// Serialise the CURRENT speaker meshes into an /api/evaluate speakers[] payload.
+// Reads x,y,z straight off the mesh (drag mutates x,z, keeps y). No trig.
+function speakersFromMeshes() {
+  return speakerMeshes.map((m) => ({
+    channel: m.userData.channel,
+    position: { x: m.position.x, y: m.position.y, z: m.position.z },
+    aim_direction: m.userData.aim_direction ?? null,
+  }));
+}
+
+// ---- Drag (manual raycaster onto a horizontal +Y plane) ------------------
+// D29 note: this is pure UI geometry — a screen ray intersected with a floor-
+// parallel plane to reposition a sphere's x,z. No acoustics is computed here.
+
+const _raycaster = new THREE.Raycaster();
+const _pointer = new THREE.Vector2();
+const _dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hitPoint = new THREE.Vector3();
+let _dragged = null;
+let _dragMoved = false;
+
+function _updatePointer(ev) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  _pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  _pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function initDrag() {
+  const canvas = renderer.domElement;
+
+  canvas.addEventListener("pointerdown", (ev) => {
+    _updatePointer(ev);
+    _raycaster.setFromCamera(_pointer, camera);
+    const hits = _raycaster.intersectObjects(speakerMeshes, false);
+    if (!hits.length) return;
+    _dragged = hits[0].object;
+    _dragMoved = false;
+    // Horizontal plane through the speaker's current height: y = const.
+    _dragPlane.set(new THREE.Vector3(0, 1, 0), -_dragged.position.y);
+    controls.enabled = false; // stop OrbitControls fighting the drag
+    canvas.setPointerCapture(ev.pointerId);
+  });
+
+  canvas.addEventListener("pointermove", (ev) => {
+    if (!_dragged) return;
+    _updatePointer(ev);
+    _raycaster.setFromCamera(_pointer, camera);
+    if (_raycaster.ray.intersectPlane(_dragPlane, _hitPoint)) {
+      _dragged.position.x = _hitPoint.x; // keep y — drag is horizontal only
+      _dragged.position.z = _hitPoint.z;
+      _dragMoved = true;
+    }
+  });
+
+  function endDrag(ev) {
+    if (!_dragged) return;
+    _dragged = null;
+    controls.enabled = true;
+    try {
+      canvas.releasePointerCapture(ev.pointerId);
+    } catch (_e) { /* pointer may already be released */ }
+    if (_dragMoved) scheduleEvaluate(); // debounced re-evaluate on release
+    _dragMoved = false;
+  }
+
+  canvas.addEventListener("pointerup", endDrag);
+  canvas.addEventListener("pointercancel", endDrag);
 }
 
 // ---- Report rendering ----------------------------------------------------
@@ -174,6 +267,7 @@ function renderReport(report) {
   const rt60 = report.rt60 || {};
   setDisclaimer(
     "Immersive trade-off — relative comparison guidance (not a guaranteed measurement).\n" +
+      "Drag a speaker to move it; metrics update on release.\n" +
       `SPL provenance: ${fmt(report.spl_provenance)} ` +
       "(absolute SPL/headroom is meaningful only when 'datasheet'; 'estimate' is a preview)\n" +
       `RT60 source: ${fmt(rt60.source)} ('measured' = engineer-injected, 'predicted' = model estimate)\n` +
@@ -252,10 +346,91 @@ function showError(message) {
   );
 }
 
+// ---- Live re-evaluate (shared by initial load, drag-end, and re-seed) -----
+
+// Monotone request id so a slow older response can never overwrite a newer one.
+let _evalSeq = 0;
+
+async function evaluateAndRender(speakers) {
+  const seq = ++_evalSeq;
+  const body = {
+    room_id: ROOM_ID,
+    placement: {
+      target_algorithm: layoutMeta.target_algorithm,
+      regularity_hint: layoutMeta.regularity_hint,
+      layout_name: layoutMeta.layout_name,
+      speakers,
+    },
+    spec: { model_key: "generic_surround_compact", price: null },
+    params: { drive_w: 10.0, target_spl_db: 85.0, measured_rt60_s: null },
+  };
+  try {
+    const resp = await fetch("/api/evaluate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => null);
+    if (seq !== _evalSeq) return; // a newer evaluate superseded this one — drop it
+    if (!resp.ok || !data || data.ok !== true) {
+      const msg = data && data.error ? data.error.message : "Evaluation failed.";
+      showError(msg);
+      return;
+    }
+    renderReport(data.report);
+  } catch (err) {
+    if (seq !== _evalSeq) return;
+    showError("Evaluation request failed.");
+  }
+}
+
+let _debounceTimer = null;
+
+function scheduleEvaluate() {
+  if (_debounceTimer !== null) clearTimeout(_debounceTimer);
+  _debounceTimer = setTimeout(() => {
+    _debounceTimer = null;
+    evaluateAndRender(speakersFromMeshes());
+  }, 120);
+}
+
+// ---- Re-seed layout via /api/place ---------------------------------------
+
+async function reseedLayout() {
+  const algorithm = $("algo").value;
+  const n = parseInt($("nspk").value, 10);
+  const body = { room_id: ROOM_ID, algorithm, n_speakers: n };
+  setStatus(`Re-seeding (${algorithm}, n=${n})…`, false);
+  try {
+    const resp = await fetch("/api/place", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || data.ok !== true) {
+      showError(data && data.error ? data.error.message : "Re-seed failed.");
+      return;
+    }
+    const placement = data.placement;
+    layoutMeta = {
+      target_algorithm: placement.target_algorithm,
+      regularity_hint: placement.regularity_hint,
+      layout_name: placement.layout_name,
+    };
+    setSpeakers(placement.speakers);
+    evaluateAndRender(speakersFromMeshes());
+  } catch (err) {
+    showError("Re-seed request failed.");
+  }
+}
+
 // ---- Boot flow -----------------------------------------------------------
 
 async function main() {
   initScene($("scene"));
+
+  $("reseed").addEventListener("click", reseedLayout);
 
   // 1. Fetch room geometry and build the scene.
   try {
@@ -266,42 +441,14 @@ async function main() {
     }
     const geom = await geoResp.json();
     buildRoom(geom);
-    addSpeakers(SEED);
+    setSpeakers(SEED);
   } catch (err) {
     showError("Failed to load room geometry.");
     return;
   }
 
-  // 2. Build the seed evaluate request (matches schemas.EvaluateRequest).
-  const body = {
-    room_id: ROOM_ID,
-    placement: {
-      target_algorithm: "vbap",
-      regularity_hint: "ring",
-      layout_name: "live-edit",
-      speakers: SEED,
-    },
-    spec: { model_key: "generic_surround_compact", price: null },
-    params: { drive_w: 10.0, target_spl_db: 85.0, measured_rt60_s: null },
-  };
-
-  // 3. POST /api/evaluate and render the report (or the error envelope).
-  try {
-    const resp = await fetch("/api/evaluate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await resp.json().catch(() => null);
-    if (!resp.ok || !data || data.ok !== true) {
-      const msg = data && data.error ? data.error.message : "Evaluation failed.";
-      showError(msg);
-      return;
-    }
-    renderReport(data.report);
-  } catch (err) {
-    showError("Evaluation request failed.");
-  }
+  // 2. Evaluate the seed layout once on load (shared path with drag/re-seed).
+  evaluateAndRender(speakersFromMeshes());
 }
 
 main();

@@ -21,6 +21,7 @@ __all__ = [
     "SpecIn",
     "ParamsIn",
     "EvaluateRequest",
+    "PlaceRequest",
 ]
 
 
@@ -86,3 +87,23 @@ class EvaluateRequest(BaseModel):
     placement: PlacementIn
     spec: SpecIn = Field(default_factory=SpecIn)
     params: ParamsIn = Field(default_factory=ParamsIn)
+
+
+class PlaceRequest(BaseModel):
+    """``POST /api/place`` request body — seed a layout via core ``run_placement``.
+
+    The five fields map 1:1 to ``run_placement``'s first five positional args
+    (``room, algorithm, n_speakers, layout_radius_m, el_deg``). The wfs/coverage
+    keyword arguments are intentionally NOT exposed here (P5.3) — their defaults
+    apply. All placement physics stays in core; the server re-derives nothing.
+    """
+
+    room_id: str
+    algorithm: str = "vbap"
+    # Sanity-bounded (1..128) so a network client cannot request an absurd count
+    # that stresses run_placement / the downstream SPL grid — a loose additive
+    # guard (mirrors ``grid_resolution_m``'s floor); the REAL per-algorithm minimum
+    # (e.g. VBAP ring n≥3) is still enforced by core → generic 400 on violation.
+    n_speakers: int = Field(default=6, ge=1, le=128)
+    layout_radius_m: float = 1.8
+    el_deg: float = 0.0

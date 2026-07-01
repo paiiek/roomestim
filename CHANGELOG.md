@@ -60,6 +60,28 @@ walls, 물리·재질 미노출), `GET /healthz`. 내장 결정적 합성 룸 `b
   main.js 가 실 계약 키(중첩 per-axis 포함) 참조. **3-D 렌더 자체는 human 육안 검증**
   (headless WebGL 불가 — 플랜 §7 명시).
 
+### Server — 드래그 + live 재평가 (P5.3, core/버전 무변경)
+
+뷰어에 스피커 **드래그** + 실시간 재평가 + 레이아웃 **재시드**(`POST /api/place`) 추가.
+
+- **드래그**(`static/main.js`): raycaster 를 수평(+Y) 평면에 투영해 스피커 스피어의
+  x,z 만 이동(y 고정 — 순수 UI 지오메트리). 드래그 중 OrbitControls 비활성(포인터
+  경합 방지)·pointer capture; 드래그-종료 시 debounce(120 ms) 후 `/api/evaluate`
+  재호출→메트릭 리페인트. 단조 증가 `_evalSeq` 가드로 느린 옛 응답이 새 렌더를
+  덮어쓰지 못하게 함(경쟁 안전).
+- **`POST /api/place`**(신규): `{room_id, algorithm, n_speakers, layout_radius_m,
+  el_deg}` → core `run_placement` 위임 후 speakers 직렬화 반환. **D29** — 배치 물리
+  전량 core, 서버/JS 재유도 0(`service.place_request` 는 evaluate 와 동일한 얇은
+  resolve→call→serialise 어댑터; 물리-패리티 테스트로 위치·aim_direction verbatim
+  증명). 미지 room_id·미지 algorithm·per-algorithm 최소 미달(예: VBAP ring n≥3) =
+  core `ValueError` → generic 400 봉투(누출 0); `n_speakers` 는 스키마서 1..128 로
+  sanity-bound(초과 → 422, DoS 가드).
+- **재시드 UI**: algorithm(vbap/dbap/coverage) select + n 입력 + 버튼 → `/api/place`
+  결과로 마커·layoutMeta 교체 후 재평가.
+- 헤드리스 테스트(`tests/server/test_place_api.py`, 10개): 계약·물리 패리티(위치+aim)·
+  에러 봉투(미지 algo/room·too-few·malformed·out-of-bounds)·place→evaluate 라운드트립.
+  **드래그 UX 자체는 human 육안 검증**(WebGL, headless 불가).
+
 ---
 
 ## [0.60.0] — 2026-07-01

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  roomestim immersive-layout viewer (immersive-layout P5.2 / ADR 0061).
+  roomestim immersive-layout viewer (immersive-layout P5.3 / ADR 0061).
 
   Three.js r160 — MIT License (https://github.com/mrdoob/three.js). VENDORED under
   static/vendor/three/ (three.module.js + addons/controls/OrbitControls.js, pinned
@@ -9,7 +9,9 @@
   offline / air-gapped (on-site AV installs) with no supply-chain fetch at load.
 
   D29: the browser performs ZERO physics. Every metric shown is read verbatim from
-  the POST /api/evaluate response; the seed speaker positions are literal UI data.
+  the POST /api/evaluate response; seed/re-seed layouts come verbatim from
+  POST /api/place (core run_placement). Dragging a speaker only moves its {x,z}
+  (UI geometry) — no SPL/angle/RT60 math ever runs in the browser.
 -->
 <html lang="en">
 <head>
@@ -72,6 +74,22 @@
     .metric .v.good { color: #7ac77a; }
     #status { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
     #status.error { color: var(--err); }
+
+    #controls {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+    }
+    #controls label { color: var(--muted); font-size: 12px; }
+    #controls select, #controls input {
+      background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+      border-radius: 4px; padding: 3px 6px; font-size: 12px;
+    }
+    #controls input#nspk { width: 56px; }
+    #controls button {
+      background: var(--accent); color: #0e1013; border: none; border-radius: 4px;
+      padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    #controls button:hover { filter: brightness(1.1); }
   </style>
 
   <script type="importmap">
@@ -94,6 +112,18 @@
     <div id="main">
       <div id="scene"></div>
       <div id="metrics">
+        <div id="controls">
+          <label for="algo">algorithm</label>
+          <select id="algo">
+            <option value="vbap">vbap</option>
+            <option value="dbap">dbap</option>
+            <option value="coverage">coverage</option>
+          </select>
+          <label for="nspk">n</label>
+          <input id="nspk" type="number" min="2" max="32" value="6" />
+          <button id="reseed" type="button">Re-seed layout</button>
+        </div>
+
         <div id="status">Loading…</div>
 
         <h2>Level / SPL</h2>

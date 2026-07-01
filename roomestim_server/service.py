@@ -23,11 +23,11 @@ from typing import Any
 
 from roomestim_server.errors import EvaluateError
 from roomestim_server.rooms import get_room
-from roomestim_server.schemas import EvaluateRequest, PlacementIn
+from roomestim_server.schemas import EvaluateRequest, PlaceRequest, PlacementIn
 
 _LOG = logging.getLogger("roomestim_server.service")
 
-__all__ = ["evaluate_request"]
+__all__ = ["evaluate_request", "place_request"]
 
 
 def _is_finite_positive(value: Any) -> bool:
@@ -130,3 +130,63 @@ def evaluate_request(request: EvaluateRequest) -> dict[str, object]:
         raise EvaluateError() from exc
 
     return tradeoff_to_dict(report)
+
+
+def place_request(request: PlaceRequest) -> dict[str, object]:
+    """Seed a layout via core ``run_placement`` and serialise its speakers.
+
+    D29: ALL placement physics is delegated to
+    ``roomestim.place.dispatch.run_placement``; this function ONLY resolves the
+    room, forwards the five request fields, and serialises the returned
+    ``PlacementResult`` into a plain dict the frontend can drop straight into an
+    ``/api/evaluate`` placement block. NO placement math is done here.
+
+    Raises :class:`EvaluateError` (→ 400, generic) for any client-attributable
+    failure: unknown ``room_id`` or a core ``ValueError`` (unknown algorithm,
+    too-few speakers, …). The real cause is logged server-side.
+    """
+    from roomestim.place.dispatch import run_placement  # noqa: PLC0415
+
+    try:
+        room = get_room(request.room_id)
+    except KeyError as exc:
+        _LOG.warning("place: unknown room_id %r", request.room_id)
+        raise EvaluateError() from exc
+
+    try:
+        result = run_placement(
+            room,
+            request.algorithm,
+            request.n_speakers,
+            request.layout_radius_m,
+            request.el_deg,
+        )
+    except ValueError as exc:
+        _LOG.warning("run_placement rejected inputs: %s", exc)
+        raise EvaluateError() from exc
+
+    return {
+        "target_algorithm": result.target_algorithm,
+        "regularity_hint": result.regularity_hint,
+        "layout_name": result.layout_name,
+        "speakers": [
+            {
+                "channel": s.channel,
+                "position": {
+                    "x": s.position.x,
+                    "y": s.position.y,
+                    "z": s.position.z,
+                },
+                "aim_direction": (
+                    None
+                    if s.aim_direction is None
+                    else {
+                        "x": s.aim_direction.x,
+                        "y": s.aim_direction.y,
+                        "z": s.aim_direction.z,
+                    }
+                ),
+            }
+            for s in result.speakers
+        ],
+    }
