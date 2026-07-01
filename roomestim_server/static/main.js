@@ -144,9 +144,13 @@ function initScene(container) {
   })();
 }
 
-// Room geometry meshes (floor, walls, listener patch) added by buildRoom —
-// tracked so an upload can clear the previous room before rebuilding.
+// Room geometry meshes (floor, walls, listener patch, ceiling, objects) added by
+// buildRoom — tracked so an upload can clear the previous room before rebuilding.
 let roomMeshes = [];
+
+// Ceiling meshes only — a SUBSET of roomMeshes kept separately so the "천장 표시"
+// checkbox can toggle their .visible without touching the rest of the room.
+let ceilingMeshes = [];
 
 // Remove + dispose the current room geometry meshes (NOT the speakers). Called
 // before rebuilding the scene for an uploaded room.
@@ -156,7 +160,22 @@ function clearRoomMeshes() {
     if (m.geometry) m.geometry.dispose();
   }
   roomMeshes = [];
+  ceilingMeshes = [];
 }
+
+// Apply the "천장 표시" checkbox state to every ceiling mesh (default = ON).
+function applyCeilingVisibility() {
+  const cb = $("show-ceiling");
+  const visible = cb ? cb.checked : true;
+  for (const m of ceilingMeshes) m.visible = visible;
+}
+
+// Free-standing object kinds the viewer draws as solid boxes (obstacles the
+// installer routes speakers around). Mirrors core FREESTANDING_OBJECT_KINDS.
+const _FREESTANDING_KINDS = new Set(["column", "sofa", "table", "bed", "storage"]);
+const _objectMat = new THREE.MeshStandardMaterial({
+  color: 0x8a5a3a, transparent: true, opacity: 0.7,
+});
 
 function buildRoom(geom) {
   // Floor: a THREE.Shape from floor_polygon (map x->x, z->z), laid flat at y=0.
@@ -196,6 +215,59 @@ function buildRoom(geom) {
     scene.add(patch);
     roomMeshes.push(patch);
   }
+
+  // Ceiling: each server-provided ceiling polygon (constant-y 3-D {x,y,z}) drawn
+  // as a semi-transparent DoubleSide patch so the room reads enclosed but the
+  // interior stays visible. Same map-only build as the floor (Shape from x,z,
+  // rotate XY->XZ), placed at the polygon's own y. FALLBACK: if the geometry
+  // carries no ceiling polygon, cover the floor outline at ceiling_height_m.
+  const ceilMat = new THREE.MeshBasicMaterial({
+    color: 0x8892a0, transparent: true, opacity: 0.15, side: THREE.DoubleSide,
+  });
+  const ceilPolys = geom.ceiling || [];
+  if (ceilPolys.length) {
+    for (const c of ceilPolys) {
+      if (!c.polygon || !c.polygon.length) continue;
+      const pts = c.polygon.map((p) => new THREE.Vector2(p.x, p.z));
+      const cGeo = new THREE.ShapeGeometry(new THREE.Shape(pts));
+      const mesh = new THREE.Mesh(cGeo, ceilMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.y = c.polygon[0].y; // constant ceiling height (server coord)
+      scene.add(mesh);
+      roomMeshes.push(mesh);
+      ceilingMeshes.push(mesh);
+    }
+  } else if (floorPts.length) {
+    // Fallback: reuse the floor outline as a flat lid at ceiling_height_m.
+    const lidGeo = new THREE.ShapeGeometry(floorShape);
+    const lid = new THREE.Mesh(lidGeo, ceilMat);
+    lid.rotation.x = -Math.PI / 2;
+    lid.position.y = geom.ceiling_height_m;
+    scene.add(lid);
+    roomMeshes.push(lid);
+    ceilingMeshes.push(lid);
+  }
+
+  // Objects: free-standing columns/furniture drawn as solid boxes so the
+  // installer can see obstacles. The server anchor is the base centre ON the
+  // floor, so the box centre sits at (anchor.x, anchor.y + height/2, anchor.z)
+  // and the box is sized width x height x depth. These are NOT added to
+  // speakerMeshes, so they are NOT draggable (they are obstacles). Wall-attached
+  // door/window kinds are skipped: their anchor is wall-local, so drawing them
+  // in world space needs the wall transform the geometry dict does not carry.
+  for (const obj of geom.objects || []) {
+    if (!_FREESTANDING_KINDS.has(obj.kind)) continue;
+    const w = obj.width_m || 0.1;
+    const h = obj.height_m || 0.1;
+    const d = obj.depth_m || 0.1;
+    const boxGeo = new THREE.BoxGeometry(w, h, d);
+    const box = new THREE.Mesh(boxGeo, _objectMat);
+    box.position.set(obj.anchor.x, obj.anchor.y + h / 2, obj.anchor.z);
+    scene.add(box);
+    roomMeshes.push(box);
+  }
+
+  applyCeilingVisibility();
 }
 
 // Replace the on-screen speaker meshes from a list of {channel, position,
@@ -839,6 +911,8 @@ async function main() {
     const i = parseInt(ev.target.value, 10);
     if (Number.isInteger(i) && _pickerRooms[i]) switchToRoom(_pickerRooms[i]);
   });
+  const showCeiling = $("show-ceiling");
+  if (showCeiling) showCeiling.addEventListener("change", applyCeilingVisibility);
 
   // Any spec/param change → debounced re-evaluate (shares scheduleEvaluate with
   // drag-end). The form values are the single source of truth for every request.

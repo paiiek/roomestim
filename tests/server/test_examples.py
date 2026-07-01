@@ -105,6 +105,33 @@ def test_every_shipped_example_loads() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# P6.B — the bundled column example loads and exposes a renderable column box
+# --------------------------------------------------------------------------- #
+
+
+def test_column_example_loads_with_column_object() -> None:
+    client = _client()
+    resp = client.post("/api/examples/lab_room_with_column/load")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert "room" in body and "rooms" not in body
+    room_id = body["room"]["id"]
+    assert room_id.startswith("uploaded:")
+
+    geom = client.get(f"/api/rooms/{room_id}").json()
+    # Ceiling exposed for the enclosed-room render.
+    assert isinstance(geom["ceiling"], list) and geom["ceiling"]
+    # At least one column with the box fields the viewer needs.
+    columns = [o for o in geom["objects"] if o["kind"] == "column"]
+    assert len(columns) >= 1
+    col = columns[0]
+    assert {"x", "y", "z"} <= set(col["anchor"])
+    for field in ("width_m", "depth_m", "height_m"):
+        assert isinstance(col[field], (int, float)) and col[field] > 0
+
+
+# --------------------------------------------------------------------------- #
 # ★ Frame normalisation — a captured room is recentred to the canonical Frame A
 #   (floor at y=0, listener centroid at the horizontal origin) at registration
 # --------------------------------------------------------------------------- #

@@ -41,6 +41,14 @@ def test_get_room_geometry_valid() -> None:
     assert la["polygon"]
     assert {"x", "z"} <= set(la["centroid"])
     assert geom["walls"]  # walls present
+    # P6.A — ceiling surfaces exposed for rendering (the shoebox has one).
+    assert isinstance(geom["ceiling"], list)
+    assert len(geom["ceiling"]) >= 1
+    for c in geom["ceiling"]:
+        assert c["polygon"]
+        assert all({"x", "y", "z"} <= set(p) for p in c["polygon"])
+    # P6.B — objects list is always present (empty for the plain shoebox).
+    assert isinstance(geom["objects"], list)
     # geometry only: no physics / material keys leaked.
     assert "rt60" not in geom
     assert "material" not in geom

@@ -104,6 +104,16 @@ _EXAMPLES: dict[str, dict[str, str]] = {
             "a quick smoke room for the viewer."
         ),
     },
+    "lab_room_with_column": {
+        "filename": "lab_room_with_column.json",
+        "format": "roomplan",
+        "name": "Lab room + column (synthetic RoomPlan sidecar)",
+        "description": (
+            "Synthetic single-room RoomPlan JSON sidecar (our own fixture) with "
+            "one free-standing column — a click-test room for the obstacle box "
+            "render (route speakers around the pillar)."
+        ),
+    },
     "capturedstructure_single": {
         "filename": "capturedstructure_single.json",
         "format": "structure",

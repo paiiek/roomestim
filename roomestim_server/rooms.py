@@ -302,8 +302,12 @@ def room_geometry_to_dict(room: RoomModel, room_id: str) -> dict[str, object]:
     """Serialise GEOMETRY ONLY for rendering (no physics, no materials).
 
     Emits the floor polygon (x,z), ceiling height, listener area (polygon +
-    centroid + height), and the wall surfaces as 3-D polygons. Materials /
-    absorption / RT60 are intentionally NOT exposed here.
+    centroid + height), the wall surfaces AND the ceiling surfaces as 3-D
+    polygons (P6.A — the viewer draws a semi-transparent ceiling so the room
+    reads enclosed), and the free-standing / wall-attached objects (P6.B — the
+    viewer draws columns/furniture as boxes so an installer can route speakers
+    around them). Materials / absorption / RT60 are intentionally NOT exposed
+    here.
     """
     listener = room.listener_area
     walls = [
@@ -313,6 +317,25 @@ def room_geometry_to_dict(room: RoomModel, room_id: str) -> dict[str, object]:
         }
         for surf in room.surfaces
         if surf.kind == "wall"
+    ]
+    ceiling = [
+        {
+            "kind": surf.kind,
+            "polygon": [{"x": p.x, "y": p.y, "z": p.z} for p in surf.polygon],
+        }
+        for surf in room.surfaces
+        if surf.kind == "ceiling"
+    ]
+    objects = [
+        {
+            "kind": obj.kind,
+            "anchor": {"x": obj.anchor.x, "y": obj.anchor.y, "z": obj.anchor.z},
+            "width_m": obj.width_m,
+            "depth_m": obj.depth_m,
+            "height_m": obj.height_m,
+            "wall_index": obj.wall_index,
+        }
+        for obj in room.objects
     ]
     return {
         "id": room_id,
@@ -325,4 +348,6 @@ def room_geometry_to_dict(room: RoomModel, room_id: str) -> dict[str, object]:
             "height_m": listener.height_m,
         },
         "walls": walls,
+        "ceiling": ceiling,
+        "objects": objects,
     }
