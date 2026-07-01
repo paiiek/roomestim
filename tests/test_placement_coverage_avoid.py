@@ -12,11 +12,19 @@ Covers:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from roomestim.adapters.roomplan import RoomPlanAdapter
-from roomestim.geom.obstacle import freestanding_footprints, plan_clearance_m
-from roomestim.model import PlacementResult, RoomModel
+from roomestim.geom.obstacle import (
+    clearance_3d_m,
+    freestanding_boxes,
+    freestanding_footprints,
+    plan_clearance_m,
+)
+from roomestim.model import Object, PlacementResult, Point3, RoomModel
 from roomestim.place.dbap import place_dbap
 from roomestim.place.dispatch import run_placement
 from roomestim.place.obstacle_aware import (
@@ -24,6 +32,27 @@ from roomestim.place.obstacle_aware import (
     place_coverage_avoid,
 )
 from tests.fixtures.synthetic_rooms import shoebox
+
+
+def _furnished_room(table_height_m: float = 0.7) -> RoomModel:
+    """A shoebox whose whole floor plan is covered by ONE short table.
+
+    Every wall/ceiling candidate's plan-view ``(x, z)`` overlaps (or is within
+    clearance of) the footprint — the plan-view-only P7.1 filter emptied this
+    pool and 400'd. The table is short, so a ceiling mount above it is clear in
+    3D. Line-of-sight is disabled here to isolate the CLEARANCE dimension (the
+    documented defect); LOS is a separate plan-view sightline heuristic and,
+    with a full-plan table under the ear, would independently block everything.
+    """
+    room = shoebox(5.0, 4.0, 2.8)
+    table = Object(
+        kind="table",
+        anchor=Point3(x=0.0, y=0.0, z=0.0),
+        width_m=4.8,
+        height_m=table_height_m,
+        depth_m=3.8,
+    )
+    return replace(room, objects=[table])
 
 _EXAMPLE = (
     Path(__file__).resolve().parents[1]
@@ -96,6 +125,142 @@ def test_coverage_avoid_note_is_reachable_and_honest() -> None:
     assert "GEOMETRIC HEURISTIC" in OBSTACLE_AWARE_PLACEMENT_NOTE
     assert "NO" in OBSTACLE_AWARE_PLACEMENT_NOTE
     assert "SPL" in OBSTACLE_AWARE_PLACEMENT_NOTE
+    # P7.5: the disclosure now documents 3D clearance + graceful degradation.
+    assert "3D" in OBSTACLE_AWARE_PLACEMENT_NOTE
+    assert "ZERO" in OBSTACLE_AWARE_PLACEMENT_NOTE
+
+
+# --------------------------------------------------------------------------- #
+# P7.5 — furnished room: 3D clearance fixes the plan-view false-empty 400
+# --------------------------------------------------------------------------- #
+
+
+def test_coverage_avoid_furnished_room_returns_valid_not_400() -> None:
+    """A short table covering the whole plan emptied the plan-view pool (400).
+
+    With 3D clearance the ceiling mounts above it survive: a valid result, not a
+    ValueError.
+    """
+    room = _furnished_room(table_height_m=0.7)
+    boxes = freestanding_boxes(room)
+    result = place_coverage_avoid(room, 6, clearance_m=0.30, check_line_of_sight=False)
+    assert isinstance(result, PlacementResult)
+    assert len(result.speakers) == 6
+    # Every placed speaker clears every object box in 3D.
+    for sp in result.speakers:
+        d = clearance_3d_m(sp.position.x, sp.position.y, sp.position.z, boxes)
+        assert d >= 0.30, (
+            f"speaker {sp.channel} only {d:.3f} m from a box in 3D (< 0.30 m)"
+        )
+    # The pool is non-empty BECAUSE of the 3D fix: a ceiling-height candidate
+    # above the 0.7 m table is allowed (max speaker y reaches the 2.8 m ceiling).
+    assert max(sp.position.y for sp in result.speakers) > 2.0
+
+
+def test_coverage_avoid_graceful_degradation_places_k_lt_n() -> None:
+    """More speakers requested than clear the filter -> place k<n + honest note."""
+    room = _furnished_room(table_height_m=0.7)
+    boxes = freestanding_boxes(room)
+    n = 10_000
+    result = place_coverage_avoid(room, n, clearance_m=0.30, check_line_of_sight=False)
+    assert isinstance(result, PlacementResult)
+    assert 1 <= len(result.speakers) < n
+    # The honest shortfall note is recorded on every placed speaker.
+    for sp in result.speakers:
+        assert "obstacle-constrained: placed" in sp.notes
+        assert f"/{n}" in sp.notes
+        assert "in 3D" in sp.notes
+    # No fabricated acoustics — still a pure 3D-clearance disclosure.
+    for sp in result.speakers:
+        d = clearance_3d_m(sp.position.x, sp.position.y, sp.position.z, boxes)
+        assert d >= 0.30
+
+
+def test_coverage_avoid_full_placement_has_no_shortfall_note() -> None:
+    """When the pool covers n, the placed speakers carry no shortfall note."""
+    room = _furnished_room(table_height_m=0.7)
+    result = place_coverage_avoid(room, 6, clearance_m=0.30, check_line_of_sight=False)
+    assert all("obstacle-constrained" not in sp.notes for sp in result.speakers)
+
+
+def test_coverage_avoid_zero_clear_still_raises() -> None:
+    """A full-height block covering the whole plan -> ZERO clear -> ValueError."""
+    room = shoebox(5.0, 4.0, 2.8)
+    block = Object(
+        kind="storage",
+        anchor=Point3(x=0.0, y=0.0, z=0.0),
+        width_m=4.8,
+        height_m=2.8,  # spans floor to ceiling -> no 3D escape above it
+        depth_m=3.8,
+    )
+    room = replace(room, objects=[block])
+    with pytest.raises(ValueError, match="candidate pool is empty"):
+        place_coverage_avoid(room, 6, clearance_m=0.30, check_line_of_sight=False)
+
+
+def test_coverage_avoid_production_path_los_on_short_table_not_400() -> None:
+    """The PRODUCTION path runs with line-of-sight ON (dispatch default).
+
+    Height-aware LOS is the companion of the 3D clearance fix: a ceiling mount
+    ABOVE a short table (top 0.7 m, below both the mount and the 1.2 m ear) must
+    NOT be treated as occluded by that table, so the pool does not empty. Without
+    the height-aware LOS wiring the plan-view segment crosses the full-plan table
+    and every candidate is rejected -> the original 400 would re-appear even
+    after the clearance fix. This is the exact regression the reviewer flagged.
+    """
+    room = _furnished_room(table_height_m=0.7)
+    boxes = freestanding_boxes(room)
+    # LOS left at its default (True) — the production dispatch path.
+    result = place_coverage_avoid(room, 6, clearance_m=0.30)
+    assert isinstance(result, PlacementResult)
+    assert len(result.speakers) == 6
+    # Survivors are the ceiling-height mounts above the short table.
+    assert max(sp.position.y for sp in result.speakers) > 2.0
+    for sp in result.speakers:
+        d = clearance_3d_m(sp.position.x, sp.position.y, sp.position.z, boxes)
+        assert d >= 0.30
+
+
+def test_coverage_avoid_los_on_tall_obstacle_still_blocks() -> None:
+    """Height-aware LOS must NOT over-skip: a full-height block still occludes.
+
+    A floor-to-ceiling block covering the whole plan has its top ABOVE the ear,
+    so height-aware LOS does not skip it; combined with 3D clearance the pool
+    empties and it fails loud (no silent placement through a solid wall-height
+    obstacle).
+    """
+    room = shoebox(5.0, 4.0, 2.8)
+    block = Object(
+        kind="storage",
+        anchor=Point3(x=0.0, y=0.0, z=0.0),
+        width_m=4.8,
+        height_m=2.8,
+        depth_m=3.8,
+    )
+    room = replace(room, objects=[block])
+    with pytest.raises(ValueError, match="candidate pool is empty"):
+        place_coverage_avoid(room, 6, clearance_m=0.30)  # LOS default ON
+
+
+def test_freestanding_footprints_and_boxes_are_index_aligned() -> None:
+    """object_box delegates its exclusion gate to object_footprint, so the two
+    room-level lists exclude the SAME objects and stay index-for-index aligned
+    (a NaN/degenerate box can never desync the height-aware LOS tops)."""
+    room = _furnished_room(table_height_m=0.7)
+    room = replace(
+        room,
+        objects=[
+            *room.objects,
+            Object(  # NaN width: object_footprint rejects -> object_box must too
+                kind="table",
+                anchor=Point3(x=1.0, y=0.0, z=1.0),
+                width_m=float("nan"),
+                height_m=0.7,
+                depth_m=0.8,
+            ),
+        ],
+    )
+    assert len(freestanding_footprints(room)) == len(freestanding_boxes(room))
 
 
 # --------------------------------------------------------------------------- #

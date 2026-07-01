@@ -18,16 +18,18 @@ Mode A in P7.2.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 from roomestim.coords import yaml_speaker_to_cartesian
 from roomestim.geom.obstacle import (
+    freestanding_boxes,
     freestanding_footprints,
     line_of_sight_blocked,
-    position_is_clear,
+    position_is_clear_3d,
 )
 from roomestim.model import PlacedSpeaker, PlacementResult, Point3, RoomModel, Surface
 from roomestim.place.algorithm import TargetAlgorithm
-from roomestim.place.dbap import place_dbap
+from roomestim.place.dbap import _candidates_on_surface, place_dbap
 from roomestim.place.formats import get_format
 
 #: Single source of truth for the obstacle-aware placement honesty framing.
@@ -35,20 +37,30 @@ from roomestim.place.formats import get_format
 OBSTACLE_AWARE_PLACEMENT_NOTE: str = (
     "Obstacle-aware placement is a DETERMINISTIC GEOMETRIC HEURISTIC — NOT a "
     "proven-optimal, acoustically-validated, or perceptually-verified layout. "
-    "Clearance is plan-view (top-down) Euclidean distance to axis-aligned object "
-    "bounding boxes (object rotation is NOT modelled; furniture is treated as a "
-    "solid box). Line-of-sight is a plan-view segment/box intersection that ignores "
-    "diffraction and (unless height-aware is enabled) speaker/obstacle height. Mode A "
-    "(format_avoid) preserves a standard format's canonical listener-relative angles "
-    "and nudges each channel by the SMALLEST angular offset (stepped search, not a "
-    "global optimum) that clears obstacles; per-channel ideal-vs-actual deviation is "
-    "reported. A channel that cannot be cleared within the search window is left at "
-    "its ideal angle and flagged UNRESOLVED — it is NOT silently moved. Mode B "
-    "(coverage_avoid) maximizes listener-area min/max DBAP gain on wall/ceiling "
-    "mounts with obstacle-colliding and occluded candidates removed; it makes NO "
-    "SPL claim. Canonical angles are reconstructed from PUBLIC guidance (ITU-R BS.775 "
-    "bed/surround azimuths; Dolby Atmos Home Theater Installation Guidelines height "
-    "angles, 45 deg ideal), NOT a paywalled standard, and are NOT inferred from the room."
+    "Clearance is 3D (height-aware) Euclidean distance to axis-aligned object "
+    "bounding boxes that span floor to object height (object rotation is NOT "
+    "modelled; furniture is treated as a solid box), so a ceiling/high-wall mount "
+    "cleanly ABOVE a short piece of furniture is correctly allowed instead of being "
+    "rejected for a top-down footprint overlap. Line-of-sight is likewise "
+    "height-aware: a plan-view segment/box intersection in which an object whose "
+    "TOP is below both the speaker and the listener is skipped (a mount and ear "
+    "both above a short object are not treated as occluded by it); it still ignores "
+    "diffraction and treats each object as an opaque box at its nominal height. "
+    "Mode A (format_avoid) preserves a standard "
+    "format's canonical listener-relative angles and nudges each channel by the "
+    "SMALLEST angular offset (stepped search, not a global optimum) that clears "
+    "obstacles in 3D; per-channel ideal-vs-actual deviation is reported. A channel "
+    "that cannot be cleared within the search window is left at its ideal angle and "
+    "flagged UNRESOLVED — it is NOT silently moved. Mode B (coverage_avoid) maximizes "
+    "listener-area min/max DBAP gain on wall/ceiling mounts with obstacle-colliding "
+    "and occluded candidates removed in 3D; it makes NO SPL claim. When fewer "
+    "wall/ceiling candidates clear the obstacle filter than the requested speaker "
+    "count, Mode B places as many as clear (greedy max-min over the reduced pool) "
+    "and discloses the shortfall in each speaker's note; it raises only when ZERO "
+    "candidates clear. Canonical angles are reconstructed from PUBLIC guidance "
+    "(ITU-R BS.775 bed/surround azimuths; Dolby Atmos Home Theater Installation "
+    "Guidelines height angles, 45 deg ideal), NOT a paywalled standard, and are NOT "
+    "inferred from the room."
 )
 
 
@@ -65,20 +77,25 @@ def place_coverage_avoid(
     """DBAP coverage placement that avoids free-standing obstacles (Mode B).
 
     Identical to :func:`roomestim.place.dbap.place_dbap` on the room's wall +
-    ceiling surfaces, with ONE inserted candidate filter: any candidate that is
-    not clear of every object footprint by ``clearance_m`` (plan-view) — or,
-    when ``check_line_of_sight`` is set, whose plan-view segment to the listener
-    ear is blocked by a footprint — is dropped before the greedy max-min
-    selection. Room-absolute (Frame A); makes NO SPL claim. See
-    :data:`OBSTACLE_AWARE_PLACEMENT_NOTE`.
+    ceiling surfaces, with ONE inserted candidate filter: any candidate whose 3D
+    (height-aware) clearance to every free-standing object box is below
+    ``clearance_m`` — or, when ``check_line_of_sight`` is set, whose plan-view
+    segment to the listener ear is blocked by a footprint — is dropped before the
+    greedy max-min selection. The clearance is 3D so a ceiling/high-wall mount
+    cleanly ABOVE a short piece of furniture survives (the plan-view-only P7.1
+    filter wrongly emptied the pool in furnished rooms). Room-absolute (Frame A);
+    makes NO SPL claim. See :data:`OBSTACLE_AWARE_PLACEMENT_NOTE`.
 
     The listener ear point is ``(centroid.x, listener_area.height_m,
     centroid.z)`` — identical to the server install block, so headless and
     server results do not drift.
 
-    Raises ``ValueError`` (→ generic 400 at the server) when the room has no
-    wall/ceiling mount surface or when the candidate pool empties after the
-    obstacle filter (same fail-loud contract as ``place_dbap``).
+    Graceful degradation: when the 3D-filtered candidate pool has FEWER than
+    ``n_speakers`` positions, this places as many as clear (greedy max-min over
+    the reduced pool) and records an honest shortfall note on every placed
+    speaker; it does NOT raise. It raises ``ValueError`` (→ generic 400 at the
+    server) only when the room has no wall/ceiling mount surface or when ZERO
+    candidates clear the obstacle filter (fully obstructed).
     """
     mount_surfaces: list[Surface] = [
         s for s in room.surfaces if s.kind in ("wall", "ceiling")
@@ -90,6 +107,10 @@ def place_coverage_avoid(
         )
 
     footprints = freestanding_footprints(room)
+    boxes = freestanding_boxes(room)
+    # object_box == object_footprint exclusion gate, so boxes[i] aligns with
+    # footprints[i]; box[5] is the object's top y for height-aware line-of-sight.
+    object_tops_m = [b[5] for b in boxes]
     listener = room.listener_area
     ear = Point3(
         x=listener.centroid.x,
@@ -98,27 +119,60 @@ def place_coverage_avoid(
     )
 
     def _candidate_filter(cand: Point3) -> bool:
-        if not position_is_clear(
-            cand.x, cand.z, footprints, clearance_m=clearance_m
+        if not position_is_clear_3d(
+            cand.x, cand.y, cand.z, boxes, clearance_m=clearance_m
         ):
             return False
-        if check_line_of_sight and line_of_sight_blocked(cand, ear, footprints):
+        if check_line_of_sight and line_of_sight_blocked(
+            cand, ear, footprints, height_aware=True, object_tops_m=object_tops_m
+        ):
             return False
         return True
 
+    # Count the candidates that survive the 3D obstacle + LOS filter so we can
+    # degrade gracefully (place k<n) instead of failing loud when the room is
+    # furnished. Sampling is deterministic, so this pool is byte-identical to the
+    # one ``place_dbap`` rebuilds internally below with the same filter.
+    n_valid = sum(
+        1
+        for surface in mount_surfaces
+        for cand in _candidates_on_surface(
+            surface, inset_m=inset_m, samples_per_dim=samples_per_dim
+        )
+        if _candidate_filter(cand)
+    )
+    if n_valid == 0:
+        raise ValueError(
+            "coverage_avoid candidate pool is empty after the 3D obstacle "
+            f"filter (clearance {clearance_m:.2f} m): every wall/ceiling mount "
+            "position collides with or is occluded by a free-standing object."
+        )
+    n_effective = min(n_speakers, n_valid)
+
     result = place_dbap(
         mount_surfaces=mount_surfaces,
-        n_speakers=n_speakers,
+        n_speakers=n_effective,
         listener_area=room.listener_area,
         layout_name=layout_name,
         samples_per_dim=samples_per_dim,
         inset_m=inset_m,
         candidate_filter=_candidate_filter,
     )
+
+    speakers = result.speakers
+    if n_effective < n_speakers:
+        shortfall = (
+            f"obstacle-constrained: placed {n_effective}/{n_speakers} "
+            f"({n_speakers - n_effective} requested speaker(s) could not clear "
+            f"{clearance_m:.2f} m of a free-standing object in 3D; only "
+            f"{n_valid} wall/ceiling candidate(s) cleared)"
+        )
+        speakers = [replace(sp, notes=shortfall) for sp in speakers]
+
     return PlacementResult(
         target_algorithm=TargetAlgorithm.COVERAGE_AVOID.value,
         regularity_hint="IRREGULAR",
-        speakers=result.speakers,
+        speakers=speakers,
         layout_name=layout_name,
     )
 
@@ -163,9 +217,10 @@ def place_format_avoid(
     (never hand-rolled trig).
 
     A channel is accepted at deviation 0 when its ideal point is clear of every
-    free-standing object footprint by ``clearance_m`` (plan-view) AND — unless
-    ``check_line_of_sight`` is disabled — its plan-view line to the ear is not
-    blocked. Otherwise a DETERMINISTIC increasing-deviation stepped scan tries
+    free-standing object box by ``clearance_m`` in 3D (height-aware, so an
+    elevated height/top channel above short furniture is not rejected for a
+    plan-view footprint overlap) AND — unless ``check_line_of_sight`` is disabled
+    — its plan-view line to the ear is not blocked. Otherwise a DETERMINISTIC increasing-deviation stepped scan tries
     angular offsets ``Δaz ∈ {±step..±az_search_max}`` × ``Δel ∈ {0,±step..
     ±el_search_max}`` sorted ascending by ``hypot(Δaz, Δel)`` (stable sort) and
     accepts the FIRST offset that clears — the smallest angular nudge. A channel
@@ -180,6 +235,10 @@ def place_format_avoid(
     """
     fmt = get_format(format_id)
     footprints = freestanding_footprints(room)
+    boxes = freestanding_boxes(room)
+    # boxes[i] aligns with footprints[i] (identical exclusion gate); box[5] is the
+    # object top y for height-aware line-of-sight.
+    object_tops_m = [b[5] for b in boxes]
     listener = room.listener_area
     ear = Point3(
         x=listener.centroid.x,
@@ -200,9 +259,13 @@ def place_format_avoid(
         return Point3(x=ear.x + dx, y=ear.y + dy, z=ear.z + dz)
 
     def _clears(pt: Point3) -> bool:
-        if not position_is_clear(pt.x, pt.z, footprints, clearance_m=clearance_m):
+        if not position_is_clear_3d(
+            pt.x, pt.y, pt.z, boxes, clearance_m=clearance_m
+        ):
             return False
-        if check_line_of_sight and line_of_sight_blocked(pt, ear, footprints):
+        if check_line_of_sight and line_of_sight_blocked(
+            pt, ear, footprints, height_aware=True, object_tops_m=object_tops_m
+        ):
             return False
         return True
 

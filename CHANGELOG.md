@@ -62,6 +62,27 @@ HEURISTIC 이며 음향/SPL 주장 없음(`OBSTACLE_AWARE_PLACEMENT_NOTE` 단일
     `#order`(ambisonics) 조건부 컨트롤; `reseedLayout` 가 관련 필드를 POST 에 포함
     하고 400 시 서버 generic 메시지 표시(무크래시); 응답 `note`/편차를
     `#place-note` 에 렌더(D29: JS 물리 0).
+- **P7.5 — 3D(height-aware) clearance + graceful degradation (육안 중 발견한
+  실결함 수정; v0.64.0 미릴리스 내 포함, 별도 bump 없음).** P7.1 의 평면(top-down)
+  clearance 는 가구 위 천장/고벽 마운트를 footprint 겹침만 보고 거부해, 가구가
+  많은 캡처룸에서 `coverage_avoid` 후보풀을 전부 비워 400 을 냈다. 수정:
+  `roomestim/geom/obstacle.py` 에 3D 박스 primitive 추가 — `Box`
+  (`(x0,x1,z0,z1,y0,y1)`, `y∈[anchor.y, anchor.y+height_m]`)·`object_box`·
+  `freestanding_boxes`·`clearance_3d_m`(점→AABB 축별 거리의 유클리드 합, 내부=0,
+  박스 없음=+inf)·`position_is_clear_3d`. `place_coverage_avoid` 와
+  `place_format_avoid` 의 clearance 판정을 `position_is_clear` → `position_is_clear_3d`
+  로 교체(짧은 가구 위 마운트 정상 허용). **Line-of-sight 도 height-aware 배선:**
+  두 placer 가 `line_of_sight_blocked(height_aware=True, object_tops_m=...)` 로
+  호출 — clearance 만 3D 고 LOS 는 평면이면 프로덕션 dispatch 경로(LOS 기본 ON)에서
+  가구 위 천장 마운트가 여전히 footprint 가림으로 거부돼 400 이 재현되던 결함을
+  마감. 정렬 보장을 위해 `object_box` 의 제외 게이트를 `object_footprint` 에 위임
+  (동일 오브젝트 제외 → `freestanding_footprints`/`freestanding_boxes` index 정렬,
+  `object_tops_m = box[5]`); `object_footprint` 에 `math.isfinite` 가드 추가(NaN/inf
+  dims → shapely 크래시 대신 None). **Graceful degradation:** 3D 필터 후
+  후보가 요청 `n` 보다 적으면 400 대신 clear 되는 만큼(greedy max-min)만 배치하고
+  모든 스피커 `notes` 에 정직한 부족분(placed k/n + 사유)을 기록; ZERO clear 일
+  때만 `ValueError`(→ generic 400). `OBSTACLE_AWARE_PLACEMENT_NOTE` 를 3D +
+  degradation 반영해 갱신(여전히 단일 진실원천, 음향/SPL 주장 없음).
 
 ### Byte-equality
 
