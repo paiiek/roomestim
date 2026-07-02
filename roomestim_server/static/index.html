@@ -105,6 +105,20 @@
     /* Highlight the most-recently-moved speaker's row (P6.D). */
     #install-table tr.moved td { background: #26364d; color: #fff; }
     #install-table tr.moved td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+    /* Per-channel obstacle-status column (compromise report) — subtle emphasis
+       for UNRESOLVED / shortfall cells so they stand out without shouting. */
+    #install-table td.status-bad { color: var(--err); font-weight: 600; }
+    #install-table td.status-warn { color: var(--warn); font-weight: 600; }
+
+    /* Prominent placement compromise-report badge above #place-note. One badge
+       class is active at a time (JS toggles); readable contrast on the dark UI. */
+    #place-summary {
+      border-radius: 4px; padding: 6px 10px; margin-bottom: 6px;
+      font-size: 12px; font-weight: 600; line-height: 1.4;
+    }
+    #place-summary.badge-ok { background: #17301c; color: #7ac77a; border: 1px solid #2f5a37; }
+    #place-summary.badge-warn { background: #2e2716; color: var(--warn); border: 1px solid #5a4a22; }
+    #place-summary.badge-bad { background: #2e1a1a; color: var(--err); border: 1px solid #5a2a2a; }
 
     #controls {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
@@ -156,7 +170,7 @@
             <option value="dbap">dbap — 방 적응 (room-aware: walls/ceiling)</option>
             <option value="coverage">coverage — 천장 그리드·방 적응 (room-aware)</option>
             <option value="format_avoid">format (obstacle-avoid, room+format)</option>
-            <option value="coverage_avoid">coverage (obstacle-avoid, room-aware)</option>
+            <option value="coverage_avoid" selected>coverage (obstacle-avoid, room-aware)</option>
             <option value="ambisonics">ambisonics (platonic rig, room-blind)</option>
           </select>
           <label for="nspk">n</label>
@@ -179,9 +193,9 @@
           </span>
           <button id="reseed" type="button">Re-seed layout</button>
           <label for="auto-reseed"
-            title="체크 시 방을 바꾸면 현재 알고리즘·개수로 자동 재배치. 단 room-blind(vbap/dome)은 방이 바뀌어도 배치 불변 — dbap/coverage만 방에 적응합니다.">방 변경 시 자동 재배치 (auto re-place on room change)</label>
+            title="체크 시 방을 바꾸면 현재 알고리즘·개수로 자동 재배치. 장애물-회피(coverage_avoid/format_avoid)는 가구를 3D로 피해 배치하고, dbap/coverage는 방(벽·천장)에 적응합니다. 단 room-blind(vbap/dome)은 방이 바뀌어도 배치 불변.">방 변경 시 자동 재배치 (auto re-place on room change)</label>
           <input id="auto-reseed" type="checkbox" checked
-            title="room-blind(vbap/dome)은 방 무시; dbap/coverage만 방에 적응" />
+            title="장애물-회피(coverage_avoid/format_avoid)=가구 회피; dbap/coverage=방 적응; room-blind(vbap/dome)=방 무시" />
 
           <label for="spec">speaker</label>
           <select id="spec"><!-- populated from GET /api/specs on load --></select>
@@ -226,6 +240,12 @@
 
         <div id="status">Loading…</div>
 
+        <!-- Compromise-report summary badge: a one-line verdict on the last
+             obstacle-aware re-seed (cleared / shortfall / unresolved), derived
+             ENTIRELY from the server placement notes (D29: no JS physics). Hidden
+             for non-avoid algorithms. Sits above the full note dump below. -->
+        <div id="place-summary" style="display:none"></div>
+
         <!-- P7.3: obstacle-aware placement disclosure (server ``note``); hidden
              until a format_avoid / coverage_avoid re-seed returns one. -->
         <div id="place-note" class="note" style="display:none"></div>
@@ -256,6 +276,7 @@
               <th>az (°)</th><th>el (°)</th><th>dist (m)</th>
               <th>SPL @listener (dB)</th>
               <th>wall</th><th>corner</th>
+              <th>status</th>
             </tr>
           </thead>
           <tbody id="install-body"></tbody>

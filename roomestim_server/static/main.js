@@ -43,7 +43,7 @@ const SEED = [
 // layout.yaml on a fresh page too — never a spurious first-click error. (The old
 // "ring" placeholder was NOT an engine hint and made export 400 before re-seed.)
 let layoutMeta = {
-  target_algorithm: "vbap",
+  target_algorithm: "coverage_avoid",
   regularity_hint: "IRREGULAR",
   layout_name: "live-edit",
 };
@@ -444,6 +444,14 @@ let _dragMoved = false;
 // re-seed. Set on drag-end, cleared on re-seed.
 let _movedChannel = null;
 
+// Compromise-report state (D29: pure strings from the server placement notes).
+// _placeNotesByChannel maps a channel int -> its server ``notes`` string from the
+// last successful re-seed; the install-table "status" column reads it verbatim.
+// _manuallyMovedChannels tracks every channel the installer has dragged since that
+// re-seed, so their status shows "manual" (the seed note no longer applies).
+let _placeNotesByChannel = {};
+const _manuallyMovedChannels = new Set();
+
 function _updatePointer(ev) {
   const rect = renderer.domElement.getBoundingClientRect();
   _pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
@@ -483,7 +491,14 @@ function initDrag() {
     if (!_dragged) return;
     // Record which channel just moved (BEFORE clearing _dragged) so renderInstall
     // can highlight its row (P6.D). userData.channel is set when the mesh is built.
-    if (_dragMoved && _dragged.userData) _movedChannel = _dragged.userData.channel;
+    if (_dragMoved && _dragged.userData) {
+      _movedChannel = _dragged.userData.channel;
+      // The installer moved this channel — its seed note no longer describes where
+      // it sits, so mark it "manual" in the install-table status column AND downgrade
+      // the prominent summary badge so its verdict can't outlive the hand edit.
+      _manuallyMovedChannels.add(_dragged.userData.channel);
+      markSummaryManual();
+    }
     _dragged = null;
     controls.enabled = true;
     try {
@@ -611,6 +626,22 @@ function _installCell(text, cls) {
   return td;
 }
 
+// Map a channel to its compromise-report status [text, cssClass] from the last
+// re-seed's server notes. Returns "manual" for a dragged channel, else parses the
+// verbatim server note string (D29: JS reads the note, computes NO geometry).
+function _channelStatus(channel) {
+  if (_manuallyMovedChannels.has(channel)) return ["manual", null];
+  const note = _placeNotesByChannel[channel];
+  if (!note) return ["—", null];
+  if (note.includes("[UNRESOLVED]")) return ["UNRESOLVED", "status-bad"];
+  if (note.includes("[CLEARED]")) {
+    const m = note.match(/dev=(\d+(?:\.\d+)?)deg/);
+    return [m ? `cleared Δ${m[1]}°` : "cleared", null];
+  }
+  if (note.includes("obstacle-constrained")) return ["shortfall", "status-warn"];
+  return ["—", null];
+}
+
 // Render the per-speaker install TABLE from data.install.speakers. EVERY number
 // comes verbatim from the server block (positions, az/el/dist, wall/corner
 // offsets) — the browser only formats + lays them out. Absent/null install (or a
@@ -646,6 +677,10 @@ function renderInstall(install) {
     row.appendChild(_installCell(fmtN(s.spl_at_listener_db, 1)));
     row.appendChild(_installCell(wall));
     row.appendChild(_installCell(corner));
+    // Per-channel obstacle-status (compromise report) — derived ENTIRELY from the
+    // server placement notes threaded in via reseedLayout (D29: no JS physics).
+    const [statusText, statusCls] = _channelStatus(s.channel);
+    row.appendChild(_installCell(statusText, statusCls));
     // Highlight the most-recently-moved speaker's row so the installer sees
     // exactly what changed (P6.D).
     if (_movedChannel !== null && s.channel === _movedChannel) {
@@ -662,6 +697,7 @@ const STANDING_DISCLAIMER =
 
 function showError(message) {
   renderInstall(null); // blank the install table on a failed evaluate (no stale rows)
+  clearPlaceSummary(); // no stale compromise badge over a failed request
   setStatus(message || "Request failed.", true);
   setDisclaimer(
     STANDING_DISCLAIMER,
@@ -807,7 +843,15 @@ async function reseedLayout() {
       regularity_hint: placement.regularity_hint,
       layout_name: placement.layout_name,
     };
+    // Thread the server per-speaker notes to the install-table status column and
+    // reset the "manual" tracking — this fresh layout supersedes any prior drags.
+    _placeNotesByChannel = {};
+    for (const s of placement.speakers || []) {
+      _placeNotesByChannel[s.channel] = s.notes || "";
+    }
+    _manuallyMovedChannels.clear();
     renderPlaceNote(placement); // obstacle-aware disclosure + per-speaker deviation
+    renderPlaceSummary(placement); // prominent one-line compromise verdict
     setSpeakers(placement.speakers);
     evaluateAndRender(speakersFromMeshes());
   } catch (err) {
@@ -834,6 +878,86 @@ function renderPlaceNote(placement) {
   if (note) parts.push(note);
   if (flagged.length) parts.push(...flagged);
   el.textContent = parts.join("\n"); // textContent = XSS-safe
+  el.style.display = "";
+}
+
+// Hide + blank the compromise-report summary badge (no stale verdict on error or a
+// non-avoid algorithm). Removes every badge class so a re-show starts clean.
+function clearPlaceSummary() {
+  const el = $("place-summary");
+  if (!el) return;
+  el.textContent = "";
+  el.classList.remove("badge-ok", "badge-warn", "badge-bad");
+  delete el.dataset.manual; // a fresh/hidden verdict is no longer "manual"-qualified
+  el.style.display = "none";
+}
+
+// After a manual drag the prominent verdict no longer describes the LIVE layout, so
+// downgrade a clean "all cleared" headline to a warn — the badge must not keep
+// asserting full obstacle clearance over a hand-edited layout (the per-channel
+// status column already marks the moved row "manual"). Idempotent, string-only (D29).
+function markSummaryManual() {
+  const el = $("place-summary");
+  if (!el || el.style.display === "none") return; // no active verdict to qualify
+  if (el.dataset.manual === "1") return; // already qualified once
+  el.dataset.manual = "1";
+  if (el.classList.contains("badge-ok")) {
+    el.classList.remove("badge-ok");
+    el.classList.add("badge-warn");
+  }
+  el.textContent = `${el.textContent} · 수동 이동됨 — 재배치 검증 안 됨 (Re-seed to re-verify)`;
+}
+
+// Render the PROMINENT one-line compromise verdict for the last obstacle-aware
+// re-seed, above the full #place-note dump. D29: pure string parsing of the server
+// placement notes — JS computes NO physics/geometry. Non-avoid algorithms hide it.
+function renderPlaceSummary(placement) {
+  const el = $("place-summary");
+  if (!el) return;
+  const algo = placement && placement.target_algorithm;
+  const notes = ((placement && placement.speakers) || []).map((s) => s.notes || "");
+
+  let cls = null;
+  let text = "";
+  if (algo === "format_avoid") {
+    const total = notes.length;
+    const unresolved = notes.filter((t) => t.includes("[UNRESOLVED]")).length;
+    // Count CLEARED explicitly instead of assuming "not unresolved == cleared":
+    // if the server note format ever drifts (a note missing both tags), we must
+    // NOT flash a false-positive green "all cleared" verdict over it.
+    const cleared = notes.filter((t) => t.includes("[CLEARED]")).length;
+    if (unresolved > 0) {
+      cls = "badge-bad";
+      text = `⚠ ${unresolved}/${total} 채널 미해결(UNRESOLVED) — 표준 각도로 안 풀림, 마운트/가구/청취위치 재검토 필요`;
+    } else if (cleared === total && total > 0) {
+      cls = "badge-ok";
+      text = `✓ ${total}/${total} 채널 장애물 회피 (편차는 아래 상세 참조)`;
+    } else {
+      // No unresolved, but not every note is a clean [CLEARED] — don't over-claim.
+      cls = "badge-warn";
+      text = `⚠ ${cleared}/${total} 채널 장애물 회피 확인 — 나머지는 상태 불명, 아래 상세 확인`;
+    }
+  } else if (algo === "coverage_avoid") {
+    const constrained = notes.find((t) => t.includes("obstacle-constrained"));
+    if (constrained) {
+      const m = constrained.match(/placed (\d+)\/(\d+)/);
+      const k = m ? m[1] : "?";
+      const n = m ? m[2] : "?";
+      cls = "badge-warn";
+      text = `⚠ 장애물 제약: 요청 ${n} 중 ${k}개만 배치 (나머지는 가구를 못 피함) — 상세는 아래`;
+    } else {
+      cls = "badge-ok";
+      text = "✓ 요청 스피커 전부 장애물 회피 배치";
+    }
+  } else {
+    clearPlaceSummary(); // non-avoid algorithm → no badge
+    return;
+  }
+
+  el.classList.remove("badge-ok", "badge-warn", "badge-bad");
+  el.classList.add(cls);
+  delete el.dataset.manual; // fresh verdict — clears any prior "manual" qualifier
+  el.textContent = text; // textContent = XSS-safe
   el.style.display = "";
 }
 
@@ -1024,10 +1148,17 @@ function switchToRoom(geom) {
   currentRoomId = geom.id;
   clearRoomMeshes();
   buildRoom(geom);
+  // The prior room's obstacle notes / "manual" flags / verdict badge describe a
+  // DIFFERENT space and are stale the moment the room changes. Clear them here; a
+  // re-seed (auto or manual) repopulates them, and the non-reseed branch is left
+  // honestly blank rather than showing the old room's clearance claims.
+  _placeNotesByChannel = {};
+  _manuallyMovedChannels.clear();
   const auto = $("auto-reseed");
   if (auto && auto.checked) {
     reseedLayout(); // re-place for the new room (place + setSpeakers + evaluate)
   } else {
+    clearPlaceSummary(); // no re-seed → no fresh verdict; drop the stale badge
     evaluateAndRender(speakersFromMeshes());
   }
 }
