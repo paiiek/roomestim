@@ -698,6 +698,7 @@ const STANDING_DISCLAIMER =
 function showError(message) {
   renderInstall(null); // blank the install table on a failed evaluate (no stale rows)
   clearPlaceSummary(); // no stale compromise badge over a failed request
+  clearPlaceNote(); // no stale obstacle-aware disclosure over a failed request
   setStatus(message || "Request failed.", true);
   setDisclaimer(
     STANDING_DISCLAIMER,
@@ -863,21 +864,34 @@ async function reseedLayout() {
 // per-speaker ideal-vs-actual deviation summary (from each speaker's ``notes``).
 // D29: pure text rendering, NO physics. Hidden when there is nothing to disclose.
 function renderPlaceNote(placement) {
-  const el = $("place-note");
-  if (!el) return;
   const note = placement && placement.note;
   const flagged = ((placement && placement.speakers) || [])
     .map((s) => s.notes)
     .filter((t) => t); // drop empty notes (non-format algorithms)
-  if (!note && !flagged.length) {
+
+  // Disclosure: show the FIXED Korean summary block and fill the collapsed English
+  // original (#place-note-en) from the server ``note``, iff there is a disclosure.
+  const ko = $("place-note-ko");
+  const en = $("place-note-en");
+  if (ko && en) {
+    if (note) {
+      en.textContent = note; // authoritative English original — XSS-safe
+      ko.style.display = "";
+    } else {
+      en.textContent = "";
+      ko.style.display = "none";
+    }
+  }
+
+  // Dynamic per-speaker deviation / shortfall lines (kept visible, not collapsed).
+  const el = $("place-note");
+  if (!el) return;
+  if (!flagged.length) {
     el.textContent = "";
     el.style.display = "none";
     return;
   }
-  const parts = [];
-  if (note) parts.push(note);
-  if (flagged.length) parts.push(...flagged);
-  el.textContent = parts.join("\n"); // textContent = XSS-safe
+  el.textContent = flagged.join("\n"); // textContent = XSS-safe
   el.style.display = "";
 }
 
@@ -890,6 +904,21 @@ function clearPlaceSummary() {
   el.classList.remove("badge-ok", "badge-warn", "badge-bad");
   delete el.dataset.manual; // a fresh/hidden verdict is no longer "manual"-qualified
   el.style.display = "none";
+}
+
+// Hide the obstacle-aware disclosure (Korean summary + English original) and the
+// per-speaker note lines — so a prior avoid-seed's disclosure does not linger over a
+// failed request or a room change that produced no fresh avoid layout.
+function clearPlaceNote() {
+  const ko = $("place-note-ko");
+  if (ko) ko.style.display = "none";
+  const en = $("place-note-en");
+  if (en) en.textContent = "";
+  const pn = $("place-note");
+  if (pn) {
+    pn.textContent = "";
+    pn.style.display = "none";
+  }
 }
 
 // After a manual drag the prominent verdict no longer describes the LIVE layout, so
@@ -1159,6 +1188,7 @@ function switchToRoom(geom) {
     reseedLayout(); // re-place for the new room (place + setSpeakers + evaluate)
   } else {
     clearPlaceSummary(); // no re-seed → no fresh verdict; drop the stale badge
+    clearPlaceNote(); // and drop the prior room's obstacle-aware disclosure
     evaluateAndRender(speakersFromMeshes());
   }
 }
